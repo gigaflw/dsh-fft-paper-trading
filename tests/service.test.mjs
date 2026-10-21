@@ -7,6 +7,7 @@ import { AccountRepo } from '../lib/store/repo.js'
 import { EventStore } from '../lib/store/event-store.js'
 import { backupsDir, eventsPath } from '../lib/store/paths.js'
 import { UnavailableMarketData } from '../lib/data/unavailable-market-data.js'
+import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
 import { replay } from '../lib/core/replay.js'
 
 const DAY1 = new Date('2026-10-19T02:00:00.000Z')
@@ -29,11 +30,20 @@ function makeData() {
     async dailyBars() {
       return { state: 'ok', bars: [] }
     },
+    async minuteBars() {
+      return { state: 'ok', bars: [] }
+    },
+    async search() {
+      return []
+    },
+    async marketList() {
+      return { state: 'ok', quotes: [], page: 1 }
+    },
   }
 }
 
 function setQuote(data, price, ts) {
-  const quote = { symbol: '600519', name: '贵州茅台', last: price, bid: price - 0.01, ask: price, ts }
+  const quote = { symbol: '600519', name: '贵州茅台', last: price, marketTs: ts, fetchedAt: ts }
   data.prices.set('600519', quote)
 }
 
@@ -42,7 +52,7 @@ test('service: buy, T+1 block, next-day sell, review and reset', async () => {
   const data = makeData()
   let now = DAY1
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data, now: () => now })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
   try {
     const account = await service.account()
     assert.equal(account.cash, 100_000)
@@ -71,7 +81,7 @@ test('service: buy, T+1 block, next-day sell, review and reset', async () => {
 
     const sell = await service.place({ symbol: '600519', side: 'sell', type: 'market', qty: 100 })
     assert.equal(sell.status, 'filled')
-    assert.equal(sell.fillPrice, 10.18)
+    assert.equal(sell.fillPrice, 10.19)
 
     const review = await service.review('all')
     assert.equal(review.tradeCount, 2)
@@ -99,7 +109,7 @@ test('service: idempotent request returns the same order', async () => {
   const home = makeHome('idem')
   const data = makeData()
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data, now: () => DAY1 })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
   try {
     await service.account()
     setQuote(data, 10, DAY1_ISO)
@@ -116,7 +126,7 @@ test('service: idempotent request returns the same order', async () => {
 test('service: account still opens and rejects orders when market data is unavailable', async () => {
   const home = makeHome('no-market')
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data: new UnavailableMarketData(), now: () => DAY1 })
+  const service = new PaperService({ repo, data: new UnavailableMarketData(), calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
   try {
     const account = await service.account()
     assert.equal(account.cash, 100_000)

@@ -1,6 +1,7 @@
 import type { ErrorCode, OrderDraft, PaperSettings, Quote } from '../contract.js'
 import { amountCents, slipped } from './money.js'
 import { computeFees } from './fees.js'
+import { isWithinLimit, priceLimitFor } from './price-limit.js'
 import type { AccountState } from './types.js'
 
 export type RiskResult =
@@ -13,7 +14,7 @@ export function estimatePrice(draft: OrderDraft, quote: Quote | null, settings: 
     return draft.limitPrice !== undefined && draft.limitPrice > 0 ? draft.limitPrice : null
   }
   if (quote !== null) {
-    const base = draft.side === 'buy' ? quote.ask : quote.bid
+    const base = quote.last
     if (Number.isFinite(base) && base > 0) return slipped(base, draft.side, settings.slippageBps)
   }
   if (draft.price !== undefined && draft.price > 0) return draft.price
@@ -29,6 +30,7 @@ export function checkOrder(
   draft: OrderDraft,
   quote: Quote | null,
   settings: PaperSettings,
+  tradeDate?: string,
 ): RiskResult {
   if (state.blocked) return { ok: false, code: 'ACCOUNT_BLOCKED', message: '账户已因对账失败锁定，请检查后重置' }
   const symbol = draft.symbol?.trim()
@@ -48,6 +50,15 @@ export function checkOrder(
   const price = estimatePrice(draft, quote, settings)
   if (price === null) return { ok: false, code: 'QUOTE_UNAVAILABLE', message: '没有可用行情，请刷新或填写价格' }
 
+  if (quote?.status === 'suspended') return { ok: false, code: 'SUSPENDED', message: '标的当前停牌' }
+  const limit = priceLimitFor(symbol, quote?.name, quote?.prevClose)
+  if (limit !== undefined) {
+    const checked = draft.type === 'limit' ? (draft.limitPrice ?? price) : price
+    if (!isWithinLimit(checked, limit)) {
+      return { ok: false, code: 'PRICE_LIMIT', message: `价格超出涨跌停范围（${limit.lower.toFixed(2)}–${limit.upper.toFixed(2)}）` }
+    }
+  }
+
   const amount = amountCents(price, draft.qty)
   if (draft.side === 'buy') {
     const fees = computeFees(amount, 'buy', settings)
@@ -60,11 +71,17 @@ export function checkOrder(
   } else {
     const position = state.positions[symbol]
     const available = position?.available ?? 0
-    if (available < draft.qty) {
+    // A pre-open / after-close order belongs to a later trade date, when the
+    // T+1 lock has already been released; only the total holding must cover it.
+    const future = tradeDate !== undefined && tradeDate > state.tradeDate
+    // 09:15–09:30: the trade date has switched but T+1 unlocks at 09:30.
+    const unlockPending = tradeDate !== undefined && tradeDate === state.tradeDate && state.lastOpenedDate !== state.tradeDate
+    const sellable = future || unlockPending ? (position?.qty ?? 0) : available
+    if (sellable < draft.qty) {
       return {
         ok: false,
         code: position === undefined ? 'INSUFFICIENT_POSITION' : 'T1_LOCKED',
-        message: position === undefined ? '没有该持仓' : `可卖数量不足（可卖 ${available} 股）`,
+        message: position === undefined ? '没有该持仓' : `可卖数量不足（可卖 ${sellable} 股）`,
       }
     }
   }

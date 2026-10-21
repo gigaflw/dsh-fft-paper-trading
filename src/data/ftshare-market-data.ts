@@ -1,4 +1,5 @@
-import type { Bar, DataState, Quote } from '../contract.js'
+import type { Bar, DataState, MarketListResult, Quote, SymbolHit } from '../contract.js'
+import { todayTradeDate } from '../core/calendar.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from './market-data-port.js'
 
 /** Structural slice of `ctx.ftshareData`; no runtime import across packages. */
@@ -60,18 +61,22 @@ function pickString(row: Record<string, unknown>, keys: string[]): string | unde
   return undefined
 }
 
-function timestampOf(row: Record<string, unknown>): string {
-  const numeric = pickNumber(row, ['ts_millis', 'timestamp', 'ts', 'time'])
+function marketTimestampOf(row: Record<string, unknown>): string | undefined {
+  const numeric = pickNumber(row, ['ts_millis', 'ts_ms', 'timestamp', 'ts'])
   if (numeric !== undefined) {
     const millis = numeric > 1e12 ? numeric : numeric * 1000
     return new Date(millis).toISOString()
   }
-  const text = pickString(row, ['datetime', 'time', 'date', 'trade_date'])
+  const text = pickString(row, ['datetime', 'trade_date'])
   if (text !== undefined) {
     const parsed = Date.parse(text)
     if (!Number.isNaN(parsed)) return new Date(parsed).toISOString()
   }
-  return new Date().toISOString()
+  return undefined
+}
+
+function timestampOf(row: Record<string, unknown>): string {
+  return marketTimestampOf(row) ?? new Date().toISOString()
 }
 
 /** Expand `{ symbol, items: [...] }` groups into flat rows. */
@@ -175,20 +180,36 @@ export class FtshareMarketData implements MarketDataPort {
   private toQuote(symbol: string, row: Record<string, unknown>, source: string): Quote | undefined {
     const last = pickNumber(row, ['close', 'last', 'latest', 'price', '收盘', '最新价'])
     if (last === undefined) return undefined
-    const bid = pickNumber(row, ['bid', 'bid1', 'buy1', '买一价', 'bid_price']) ?? last
-    const ask = pickNumber(row, ['ask', 'ask1', 'sell1', '卖一价', 'ask_price']) ?? last
     const prevClose = pickNumber(row, ['prev_close', 'pre_close', 'preclose', '昨收'])
+    const marketTs = marketTimestampOf(row) ?? null
     return {
       symbol,
       name: pickString(row, ['name', 'symbol_name', '名称', 'sec_name']),
       last,
-      bid,
-      ask,
       prevClose,
-      // `ts` means "fetched at", not the bar's market time: the simulator must
-      // accept the last close after hours instead of calling it stale.
-      ts: new Date().toISOString(),
+      marketTs,
+      fetchedAt: new Date().toISOString(),
+      board: pickString(row, ['board']),
+      st: row.st === true,
+      status: pickString(row, ['status']),
       source,
+    }
+  }
+
+  private toListQuote(row: Record<string, unknown>): Quote | undefined {
+    const last = pickNumber(row, ['close', 'last'])
+    if (last === undefined) return undefined
+    return {
+      symbol: String(row.symbol ?? row.symbol_id ?? ''),
+      name: pickString(row, ['name', 'symbol_name']),
+      last,
+      prevClose: pickNumber(row, ['prev_close', 'pre_close']),
+      marketTs: null,
+      fetchedAt: new Date().toISOString(),
+      board: pickString(row, ['board']),
+      st: row.st === true,
+      status: pickString(row, ['status']),
+      source: 'ft_v1_daec_stocks',
     }
   }
 
@@ -231,6 +252,68 @@ export class FtshareMarketData implements MarketDataPort {
       }
     }
     return { state: 'failed', bars: [], notice: notices.join('；') || `没有 ${symbol} 的日 K 数据` }
+  }
+
+  async minuteBars(symbol: string, date?: string): Promise<BarsResult> {
+    const apiSymbol = normalizeSymbol(symbol)
+    const target = date ?? todayTradeDate()
+    if (target === todayTradeDate()) {
+      const result = await this.call('ft_v4_stock_realtime_minute_kline', { symbols: [apiSymbol] })
+      if (result.rows.length > 0) {
+        const bars = result.rows.map(row => this.toBar(row)).filter((bar): bar is Bar => bar !== undefined)
+        bars.sort((a, b) => a.time.localeCompare(b.time))
+        return { state: 'ok', bars }
+      }
+      if (result.notice !== undefined) return { state: result.state, bars: [], notice: result.notice }
+    }
+    const start = Date.parse(`${target}T00:00:00+08:00`)
+    const result = await this.call('ft_v2_stock_minutes', {
+      symbol: apiSymbol,
+      since_ts_millis: start,
+      until_ts_millis: start + 86_400_000 - 1,
+      interval_value: 1,
+    })
+    if (result.rows.length > 0) {
+      const bars = result.rows.map(row => this.toBar(row)).filter((bar): bar is Bar => bar !== undefined)
+      bars.sort((a, b) => a.time.localeCompare(b.time))
+      return { state: 'ok', bars }
+    }
+    return { state: result.state, bars: [], notice: result.notice ?? `没有 ${symbol} 的分钟数据` }
+  }
+
+  async search(query: string, limit: number): Promise<SymbolHit[]> {
+    const result = await this.call('ft_v1_search', { query, limit })
+    return result.rows
+      .map(row => ({
+        symbol: String(row.symbol ?? ''),
+        name: String(row.name ?? ''),
+        board: pickString(row, ['board']),
+      }))
+      .filter(hit => hit.symbol !== '')
+  }
+
+  async marketList(input: { board?: string; page?: number; pageSize?: number } = {}): Promise<MarketListResult> {
+    const page = Math.max(1, input.page ?? 1)
+    if (input.board !== undefined) {
+      const result = await this.call('ft_v2_stock_list_filter', {
+        board: input.board,
+        page,
+        page_size: Math.min(Math.max(1, input.pageSize ?? 50), 500),
+      })
+      return {
+        state: result.state,
+        quotes: result.rows.map(row => this.toListQuote(row)).filter((quote): quote is Quote => quote !== undefined),
+        page,
+        notice: result.notice,
+      }
+    }
+    const result = await this.call('ft_v1_daec_stocks', { page, page_size: Math.min(Math.max(1, input.pageSize ?? 50), 500) })
+    return {
+      state: result.state,
+      quotes: result.rows.map(row => this.toListQuote(row)).filter((quote): quote is Quote => quote !== undefined),
+      page,
+      notice: result.notice,
+    }
   }
 
   private toBar(row: Record<string, unknown>): Bar | undefined {

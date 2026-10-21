@@ -18,6 +18,8 @@ export { createPaperRpcHandler } from './service/rpc.js';
 export { createPaperRoute } from './service/route.js';
 export { AccountRepo } from './store/repo.js';
 export { FtshareMarketData } from './data/ftshare-market-data.js';
+export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js';
+export { WeekdayTradingCalendar } from './data/trading-calendar-port.js';
 export { UnavailableMarketData } from './data/unavailable-market-data.js';
 export declare const name = "@ft/dsh-fft-paper-trading";
 /**

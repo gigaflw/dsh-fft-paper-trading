@@ -31,6 +31,12 @@ const parameters = {
   period: { type: 'string', description: '复盘区间：7d、30d、all' },
   reset: { type: 'boolean', description: '是否重置账户' },
   confirm: { type: 'boolean', description: '重置时必须为 true' },
+  action: { type: 'string', description: 'market 动作：status / search / list' },
+  query: { type: 'string', description: '搜索关键词' },
+  board: { type: 'string', description: '板块：main / star / chi_next / bjse / xshg / xshe' },
+  page: { type: 'number', description: '页码，从 1 开始' },
+  pageSize: { type: 'number', description: '每页条数，最大 500' },
+  note: { type: 'string', description: '复盘备注，最多 120 字' },
 } as const satisfies ParameterSchemaSpec
 
 function draftOf(args: Record<string, unknown>): OrderDraft {
@@ -41,6 +47,7 @@ function draftOf(args: Record<string, unknown>): OrderDraft {
     qty: Number(args.qty ?? 0),
     limitPrice: typeof args.limitPrice === 'number' ? args.limitPrice : undefined,
     price: typeof args.price === 'number' ? args.price : undefined,
+    note: typeof args.note === 'string' && args.note.trim() !== '' ? args.note.trim().slice(0, 120) : undefined,
   }
 }
 
@@ -84,7 +91,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
       try {
         const symbols = Array.isArray(input.symbols) ? input.symbols.map(String) : [String(input.symbol ?? '')]
         const result = await service.quote(symbols.filter(Boolean))
-        const lines = result.quotes.map(quote => `${quote.symbol} ${quote.name ?? ''} 现价 ${quote.last.toFixed(2)} 买 ${quote.bid.toFixed(2)} 卖 ${quote.ask.toFixed(2)}`)
+        const lines = result.quotes.map(quote => `${quote.symbol} ${quote.name ?? ''} 现价 ${quote.last.toFixed(2)}`)
         return { summary: lines.length > 0 ? lines.join('\n') : `行情不可用：${result.notice ?? result.state}`, data: result }
       } catch (error) {
         return fail(error)
@@ -144,7 +151,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     async execute(): Promise<ToolResult> {
       try {
         const [account, orders, trades] = await Promise.all([service.account(), service.orders(), service.trades()])
-        const pending = orders.filter(order => order.status === 'pending')
+        const pending = orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled')
         const lines = [
           renderAccount(account),
           pending.length > 0 ? `挂单 ${pending.length} 笔：\n${pending.map(renderOrder).join('\n')}` : '无挂单',
@@ -171,6 +178,36 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
           result.notices.length > 0 ? `提示：${result.notices.join('；')}` : '',
         ].filter(Boolean)
         return { summary: lines.join('\n'), data: result }
+      } catch (error) {
+        return fail(error)
+      }
+    },
+  }))
+
+
+  tools.register(defineTool({
+    ...base,
+    name: 'paper_market',
+    description: '查询交易时段、搜索标的或查看全市场列表。',
+    async execute(args: unknown): Promise<ToolResult> {
+      const input = (args ?? {}) as Record<string, unknown>
+      try {
+        const action = input.action === 'search' || input.action === 'list' ? input.action : 'status'
+        if (action === 'status') {
+          const status = await service.marketStatus()
+          return { summary: `时段 ${status.phase} · 交易日 ${status.tradeDate} · ${status.canMatch ? '可连续交易' : '不可连续成交'}`, data: status }
+        }
+        if (action === 'search') {
+          const hits = await service.search(String(input.query ?? ''), typeof input.limit === 'number' ? input.limit : 10)
+          return { summary: hits.length === 0 ? '没有匹配的标的' : hits.map(hit => `${hit.symbol} ${hit.name}`).join('\n'), data: hits }
+        }
+        const page = await service.marketList({
+          board: typeof input.board === 'string' ? input.board : undefined,
+          page: typeof input.page === 'number' ? input.page : 1,
+          pageSize: typeof input.pageSize === 'number' ? input.pageSize : 50,
+        })
+        const lines = page.quotes.map(quote => `${quote.symbol} ${quote.name ?? ''} ${quote.last.toFixed(2)}`)
+        return { summary: lines.length === 0 ? (page.notice ?? '没有行情') : lines.join('\n'), data: page }
       } catch (error) {
         return fail(error)
       }

@@ -9,7 +9,9 @@ export interface FillDecision {
 }
 
 export function quoteFresh(quote: Quote, settings: PaperSettings, nowMs: number): boolean {
-  const ts = Date.parse(quote.ts)
+  const marketTs = quote.marketTs ?? quote.ts
+  if (marketTs === undefined || marketTs === null) return false
+  const ts = Date.parse(marketTs)
   if (Number.isNaN(ts)) return false
   return nowMs - ts <= settings.quoteTtlSec * 1000
 }
@@ -22,18 +24,19 @@ export function quoteFresh(quote: Quote, settings: PaperSettings, nowMs: number)
 export function decideFill(order: Order, quote: Quote, settings: PaperSettings, nowMs: number): FillDecision {
   if (!quoteFresh(quote, settings, nowMs)) return { fill: false, reason: 'QUOTE_STALE' }
   if (order.type === 'market') {
-    const base = order.side === 'buy' ? quote.ask : quote.bid
+    // FTShare has no bid/ask; last is the only executable reference.
+    const base = quote.last
     if (!Number.isFinite(base) || base <= 0) return { fill: false, reason: 'QUOTE_STALE' }
     return { fill: true, price: slipped(base, order.side, settings.slippageBps) }
   }
   const limit = order.limitPrice
   if (limit === undefined || !Number.isFinite(limit) || limit <= 0) return { fill: false, reason: 'NOT_CROSSED' }
   if (order.side === 'buy') {
-    if (quote.ask > limit) return { fill: false, reason: 'NOT_CROSSED' }
-    const price = Math.min(limit, slipped(quote.ask, 'buy', settings.slippageBps))
+    if (quote.last > limit) return { fill: false, reason: 'NOT_CROSSED' }
+    const price = Math.min(limit, slipped(quote.last, 'buy', settings.slippageBps))
     return { fill: true, price: roundPrice(price) }
   }
-  if (quote.bid < limit) return { fill: false, reason: 'NOT_CROSSED' }
-  const price = Math.max(limit, slipped(quote.bid, 'sell', settings.slippageBps))
+  if (quote.last < limit) return { fill: false, reason: 'NOT_CROSSED' }
+  const price = Math.max(limit, slipped(quote.last, 'sell', settings.slippageBps))
   return { fill: true, price: roundPrice(price) }
 }

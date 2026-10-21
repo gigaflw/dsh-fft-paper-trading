@@ -613,7 +613,7 @@ interface TradingCalendarPort {
 **日切与补算**
 
 - `tradeDate` 在 **09:15 进入 pre_open** 时切换（集合竞价订单属于新交易日），不在自然日 00:00；
-- 15:00 写 `day.closed`（收盘价、权益、费用、持仓、下一交易日）；09:30 写 `day.opened`（开盘价、昨收、跳空、T+1 解锁）；09:15–09:30 之间只切交易日、不解锁；
+- 15:00 写 `day.closed`（收盘价、权益、费用、持仓、下一交易日）；09:15 写 `day.pre_opened`（只切交易日、不解锁）；09:30 写 `day.opened`（开盘价、昨收、跳空、T+1 解锁）；
 - 所有 service 方法入口统一 `advanceTo(now)`：按交易日顺序补齐遗漏的收盘快照；宿主定时器只负责及时触发，不承担唯一职责；
 - **离线期间不补成交**：宿主不在线时挂单保持原状态，恢复后从当前时段继续；只补收盘快照与 T+1。理由见选型文档 §5；
 - 定时器用 `ctx.effect` 包住原生 `setTimeout/clearTimeout`（DSH 文档的推荐写法，随插件卸载清理）；宿主也提供 `ctx.timeout/ctx.interval`，类型图可见时可直接用；不要用 `setInterval` 秒级轮询。

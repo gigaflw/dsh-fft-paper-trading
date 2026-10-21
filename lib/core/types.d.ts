@@ -1,4 +1,4 @@
-import type { PaperSettings, Quote } from '../contract.js';
+import type { FillModel, PaperSettings, Quote, SessionPhase } from '../contract.js';
 export interface FeeBreakdown {
     commissionCents: number;
     stampCents: number;
@@ -17,6 +17,9 @@ export interface FillRecord {
     fees: FeeBreakdown;
     ts: string;
     tradeDate: string;
+    /** Minute bar close time that supplied the volume, when known. */
+    barTs?: string;
+    fillModel?: FillModel;
 }
 export interface Order {
     id: string;
@@ -27,12 +30,17 @@ export interface Order {
     type: 'market' | 'limit';
     qty: number;
     limitPrice?: number;
-    status: 'pending' | 'filled' | 'canceled' | 'rejected' | 'expired';
+    status: 'queued' | 'pending' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired';
     reason?: string;
+    note?: string;
+    phase?: SessionPhase;
     createdAt: string;
     updatedAt: string;
     filledAt?: string;
     fillPrice?: number;
+    filledQty: number;
+    remainingQty: number;
+    avgFillPrice?: number;
     fees?: FeeBreakdown;
     tradeDate: string;
 }
@@ -47,16 +55,38 @@ export interface Position {
     lastPrice?: number;
     lastTs?: string;
 }
+export interface PositionSnapshot {
+    symbol: string;
+    name?: string;
+    qty: number;
+    available: number;
+    costCents: number;
+    lastPrice?: number;
+}
 export interface DayPoint {
     date: string;
     equityCents: number;
     cashCents: number;
     /** Trade date that becomes current after this close. */
     nextDate?: string;
+    feesCents?: number;
+    closePrices?: Record<string, number>;
+    positions?: PositionSnapshot[];
+    closeSource?: 'daily' | 'last' | 'missing';
+    recordedAt?: string;
+}
+export interface DayOpened {
+    date: string;
+    openPrices: Record<string, number>;
+    prevClose: Record<string, number>;
+    gaps: Record<string, number>;
+    t1Unlocked: boolean;
+    recordedAt: string;
 }
 export interface AccountState {
     accountId: string;
     version: number;
+    ledgerVersion: number;
     initialCashCents: number;
     cashCents: number;
     settings: PaperSettings;
@@ -64,6 +94,8 @@ export interface AccountState {
     orders: Record<string, Order>;
     fills: FillRecord[];
     tradeDate: string;
+    /** Last date whose day.opened event was applied. */
+    lastOpenedDate: string;
     blocked: boolean;
     lastSeq: number;
     createdAt: string;
@@ -79,6 +111,7 @@ export type LedgerEvent = {
         settings: PaperSettings;
         initialCashCents: number;
         tradeDate: string;
+        ledgerVersion?: number;
     };
 } | {
     seq: number;
@@ -99,6 +132,16 @@ export type LedgerEvent = {
     payload: {
         order: Order;
         quote: Quote;
+        phase?: SessionPhase;
+    };
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'order.partially_filled';
+    payload: {
+        orderId: string;
+        fill: FillRecord;
     };
 } | {
     seq: number;
@@ -128,6 +171,21 @@ export type LedgerEvent = {
         reason: string;
         at: string;
     };
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'order.released';
+    payload: {
+        orderId: string;
+        at: string;
+    };
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'day.opened';
+    payload: DayOpened;
 } | {
     seq: number;
     id: string;
