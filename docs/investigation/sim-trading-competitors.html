@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模拟盘竞品综合评估 · 五款产品对照</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+TC:wght@400&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --paper: #f5f5f5;
+    --paper-2: #ececec;
+    --ink: #2d3142;
+    --muted: #4f5d75;
+    --soft: #7a8399;
+    --rule: rgba(45,49,66,0.12);
+    --rule-solid: #bfc0c0;
+    --accent: #eb6c36;
+    --accent-tint: rgba(235,108,54,0.08);
+    --link: #2e5aa8;
+    --good: #2f6b47;
+    --bad: #a33b2a;
+    --warn: #8a6410;
+    --sans: 'Geist', 'Noto Sans TC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --serif: 'Instrument Serif', 'Noto Serif TC', 'Songti SC', serif;
+    --mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.62;
+    padding: 3.5rem 2rem 5rem;
+  }
+  .page { max-width: 1160px; margin: 0 auto; }
+
+  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.4rem; }
+  .eyebrow {
+    font-family: var(--mono); font-size: .68rem; font-weight: 500;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(1.9rem, 3vw + .8rem, 2.6rem);
+    letter-spacing: -.02em; line-height: 1.1; margin: .5rem 0 .6rem;
+  }
+  .lede { color: var(--muted); max-width: 82ch; }
+  .meta {
+    font-family: var(--mono); font-size: .72rem; color: var(--soft);
+    margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--rule);
+    line-height: 1.9;
+  }
+  .meta a, a { color: var(--link); text-decoration: none; border-bottom: 1px solid rgba(46,90,168,.28); }
+
+  .kpi {
+    display: grid; grid-template-columns: 1.1fr 1fr 1fr .9fr;
+    gap: 14px; margin: 2rem 0 .5rem;
+  }
+  .kpi-item { border-top: 2px solid var(--rule-solid); padding-top: .7rem; }
+  .kpi-item.focal { border-top-color: var(--accent); }
+  .kpi-num { font-family: var(--serif); font-size: 2rem; line-height: 1; letter-spacing: -.02em; }
+  .kpi-item.focal .kpi-num { color: var(--accent); }
+  .kpi-label {
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); margin-top: .5rem;
+  }
+  .kpi-note { font-size: .78rem; color: var(--soft); margin-top: .25rem; }
+
+  section { margin-top: 3.4rem; }
+  h2 {
+    font-family: var(--serif); font-weight: 400; font-size: 1.5rem;
+    letter-spacing: -.01em; padding-bottom: .6rem;
+    border-bottom: 1px solid var(--rule); margin-bottom: 1.2rem;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: .78rem; color: var(--soft);
+    margin-right: .6rem; letter-spacing: .06em;
+  }
+  h3 {
+    font-family: var(--sans); font-size: 1rem; font-weight: 600;
+    margin: 1.8rem 0 .5rem;
+  }
+  h3 .tag {
+    font-family: var(--mono); font-size: .64rem; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--soft);
+    margin-right: .5rem;
+  }
+  p { max-width: 82ch; }
+  p + p { margin-top: .65rem; }
+  strong { font-weight: 600; }
+  .note { font-size: .8rem; color: var(--soft); max-width: 88ch; margin-top: .7rem; }
+  .note code { font-size: .9em; }
+
+  figure { margin: 1.4rem 0 .4rem; }
+  .fig-scroll { width: 100%; overflow-x: auto; }
+  svg { width: 100%; min-width: 960px; display: block; }
+  figcaption {
+    font-family: var(--mono); font-size: .68rem; color: var(--soft);
+    margin-top: .5rem; line-height: 1.7;
+  }
+
+  .table-wrap { overflow-x: auto; margin-top: 1.1rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 720px; }
+  caption {
+    text-align: left; font-family: var(--mono); font-size: .68rem;
+    color: var(--soft); letter-spacing: .1em; text-transform: uppercase;
+    padding-bottom: .5rem;
+  }
+  th, td {
+    text-align: left; padding: .55rem .6rem;
+    border-bottom: 1px solid var(--rule); vertical-align: top;
+  }
+  thead th {
+    font-family: var(--mono); font-size: .64rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--rule-solid);
+  }
+  td.mono, th.mono { font-family: var(--mono); font-size: .74rem; }
+  tbody tr.focal td { background: var(--accent-tint); }
+  .yes { color: var(--good); font-weight: 600; }
+  .no { color: var(--bad); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .cell-strong { background: rgba(124,143,111,0.22); }
+  .cell-mid { background: rgba(184,145,90,0.16); }
+  .cell-weak { background: rgba(45,49,66,0.05); color: var(--soft); }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 1.1rem; }
+  .card {
+    background: #fff; border: 1px solid var(--rule);
+    border-radius: 6px; padding: 15px 17px;
+  }
+  .card.tint { background: var(--paper-2); }
+  .card.focal { background: var(--accent-tint); border-color: var(--accent); }
+  .card .tag {
+    display: block; font-family: var(--mono); font-size: .63rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--soft);
+    margin-bottom: .45rem;
+  }
+  .card h4 { font-size: .95rem; font-weight: 600; margin-bottom: .35rem; }
+  .card p { font-size: .82rem; color: var(--muted); }
+  .card p + p { margin-top: .45rem; }
+
+  ol.steps { margin: .8rem 0 0 1.3rem; font-size: .88rem; color: var(--muted); }
+  ol.steps li { margin-bottom: .45rem; padding-left: .2rem; }
+  ol.steps li b { color: var(--ink); }
+  ul.plain { margin: .6rem 0 0 1.1rem; font-size: .86rem; color: var(--muted); }
+  ul.plain li { margin-bottom: .35rem; }
+  ul.plain li::marker { color: var(--soft); }
+  .brief { border-top: 1px solid var(--rule); padding: 1rem 0 .2rem; }
+  .brief h3 { margin: .4rem 0 .45rem; }
+  .brief .who {
+    font-family: var(--mono); font-size: .64rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--soft);
+  }
+  .brief p { font-size: .88rem; color: var(--muted); }
+  .brief ul { margin: .5rem 0 0 1.1rem; font-size: .83rem; color: var(--muted); }
+  .brief li { margin-bottom: .3rem; }
+
+  pre {
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 13px 15px; overflow-x: auto; margin-top: 1rem;
+    font-family: var(--mono); font-size: .74rem; line-height: 1.7;
+    color: var(--ink);
+  }
+  code { font-family: var(--mono); font-size: .88em; }
+  p code, td code, li code {
+    background: rgba(45,49,66,.06); padding: .08em .3em; border-radius: 3px;
+  }
+
+  .callout {
+    border-left: 2px solid var(--accent); background: var(--accent-tint);
+    padding: .8rem 1rem; margin-top: 1.1rem; font-size: .86rem;
+    color: var(--ink); max-width: 88ch;
+  }
+
+  footer {
+    margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: .68rem; color: var(--soft); line-height: 1.9;
+  }
+
+  @media (max-width: 860px) {
+    body { padding: 2rem 1.1rem 3rem; }
+    .kpi { grid-template-columns: 1fr 1fr; }
+    .cards { grid-template-columns: 1fr; }
+  }
+  @media print {
+    .fig-scroll { overflow-x: visible; }
+    svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Competitive analysis · 模拟盘子插件</p>
+    <h1>模拟盘竞品综合评估：五款产品对照</h1>
+    <p class="lede">三类五款产品放在同一张表里：本地工作台（璇玑、牛牛1号）、开放基础设施（openctp）、在线平台（IG demo、TradingView）。目标是回答一个问题：我们自己开发这个子插件时，每一项能力该向谁学，哪些路不要走。</p>
+    <p class="meta">
+      本地工作台　<a href="https://github.com/sonhany/xuanji">sonhany/xuanji</a> @ <code>de09d26</code>（v1.0.0）· <a href="https://github.com/kunkundi/niuone">kunkundi/niuone</a> @ <code>dd5bada</code><br>
+      开放基础设施　<a href="https://github.com/openctp/openctp">openctp/openctp</a> @ <code>0a6dce6</code><br>
+      在线平台　IG demo（HAR 实测，2026-10-20）· TradingView Paper Trading（HAR 实测，2026-10-20）<br>
+      方法　源码与文档审计 + 两次登录后 HAR 流量分析；无人工视觉评审，视觉评分是代码与结构级代理指标<br>
+      写作规范　ASD-STE100 简化技术英语的中文适配，规则见附录 A
+    </p>
+  </header>
+
+  <!-- ============ 速览 ============ -->
+  <section id="s0">
+    <div class="kpi">
+      <div class="kpi-item focal">
+        <div class="kpi-num">5 款</div>
+        <div class="kpi-label">对照产品</div>
+        <div class="kpi-note">3 类：本地工作台 / 基础设施 / 在线平台</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">2 款</div>
+        <div class="kpi-label">开源许可</div>
+        <div class="kpi-note">牛牛 Apache-2.0 · openctp BSD-3</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">0 款</div>
+        <div class="kpi-label">全都要</div>
+        <div class="kpi-note">同时具备专业图表 + 确定性账本 + 开放契约</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">1 个</div>
+        <div class="kpi-label">空位</div>
+        <div class="kpi-note">就是我们要做的插件</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 1 结论 ============ -->
+  <section id="s1">
+    <h2><span class="num">01</span>结论</h2>
+    <ol class="steps">
+      <li><b>先分类，再比较。</b>璇玑与牛牛是同类竞品（本地 A 股工作台），可以直接比功能与体验；openctp、IG、TradingView 是另外两类，不能按「功能多少」排序，只能按「能借什么」评估。</li>
+      <li><b>视觉与图表：TradingView 最强，IG 次之。</b>两款本地产品是仪表盘水平；openctp 没有自己的用户界面，只有 API 与第三方客户端。</li>
+      <li><b>模拟盘内核：璇玑最严谨，openctp 最真实，IG 与 TradingView 最成熟。</b>璇玑赢在确定性账本与对账；openctp 背后是真实撮合引擎，但规则封闭；IG 与 TradingView 的模拟账户可直接商用，但不可定制。</li>
+      <li><b>集成与合作：只有后三款有对外接入模式。</b>openctp 是 CTPAPI 兼容 + ToB HTTP 接口，IG 是 REST / Lightstreamer / FIX / B2B OAuth，TradingView 是券商 REST 规范 + 图表库授权。两款本地产品没有对外接口。</li>
+      <li><b>没有一款同时具备「专业图表 + 确定性账本 + 可接入契约」。</b>这正是我们的空位：图表借 TradingView 的产品标准，账本借璇玑的纪律，契约借 openctp 的兼容思路，交易前预览借 IG。</li>
+      <li><b>落地路线：薄插件 + 复用数据层 + 只做模拟内核与复盘。</b>不新建独立 Web 壳，不引入 Python，不重写行情采集。璇玑没有 License，任何代码都不能复制。</li>
+    </ol>
+    <div class="callout"><b>一句话：</b>做「模拟盘 + 图表 + 复盘」三件事，把这几款产品里最成熟的三套做法拼起来，而不是复刻任意一款产品。</div>
+  </section>
+
+  <!-- ============ 2 分类定位 ============ -->
+  <section id="s2">
+    <h2><span class="num">02</span>产品分类与定位</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 1 · 五款产品的基本盘</caption>
+        <thead><tr><th>产品</th><th>类别</th><th>交付形态</th><th>模拟盘在哪</th><th>许可</th><th>和我们关系</th></tr></thead>
+        <tbody>
+          <tr class="focal"><td>TradingView</td><td>在线平台</td><td>SaaS 图表 + 券商接入平台</td><td>内置 Paper Trading 模拟券商</td><td class="no">闭源</td><td>图表与交易面板标准</td></tr>
+          <tr><td>IG demo</td><td>在线平台</td><td>受监管券商 Web 平台</td><td>券商 demo 环境（独立域名）</td><td class="no">闭源</td><td>交易前预览与流式行情</td></tr>
+          <tr><td>openctp</td><td>开放基础设施</td><td>CTPAPI 兼容接口 + 托管模拟环境</td><td>TTS 柜台的三套环境</td><td class="yes">BSD-3（仓库）</td><td>接口契约与撮合模式</td></tr>
+          <tr><td>璇玑</td><td>本地工作台</td><td>React + Node + Python 单机应用</td><td>F5 确定性模拟账本</td><td class="no">无 License</td><td>账本与风控纪律</td></tr>
+          <tr><td>牛牛1号</td><td>本地工作台</td><td>Vue + FastAPI，Docker/本地</td><td>Practice 模拟账户</td><td class="yes">Apache-2.0</td><td>视觉、复盘与通知</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">说明：璇玑仓库 README 标题用字与页面品牌不一致；页面与仓库描述用「璇玑」，本报告统一用「璇玑」。</p>
+  </section>
+
+  <!-- ============ 3 速写 ============ -->
+  <section id="s3">
+    <h2><span class="num">03</span>五款产品速写</h2>
+
+    <div class="brief">
+      <p class="who">Online platform · 图表与券商接入</p>
+      <h3>TradingView</h3>
+      <p>全球最大的图表 SaaS。Paper Trading 是它内置的一个「模拟券商」：默认 10 万 USD，保证金率按资产类别配置（股票 100%、期货 5%、外汇 2%），佣金可开可关。下单接口只返回 <code>pending</code>，成交与持仓由推送或轮询回填。</p>
+      <ul>
+        <li>可借鉴：专业图表交互、下单 ticket、交易前体验、券商接入的产品化方式（137 家券商列表 + The Leap 比赛）。</li>
+        <li>不可依赖：闭源；Paper Trading 没有公开 API，只能在网页里用；完整券商规范要签协议。</li>
+      </ul>
+    </div>
+
+    <div class="brief">
+      <p class="who">Online platform · 受监管券商</p>
+      <h3>IG demo</h3>
+      <p>老牌 CFD 券商的模拟环境。demo 与 live 同构：独立域名（<code>demo-deal</code> / <code>demo-charts</code> / <code>demo-wtp</code> / <code>demo-api</code>），同一套前端代码，靠主机名切换。Web 平台是单页微前端，业务接口收敛成同源 9 个 BFF 前缀，认证用 CST / X-SECURITY-TOKEN 请求头，不用 Cookie。</p>
+      <ul>
+        <li>可借鉴：<b>下单前双预览</b>（保证金 + 费用）、Lightstreamer 流式行情、环境同构部署、事务边界清楚的 BFF。</li>
+        <li>不可依赖：闭源；独立 demo 不能申请 API key；撮合与账本规则不公开。</li>
+      </ul>
+    </div>
+
+    <div class="brief">
+      <p class="who">Open infrastructure · CTP 生态</p>
+      <h3>openctp</h3>
+      <p>用 CTPAPI 兼容接口把多家柜台统一起来，同时提供托管模拟环境（7x24 / 仿真 / vip），背后是自研闭源 TTS 柜台。撮合分两种：做市模式（按实盘盘口）与用户间撮合（仅 TEST / BTC / MINUS 三个合约）。另有免费数据中心与 ToB HTTP 接口。</p>
+      <ul>
+        <li>可借鉴：<b>接口契约优先</b>、做市 + 用户间撮合双模式、三套环境分层、ToB 开户/出入金/强平的产品化。</li>
+        <li>不可依赖：TTS 闭源；撮合规则固定；必须联网与注册账号。</li>
+      </ul>
+    </div>
+
+    <div class="brief">
+      <p class="who">Local workbench · 确定性优先</p>
+      <h3>璇玑</h3>
+      <p>面向 A 股的本机量化研究与模拟执行工作台。核心是「确定性」：独立 F5 账本、十项对账、跨批次幂等与重放、风控失败关闭、研究与执行权限分离。另有 58 个登记因子、Qlib 实验与影子 AI 研究。</p>
+      <ul>
+        <li>可借鉴：<b>账本纪律</b>（确定性、对账、审计、失败关闭），以及「研究产物不能直接下单」的权限边界。</li>
+        <li>不可依赖：无 License（代码不可复制）；Windows 单机；Node + Python 双运行时；图表很弱。</li>
+      </ul>
+    </div>
+
+    <div class="brief">
+      <p class="who">Local workbench · 产品化优先</p>
+      <h3>牛牛1号</h3>
+      <p>以 A 股模拟交易为核心的市场研究工作台。Vue 3 + FastAPI，4 套主题、9 个页面、管理台、飞书/钉钉/企微/TG 通知、NewsNow 快讯、OpenAI 兼容模型决策。Docker 一键部署，Apache-2.0。</p>
+      <ul>
+        <li>可借鉴：<b>信息架构与复盘体验</b>（账户总览、收益曲线、交易日历、操作日志）、主题系统、通知集成、部署方式。</li>
+        <li>不可依赖：14,456 行单文件的交易核心、196 KB + 124 KB 的 CSS、双运行时。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 4 视觉 ============ -->
+  <section id="s4">
+    <h2><span class="num">04</span>维度一：视觉效果与交互</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 2 · 视觉与交互对照</caption>
+        <thead><tr><th>指标</th><th>璇玑</th><th>牛牛1号</th><th>openctp</th><th>IG demo</th><th>TradingView</th></tr></thead>
+        <tbody>
+          <tr><td>界面形态</td><td>暗色仪表盘，20 面板</td><td>4 主题，9 页面 + 管理台</td><td class="cell-weak">无自有 Web UI</td><td>微前端工作区，面板可拖拽</td><td>图表优先，全屏工作区</td></tr>
+          <tr><td>主题</td><td>单深色</td><td class="yes">亮/暗/通达信/通达信亮</td><td>—</td><td>亮/暗 + 平台配色</td><td>亮/暗 + 图表主题</td></tr>
+          <tr><td>图表组件</td><td class="no">3 个 SVG</td><td>9 个自定义图表</td><td>无（第三方客户端）</td><td>独立图表引擎 1.3319.0</td><td class="yes">专业 K 线 + 指标 + 画线</td></tr>
+          <tr><td>响应式</td><td>20 个 media query</td><td>69 个 + 输入方式适配</td><td>—</td><td>桌面工作区为主</td><td>桌面/移动/小组件</td></tr>
+          <tr><td>演示素材</td><td>无截图</td><td class="yes">8 个 1200px GIF</td><td>命令行截图</td><td>需登录，无公开素材</td><td>公开站点 + 图表分享</td></tr>
+          <tr><td>设计系统</td><td class="no">样式散在 TSX</td><td class="no">521 色 / 320 KB CSS</td><td>—</td><td>组件库 + token</td><td>组件化 + 主题变量</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>评价：</b>视觉不是本地产品的短板，但也不是强项。真正把「看盘」做成核心体验的是 IG 与 TradingView；openctp 根本不解决这个问题。我们要做的界面只需要在宿主里把「图表 + 账户 + 复盘」三块排清楚，不需要复刻工作台。</p>
+    <p class="note">方法限制：无人工视觉评审。表格指标来自代码（主题、图表组件、media query、颜色数）与公开素材，能判断打磨程度，不能判断美观。</p>
+  </section>
+
+  <!-- ============ 5 功能 ============ -->
+  <section id="s5">
+    <h2><span class="num">05</span>维度二：功能丰富度</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 3 · 功能覆盖（强 / 中 / 弱 / 无）</caption>
+        <thead><tr><th>能力</th><th>璇玑</th><th>牛牛1号</th><th>openctp</th><th>IG</th><th>TV</th></tr></thead>
+        <tbody>
+          <tr><td>行情看板 / 指数</td><td class="cell-strong">强</td><td class="cell-strong">强</td><td class="cell-mid">中（API）</td><td class="cell-strong">强</td><td class="cell-strong">强</td></tr>
+          <tr><td>题材 / 资金流 / 龙虎榜</td><td class="cell-mid">中</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-mid">中</td><td class="cell-strong">强</td></tr>
+          <tr><td>新闻 / 快讯聚合</td><td class="cell-mid">中</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-mid">中</td><td class="cell-strong">强</td></tr>
+          <tr><td>因子研究</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-weak">无</td><td class="cell-weak">无</td><td class="cell-mid">中（Pine）</td></tr>
+          <tr><td>策略 / 回测</td><td class="cell-strong">强</td><td class="cell-strong">强</td><td class="cell-mid">中（回放）</td><td class="cell-mid">中</td><td class="cell-strong">强</td></tr>
+          <tr><td>机器学习 / Qlib</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-weak">无</td><td class="cell-weak">无</td><td class="cell-mid">中</td></tr>
+          <tr class="focal"><td>模拟账户</td><td class="cell-strong">强</td><td class="cell-strong">强</td><td class="cell-strong">强</td><td class="cell-strong">强</td><td class="cell-strong">强</td></tr>
+          <tr><td>交易复盘 / 日志</td><td class="cell-mid">中</td><td class="cell-strong">强</td><td class="cell-weak">弱</td><td class="cell-strong">强</td><td class="cell-strong">强</td></tr>
+          <tr><td>风控 / 对账 / 审计</td><td class="cell-strong">强</td><td class="cell-strong">强</td><td class="cell-mid">中</td><td class="cell-strong">强</td><td class="cell-mid">中</td></tr>
+          <tr><td>通知（IM）</td><td class="cell-weak">无</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-mid">中</td><td class="cell-mid">中</td></tr>
+          <tr><td>大模型决策 / 摘要</td><td class="cell-mid">只读</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-weak">无</td><td class="cell-mid">中</td></tr>
+          <tr><td>管理台 / 配置</td><td class="cell-mid">中</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-strong">强</td><td class="cell-strong">强</td></tr>
+          <tr><td>多主题 / 个性化</td><td class="cell-weak">无</td><td class="cell-strong">强</td><td class="cell-weak">无</td><td class="cell-mid">中</td><td class="cell-mid">中</td></tr>
+          <tr><td>专业 K 线图表</td><td class="cell-weak">弱</td><td class="cell-mid">中（分时）</td><td class="cell-weak">无</td><td class="cell-strong">强</td><td class="cell-strong">强</td></tr>
+          <tr><td>开放接口 / 合作接入</td><td class="cell-weak">弱</td><td class="cell-weak">弱</td><td class="cell-strong">强</td><td class="cell-strong">强</td><td class="cell-strong">强</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>评价：</b>本地两款的「丰富」是往研究与管理方向长；在线三款的「丰富」是往交易与生态方向长。功能数量不能直接比，关键看我们缺什么：我们缺的是图表与交易体验，不缺行情与数据。</p>
+  </section>
+
+  <!-- ============ 6 模拟盘内核 ============ -->
+  <section id="s6">
+    <h2><span class="num">06</span>维度三：模拟盘内核</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 4 · 五款产品的模拟盘做法</caption>
+        <thead><tr><th>方面</th><th>璇玑</th><th>牛牛1号</th><th>openctp</th><th>IG demo</th><th>TradingView</th></tr></thead>
+        <tbody>
+          <tr><td>运行位置</td><td>本地</td><td>本地/容器</td><td>openctp 服务器</td><td>IG 服务器</td><td>TradingView 服务器</td></tr>
+          <tr class="focal"><td>撮合 / 成交</td><td>确定性日频 + 盘中差额下单</td><td>模型决策 + 系统硬风控执行</td><td class="yes">真实撮合引擎：做市 + 用户间撮合</td><td>券商做市账本</td><td>模拟券商：按 bid/ask 成交</td></tr>
+          <tr><td>行情来源</td><td>免费 A 股数据源</td><td>东财/腾讯/新浪/问财</td><td>7x24 回放最近交易日；仿真连实盘行情</td><td>IG 实时报价流</td><td>TradingView 行情</td></tr>
+          <tr><td>账户 / 资金</td><td>独立 F5 账本，多组合</td><td>单模拟账户 + 策略槽</td><td>公众号注册，出入金通过消息</td><td>demo 账户，与 live 同构</td><td>10 万 USD 默认，可配置</td></tr>
+          <tr><td>费用 / 滑点</td><td>费用 + 滑点模块</td><td class="yes">佣金/印花税/过户费显式</td><td>模拟环境规则固定</td><td>点差 + 隔夜 + 换汇费</td><td>佣金可配（按笔/按合约/百分比）</td></tr>
+          <tr><td>T+1 / 涨跌停</td><td>有约束</td><td class="yes">显式</td><td>按 A 股/期货规则</td><td>CFD 无 T+1</td><td>按品种，股票无 T+1</td></tr>
+          <tr><td>风控</td><td class="yes">逐单硬规则 + 失败关闭</td><td>仓位/主题/组合/现金硬约束</td><td>无用户自定义</td><td>保证金 + 强平</td><td>保证金 + 强平开关</td></tr>
+          <tr><td>对账 / 审计</td><td class="yes">十项对账 + 幂等重放</td><td>决策/成交证据链</td><td>无公开</td><td>无公开</td><td>无公开</td></tr>
+          <tr><td>可定制</td><td class="yes">本地代码可改</td><td class="yes">本地代码可改</td><td class="no">规则固定</td><td class="no">不可</td><td class="no">不可</td></tr>
+          <tr><td>接入方式</td><td>Web 页面</td><td>Web 页面</td><td class="yes">CTPAPI 兼容 / ToB HTTP</td><td class="yes">REST + Lightstreamer + FIX</td><td class="yes">网页 / 券商规范</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>评价：</b>五种做法对应五种取舍。openctp 最接近真实交易所，但用户不能改规则；IG 与 TradingView 最接近商用体验，但完全封闭；璇玑与牛牛可完全掌控，代价是数据、撮合、运维全自己扛。我们的插件只需要覆盖「A 股日频 + 简单费用 + 风控 + 账本」，不需要真实撮合引擎。</p>
+  </section>
+
+  <!-- ============ 7 工程 ============ -->
+  <section id="s7">
+    <h2><span class="num">07</span>维度四：工程与可维护性</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 5 · 工程质量对照（闭源产品只看外部可观测项）</caption>
+        <thead><tr><th>项</th><th>璇玑</th><th>牛牛1号</th><th>openctp</th><th>IG demo</th><th>TradingView</th></tr></thead>
+        <tbody>
+          <tr><td>代码可审计</td><td class="yes">是</td><td class="yes">是</td><td class="yes">是</td><td class="no">否</td><td class="no">否</td></tr>
+          <tr><td>规模</td><td class="mono">94.7k py + 17.8k TS/MJS</td><td class="mono">160.5k py + 19.4k Vue</td><td class="mono">185 文件 / 105 MB</td><td>—</td><td>—</td></tr>
+          <tr><td>测试</td><td class="mono">150 个</td><td class="mono">103 个</td><td class="cell-weak">少量 demo</td><td>—</td><td>—</td></tr>
+          <tr class="focal"><td>CI</td><td class="no">测试不跑</td><td class="yes">跑测试</td><td class="cell-weak">无</td><td>—</td><td>—</td></tr>
+          <tr><td>文档</td><td class="mono">837 行</td><td class="mono">4,029 行</td><td class="cell-mid">官网为主，仓库 README 过时</td><td>公开 API 文档</td><td>公开规范与组件文档</td></tr>
+          <tr><td>许可</td><td class="no">无</td><td class="yes">Apache-2.0</td><td class="yes">BSD-3</td><td class="no">闭源</td><td class="no">闭源</td></tr>
+          <tr><td>结构化风险</td><td>scripts 2.9 万行</td><td class="no">单文件 14,456 行</td><td>二进制为主</td><td>微前端 + BFF 清晰</td><td>大前端（728 chunk）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>评价：</b>可开源的三个项目里，牛牛的工程流程最完整，openctp 的仓库最「分发化」，璇玑的测试最多但没接 CI。闭源产品的工程质量只能看外部信号（文档、接口稳定性、版本节奏），不能和开源项目同尺度比较。</p>
+  </section>
+
+  <!-- ============ 8 部署 ============ -->
+  <section id="s8">
+    <h2><span class="num">08</span>维度五：部署与上手</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 6 · 部署对照</caption>
+        <thead><tr><th>项</th><th>璇玑</th><th>牛牛1号</th><th>openctp</th><th>IG demo</th><th>TradingView</th></tr></thead>
+        <tbody>
+          <tr><td>运行时</td><td class="no">Node 18+ / Python 3.10+</td><td class="no">Python 3.11+ / Node 22+（构建）</td><td>无需部署（用它的服务）</td><td>浏览器</td><td>浏览器</td></tr>
+          <tr><td>操作系统</td><td class="no">Windows</td><td>跨平台 / Docker</td><td>任意</td><td>任意</td><td>任意</td></tr>
+          <tr><td>数据源</td><td>免费源（AkShare/BaoStock/腾讯等）</td><td>东财/腾讯/新浪/问财 + NewsNow</td><td>openctp 提供</td><td>IG 提供</td><td>TradingView 提供</td></tr>
+          <tr><td>账号 / 密钥</td><td>无</td><td>可选大模型密钥</td><td>公众号注册</td><td>demo 账号</td><td>TradingView 账号</td></tr>
+          <tr><td>容器化</td><td class="no">无</td><td class="yes">Docker Compose</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>上手时间</td><td>半天到一天</td><td>半小时到一小时</td><td>十分钟</td><td>十分钟</td><td>五分钟</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 9 集成 ============ -->
+  <section id="s9">
+    <h2><span class="num">09</span>维度六：集成与合作模式</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 7 · 对外接入方式</caption>
+        <thead><tr><th>产品</th><th>对外接口</th><th>授权方式</th><th>成本</th><th>适合谁</th><th>我们的动作</th></tr></thead>
+        <tbody>
+          <tr class="focal"><td>openctp</td><td class="mono">CTPAPI 兼容库 + 数据中心 REST + ToB HTTP</td><td>公众号注册 / 商务</td><td>免费；vip 1000 元/年</td><td>CTP 程序、量化开发者</td><td>借接口形状，不接服务</td></tr>
+          <tr><td>IG demo</td><td class="mono">REST + Lightstreamer + FIX + B2B OAuth</td><td>API key（需 live 关联）/ 商务</td><td>demo 免费；FIX 按协议</td><td>券商、机构、开发者</td><td>借预览与流式设计</td></tr>
+          <tr><td>TradingView</td><td class="mono">券商 REST 规范 + Charting Library / Trading Platform</td><td>签合作协议</td><td>图表库免费/付费分档</td><td>券商、交易平台</td><td>借图表标准与券商接入模式</td></tr>
+          <tr><td>璇玑</td><td class="no">无对外接口</td><td>—</td><td>—</td><td>—</td><td>只借设计</td></tr>
+          <tr><td>牛牛1号</td><td class="no">本地 Web + 受保护管理 API</td><td>—</td><td>—</td><td>—</td><td>只借设计与文档</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>评价：</b>「合作」有两种含义：接别人的能力（openctp / IG / TradingView 都有明确路径），或让别人接我们（我们目前没有对外接口）。如果我们的插件以后要对外开放，最少要做三件事：稳定的数据契约、可配置的账户模板、可审计的交易事件。</p>
+  </section>
+
+  <!-- ============ 10 能力矩阵 ============ -->
+  <section id="s10">
+    <h2><span class="num">10</span>能力矩阵</h2>
+    <p>把六维评分画成矩阵。颜色越深表示越强；珊瑚色标出「数据图表」这一格——它是竞品之间差距最大、也是我们最该补的能力。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 520" role="img" aria-labelledby="matrix-title matrix-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="matrix-title">五款产品六维能力矩阵</title>
+          <desc id="matrix-desc">璇玑、牛牛、openctp、IG、TradingView 在视觉、功能、模拟盘、数据图表、工程、集成六个维度的评分热力图；TradingView 的数据图表为最高分。</desc>
+
+          <!-- column labels (two lines) -->
+          <text x="220" y="54" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">视觉</text>
+          <text x="220" y="70" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">交互</text>
+          <text x="344" y="54" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">功能</text>
+          <text x="344" y="70" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">丰富</text>
+          <text x="468" y="54" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">模拟盘</text>
+          <text x="468" y="70" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">能力</text>
+          <text x="592" y="54" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">数据</text>
+          <text x="592" y="70" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">图表</text>
+          <text x="716" y="54" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">工程</text>
+          <text x="716" y="70" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">质量</text>
+          <text x="840" y="54" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">集成</text>
+          <text x="840" y="70" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="middle">复用</text>
+
+          <!-- row labels -->
+          <text x="152" y="114" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="end">TradingView</text>
+          <text x="152" y="178" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="end">IG demo</text>
+          <text x="152" y="242" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="end">openctp</text>
+          <text x="152" y="306" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="end">璇玑</text>
+          <text x="152" y="370" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" font-weight="600" fill="#2d3142" text-anchor="end">牛牛1号</text>
+
+          <!-- plot paper underlay -->
+          <rect x="160" y="90" width="740" height="320" fill="#f5f5f5"/>
+
+          <!-- row TV: 5.0 5.0 4.0 5.0 4.0 4.5 ; focal col 数据图表 -->
+          <rect x="160" y="90" width="120" height="60" fill="rgba(45,49,66,0.62)"/>
+          <rect x="284" y="90" width="120" height="60" fill="rgba(45,49,66,0.62)"/>
+          <rect x="408" y="90" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="532" y="90" width="120" height="60" fill="rgba(235,108,54,0.85)" stroke="#eb6c36" stroke-width="1.2"/>
+          <rect x="656" y="90" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="780" y="90" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <text x="220" y="126" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">5.0</text>
+          <text x="344" y="126" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">5.0</text>
+          <text x="468" y="126" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="592" y="126" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">5.0</text>
+          <text x="716" y="126" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="840" y="126" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+
+          <!-- row IG: 4.5 4.5 4.5 4.5 4.0 4.0 -->
+          <rect x="160" y="154" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <rect x="284" y="154" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <rect x="408" y="154" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <rect x="532" y="154" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <rect x="656" y="154" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="780" y="154" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <text x="220" y="190" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+          <text x="344" y="190" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+          <text x="468" y="190" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+          <text x="592" y="190" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+          <text x="716" y="190" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="840" y="190" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+
+          <!-- row openctp: 1.5 3.0 4.0 4.0 3.5 4.5 -->
+          <rect x="160" y="218" width="120" height="60" fill="rgba(45,49,66,0.23)"/>
+          <rect x="284" y="218" width="120" height="60" fill="rgba(45,49,66,0.38)"/>
+          <rect x="408" y="218" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="532" y="218" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="656" y="218" width="120" height="60" fill="rgba(45,49,66,0.44)"/>
+          <rect x="780" y="218" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <text x="220" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#2d3142" text-anchor="middle">1.5</text>
+          <text x="344" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#2d3142" text-anchor="middle">3.0</text>
+          <text x="468" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="592" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="716" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">3.5</text>
+          <text x="840" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+
+          <!-- row 璇玑: 3.0 4.0 4.5 3.5 3.5 2.5 -->
+          <rect x="160" y="282" width="120" height="60" fill="rgba(45,49,66,0.38)"/>
+          <rect x="284" y="282" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="408" y="282" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <rect x="532" y="282" width="120" height="60" fill="rgba(45,49,66,0.44)"/>
+          <rect x="656" y="282" width="120" height="60" fill="rgba(45,49,66,0.44)"/>
+          <rect x="780" y="282" width="120" height="60" fill="rgba(45,49,66,0.31)"/>
+          <text x="220" y="318" font-family="'Geist Mono', monospace" font-size="9" fill="#2d3142" text-anchor="middle">3.0</text>
+          <text x="344" y="318" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="468" y="318" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+          <text x="592" y="318" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">3.5</text>
+          <text x="716" y="318" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">3.5</text>
+          <text x="840" y="318" font-family="'Geist Mono', monospace" font-size="9" fill="#2d3142" text-anchor="middle">2.5</text>
+
+          <!-- row 牛牛: 4.5 4.5 4.0 3.5 4.0 3.0 -->
+          <rect x="160" y="346" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <rect x="284" y="346" width="120" height="60" fill="rgba(45,49,66,0.56)"/>
+          <rect x="408" y="346" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="532" y="346" width="120" height="60" fill="rgba(45,49,66,0.44)"/>
+          <rect x="656" y="346" width="120" height="60" fill="rgba(45,49,66,0.50)"/>
+          <rect x="780" y="346" width="120" height="60" fill="rgba(45,49,66,0.38)"/>
+          <text x="220" y="382" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+          <text x="344" y="382" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.5</text>
+          <text x="468" y="382" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="592" y="382" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">3.5</text>
+          <text x="716" y="382" font-family="'Geist Mono', monospace" font-size="9" fill="#f5f5f5" text-anchor="middle">4.0</text>
+          <text x="840" y="382" font-family="'Geist Mono', monospace" font-size="9" fill="#2d3142" text-anchor="middle">3.0</text>
+
+          <!-- legend -->
+          <line x1="160" y1="436" x2="900" y2="436" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <rect x="160" y="454" width="14" height="10" rx="2" fill="rgba(45,49,66,0.20)"/>
+          <text x="182" y="463" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">弱</text>
+          <rect x="240" y="454" width="14" height="10" rx="2" fill="rgba(45,49,66,0.40)"/>
+          <rect x="258" y="454" width="14" height="10" rx="2" fill="rgba(45,49,66,0.55)"/>
+          <text x="280" y="463" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">强</text>
+          <rect x="340" y="454" width="14" height="10" rx="2" fill="rgba(235,108,54,0.85)" stroke="#eb6c36" stroke-width="1"/>
+          <text x="362" y="463" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">焦点格：图表能力最高</text>
+          <text x="560" y="463" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399">0–5 分 · 依据见表 8 · 深色 = 更强</text>
+        </svg>
+      </div>
+      <figcaption>图 1 · 六维能力矩阵。没有任何一行在「图表」和「模拟盘」两列同时拿满分；TradingView 的图表是唯一 5.0。</figcaption>
+    </figure>
+
+    <div class="table-wrap">
+      <table>
+        <caption>表 8 · 评分依据</caption>
+        <thead><tr><th>维度</th><th>璇玑</th><th>牛牛</th><th>openctp</th><th>IG</th><th>TV</th><th>依据</th></tr></thead>
+        <tbody>
+          <tr><td>视觉交互</td><td class="mono">3.0</td><td class="mono">4.5</td><td class="mono">1.5</td><td class="mono">4.5</td><td class="mono">5.0</td><td>主题、图表组件、响应式、演示素材</td></tr>
+          <tr><td>功能丰富</td><td class="mono">4.0</td><td class="mono">4.5</td><td class="mono">3.0</td><td class="mono">4.5</td><td class="mono">5.0</td><td>表 3 的覆盖</td></tr>
+          <tr class="focal"><td>模拟盘</td><td class="mono">4.5</td><td class="mono">4.0</td><td class="mono">4.0</td><td class="mono">4.5</td><td class="mono">4.0</td><td>确定性、对账、规则完整度</td></tr>
+          <tr><td>数据图表</td><td class="mono">3.5</td><td class="mono">3.5</td><td class="mono">4.0</td><td class="mono">4.5</td><td class="mono">5.0</td><td>数据覆盖 + 图表能力</td></tr>
+          <tr><td>工程质量</td><td class="mono">3.5</td><td class="mono">4.0</td><td class="mono">3.5</td><td class="mono">4.0</td><td class="mono">4.0</td><td>CI、许可、文档、可审计性</td></tr>
+          <tr><td>集成复用</td><td class="mono">2.5</td><td class="mono">3.0</td><td class="mono">4.5</td><td class="mono">4.0</td><td class="mono">4.5</td><td>对外接口、许可、契约稳定性</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 11 光谱 ============ -->
+  <section id="s11">
+    <h2><span class="num">11</span>定位光谱</h2>
+    <p>横轴看交付形态，纵轴看对我们可复用的程度。位置是判断值，不是精确测量。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 560" role="img" aria-labelledby="quad-title quad-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="quad-title">五款产品的定位光谱</title>
+          <desc id="quad-desc">横轴从本地到在线，纵轴从低可复用性到高可复用性；TradingView 在最右上，璇玑与牛牛在左下。</desc>
+          <defs>
+            <marker id="quad-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#2d3142"/>
+            </marker>
+          </defs>
+
+          <!-- axes -->
+          <line x1="100" y1="280" x2="860" y2="280" stroke="#2d3142" stroke-width="1.2" marker-start="url(#quad-arrow)" marker-end="url(#quad-arrow)"/>
+          <line x1="480" y1="500" x2="480" y2="60" stroke="#2d3142" stroke-width="1.2" marker-start="url(#quad-arrow)" marker-end="url(#quad-arrow)"/>
+          <text x="100" y="304" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#2d3142" text-anchor="middle">本地</text>
+          <text x="860" y="304" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#2d3142" text-anchor="middle">在线</text>
+          <text x="480" y="46" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#2d3142" text-anchor="middle">可复用</text>
+          <text x="480" y="526" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#2d3142" text-anchor="middle">封闭</text>
+
+          <!-- items -->
+          <circle cx="252" cy="368" r="4" fill="#4f5d75"/>
+          <text x="242" y="372" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#2d3142" text-anchor="end">璇玑</text>
+
+          <circle cx="313" cy="302" r="4" fill="#4f5d75"/>
+          <text x="303" y="306" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#2d3142" text-anchor="end">牛牛1号</text>
+
+          <circle cx="518" cy="126" r="4" fill="#4f5d75"/>
+          <text x="530" y="130" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#2d3142">openctp</text>
+
+          <circle cx="784" cy="236" r="4" fill="#4f5d75"/>
+          <text x="796" y="240" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#2d3142">IG demo</text>
+
+          <circle cx="822" cy="104" r="5" fill="#eb6c36" stroke="#2d3142" stroke-width="1"/>
+          <text x="812" y="96" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#eb6c36" text-anchor="end">TradingView</text>
+
+          <!-- legend -->
+          <line x1="100" y1="484" x2="880" y2="484" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <circle cx="112" cy="504" r="4" fill="#4f5d75"/>
+          <text x="126" y="508" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">其他产品</text>
+          <circle cx="220" cy="504" r="5" fill="#eb6c36" stroke="#2d3142" stroke-width="1"/>
+          <text x="236" y="508" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">图表与体验标杆</text>
+          <text x="420" y="508" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399">位置为判断值，不是精确测量</text>
+        </svg>
+      </div>
+      <figcaption>图 2 · 定位光谱。越靠右上，越成熟、越可复用；越靠左下，越封闭、越像自用工具。</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ 12 借鉴映射 ============ -->
+  <section id="s12">
+    <h2><span class="num">12</span>借鉴映射：每一项能力向谁学</h2>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 560" role="img" aria-labelledby="borrow-title borrow-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="borrow-title">五款产品对我们插件的借鉴映射</title>
+          <desc id="borrow-desc">TradingView 提供图表标准，IG 提供交易前预览，openctp 提供接口契约，璇玑提供账本纪律，牛牛提供视觉与复盘，汇入我们的模拟盘子插件。</desc>
+          <defs>
+            <marker id="borrow-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+          </defs>
+
+          <!-- arrows -->
+          <path d="M290,82 H424 Q432,82 432,90 V187 Q432,195 440,195 H620" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#borrow-arrow)"/>
+          <path d="M290,172 H408 Q416,172 416,180 V221 Q416,229 424,229 H620" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#borrow-arrow)"/>
+          <line x1="290" y1="262" x2="620" y2="262" stroke="#4f5d75" stroke-width="1" marker-end="url(#borrow-arrow)"/>
+          <path d="M290,352 H376 Q384,352 384,344 V303 Q384,295 392,295 H620" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#borrow-arrow)"/>
+          <path d="M290,442 H392 Q400,442 400,434 V337 Q400,329 408,329 H620" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#borrow-arrow)"/>
+
+          <!-- sources -->
+          <rect x="40" y="50" width="250" height="64" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="165" y="76" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">TradingView</text>
+          <text x="165" y="96" font-family="'Geist Mono', monospace" font-size="9" fill="#7a8399" text-anchor="middle">在线平台 · 闭源</text>
+
+          <rect x="40" y="140" width="250" height="64" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="165" y="166" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">IG demo</text>
+          <text x="165" y="186" font-family="'Geist Mono', monospace" font-size="9" fill="#7a8399" text-anchor="middle">在线平台 · 闭源</text>
+
+          <rect x="40" y="230" width="250" height="64" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="165" y="256" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">openctp</text>
+          <text x="165" y="276" font-family="'Geist Mono', monospace" font-size="9" fill="#7a8399" text-anchor="middle">基础设施 · BSD-3</text>
+
+          <rect x="40" y="320" width="250" height="64" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="165" y="346" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">璇玑</text>
+          <text x="165" y="366" font-family="'Geist Mono', monospace" font-size="9" fill="#7a8399" text-anchor="middle">本地工作台 · 无 License</text>
+
+          <rect x="40" y="410" width="250" height="64" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="165" y="436" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">牛牛1号</text>
+          <text x="165" y="456" font-family="'Geist Mono', monospace" font-size="9" fill="#7a8399" text-anchor="middle">本地工作台 · Apache-2.0</text>
+
+          <!-- arrow labels -->
+          <rect x="298" y="58" width="84" height="16" rx="2" fill="#f5f5f5"/>
+          <text x="340" y="70" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#4f5d75" text-anchor="middle">专业图表</text>
+          <rect x="298" y="148" width="84" height="16" rx="2" fill="#f5f5f5"/>
+          <text x="340" y="160" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#4f5d75" text-anchor="middle">交易前预览</text>
+          <rect x="298" y="238" width="96" height="16" rx="2" fill="#f5f5f5"/>
+          <text x="346" y="250" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#4f5d75" text-anchor="middle">接口契约</text>
+          <rect x="298" y="328" width="84" height="16" rx="2" fill="#f5f5f5"/>
+          <text x="346" y="340" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#4f5d75" text-anchor="middle">确定性账本</text>
+          <rect x="298" y="418" width="96" height="16" rx="2" fill="#f5f5f5"/>
+          <text x="346" y="430" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#4f5d75" text-anchor="middle">视觉与复盘</text>
+
+          <!-- target -->
+          <rect x="620" y="162" width="300" height="200" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="770" y="228" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="15" font-weight="600" fill="#2d3142" text-anchor="middle">我们的模拟盘子插件</text>
+          <text x="770" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">DSH 插件 · TS 单运行时</text>
+          <text x="770" y="276" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#7a8399" text-anchor="middle">模拟账户 · 成交 · 费用 · 风控 · 账本</text>
+          <text x="770" y="298" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#7a8399" text-anchor="middle">K 线 + 交易标记 + 复盘</text>
+          <text x="770" y="330" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">只借设计，不抄代码</text>
+
+          <text x="480" y="540" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#7a8399" text-anchor="middle">箭头 = 借鉴方向。五款产品各贡献一项能力，不合并成一个产品。</text>
+        </svg>
+      </div>
+      <figcaption>图 3 · 借鉴映射。每款产品只贡献它最强的一项，避免把插件做成五个产品的拼盘。</figcaption>
+    </figure>
+
+    <div class="table-wrap">
+      <table>
+        <caption>表 9 · 具体抄什么</caption>
+        <thead><tr><th>来源</th><th>抄什么</th><th>具体做法</th><th>不抄什么</th></tr></thead>
+        <tbody>
+          <tr class="focal"><td>TradingView</td><td>图表与交易面板</td><td>K 线 + 指标 + 画线 + 下单 ticket + 盘口，交易标记画在 K 线上</td><td>全套工作区、新闻、券商生态</td></tr>
+          <tr><td>IG demo</td><td>交易前预览</td><td>下单前先算保证金与费用，服务端返回，前端只展示</td><td>微前端体系、Lightstreamer、闭源撮合</td></tr>
+          <tr><td>openctp</td><td>接口契约</td><td>稳定的请求/响应形状 + 做市/撮合双模式 + 环境分层</td><td>CTP 兼容层、TTS、托管服务</td></tr>
+          <tr><td>璇玑</td><td>账本纪律</td><td>确定性账本、对账、幂等重放、风控失败关闭、六类审计事件</td><td>因子库、Qlib、Windows 调度、代码</td></tr>
+          <tr><td>牛牛1号</td><td>视觉与复盘</td><td>账户总览、收益曲线、交易日历、操作日志、空态/加载态</td><td>4 主题、14k 行单文件、196 KB CSS</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 13 路线 ============ -->
+  <section id="s13">
+    <h2><span class="num">13</span>路线建议：少走弯路的做法</h2>
+
+    <h3><span class="tag">Scope</span>功能范围</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>表 10 · 建议的 MVP 范围</caption>
+        <thead><tr><th class="mono">优先级</th><th>功能</th><th>向谁学</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr class="focal"><td class="mono">P0</td><td>模拟账户 + 下单/撤单 + 成交 + 持仓 + 费用 + T+1 + 账本</td><td>璇玑 / 牛牛</td><td>「模拟盘」三个字的全部含义</td></tr>
+          <tr class="focal"><td class="mono">P0</td><td>K 线 + 交易标记 + 复盘面板</td><td>TradingView</td><td>竞品共同短板；本仓已有 dsh_kline</td></tr>
+          <tr><td class="mono">P1</td><td>下单前保证金/费用预览</td><td>IG</td><td>模拟真实成本，提升信任</td></tr>
+          <tr><td class="mono">P1</td><td>收益曲线 + 回撤 + 交易日志 + 导出</td><td>牛牛</td><td>复盘是留住用户的关键</td></tr>
+          <tr><td class="mono">P1</td><td>规则风控（单票仓位、总仓、现金、涨跌停、T+1）</td><td>璇玑</td><td>失败关闭，避免错误状态扩散</td></tr>
+          <tr><td class="mono">P2</td><td>策略/因子接入、自动交易、通知、多主题</td><td>—</td><td>先不做，避免变成第二款竞品</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3><span class="tag">Architecture</span>技术选择</h3>
+    <ul class="plain">
+      <li><b>单运行时。</b>Node/TS，不引入 Python。数据用 FTShare，历史 K 线用 dsh_kline。</li>
+      <li><b>薄界面。</b>宿主 UI primitives + 工具卡片，不写独立路由与外壳；主题跟随宿主。</li>
+      <li><b>引擎与界面分离。</b>账户、订单、成交、费用、风控、账本做成纯函数模块；界面只读投影。</li>
+      <li><b>确定性。</b>同一输入得到同一账本；规则带版本号，便于重放与测试。</li>
+      <li><b>先定审计事件。</b><code>decision / order / fill / position / fee / risk</code> 六类事件，再写引擎。</li>
+      <li><b>测试进 CI。</b>引擎单测 + 账本快照回归，每次提交跑。</li>
+    </ul>
+
+    <h3><span class="tag">Pitfalls</span>避坑清单</h3>
+    <div class="cards">
+      <div class="card tint">
+        <span class="tag">范围</span>
+        <h4>别做研究平台</h4>
+        <p>因子、Qlib、新闻聚合、大模型自动交易会把插件拖成十几万行。这些是竞品的主业。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">架构</span>
+        <h4>别做独立 Web 壳</h4>
+        <p>宿主已有侧栏、卡片、设置、主题。另起一个 Web 应用，等于放弃集成优势。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">数据</span>
+        <h4>别重写行情采集</h4>
+        <p>两款本地竞品都自带东财/腾讯抓取。本仓 FTShare 与 dsh_kline 已覆盖。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">代码</span>
+        <h4>别让单文件膨胀</h4>
+        <p>牛牛 <code>practice_trader.py</code> 1.44 万行是反面教材。引擎按域拆文件。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">样式</span>
+        <h4>别堆颜色和 CSS</h4>
+        <p>牛牛 521 色 / 320 KB CSS；璇玑样式散在 TSX。用宿主 token，图表配色 ≤6 个。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">许可</span>
+        <h4>别无许可抄代码</h4>
+        <p>璇玑没有 License，默认保留所有权利。可学设计，不能复制代码。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">质量</span>
+        <h4>别跳过 CI</h4>
+        <p>璇玑 150 个测试却不接 CI。账本回归必须每次提交跑。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">产品</span>
+        <h4>别拿 AI 当卖点先做</h4>
+        <p>璇玑已把 AI 控制面退役，牛牛把模型限定为可选。先做对账本与图表。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 14 风险 ============ -->
+  <section id="s14">
+    <h2><span class="num">14</span>调查风险与限制</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 11 · 本次评估的限制</caption>
+        <thead><tr><th>等级</th><th>项</th><th>影响</th></tr></thead>
+        <tbody>
+          <tr><td class="no">高</td><td>没有人工视觉评审</td><td>视觉评分基于代码与结构代理指标，可能与真实观感有偏差</td></tr>
+          <tr><td class="warn">中</td><td>在线演示不可用</td><td>niuone.cn 调查时返回 502；IG/TV 需要登录，未做界面级复核</td></tr>
+          <tr><td class="warn">中</td><td>未运行产品</td><td>没有实际下单、回测、看盘；功能判断来自代码、HAR 与文档</td></tr>
+          <tr><td class="warn">中</td><td>跨类比较</td><td>基础设施与在线平台不能和本地工作台同尺度比较，分数已按「对我们可复用」修正</td></tr>
+          <tr><td class="warn">中</td><td>版本快照</td><td>五款产品都在迭代，数字会变化</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 15 来源 ============ -->
+  <section id="s15">
+    <h2><span class="num">15</span>来源</h2>
+    <ul class="plain">
+      <li>璇玑：<a href="https://github.com/sonhany/xuanji">github.com/sonhany/xuanji</a>，本地快照 <code>thirdparty/xuanji</code>（v1.0.0，<code>de09d26</code>）</li>
+      <li>牛牛1号：<a href="https://github.com/kunkundi/niuone">github.com/kunkundi/niuone</a>，本地快照 <code>thirdparty/niuone</code>（<code>dd5bada</code>）</li>
+      <li>openctp：<a href="https://github.com/openctp/openctp">github.com/openctp/openctp</a>，本地快照 <code>thirdparty/openctp</code>；详细分析见 <code>docs/thirdparty/openctp.html</code></li>
+      <li>IG demo：HAR 实测 <code>tmp/demo-deal.ig.com.har</code>；详细分析见 <code>docs/thirdparty/ig-demo.html</code></li>
+      <li>TradingView：HAR 实测 <code>tmp/cn.tradingview.com.har</code>；详细分析见 <code>docs/thirdparty/tradingview.html</code></li>
+      <li>命名说明：README 标题用字与页面品牌不一致，本报告统一用「璇玑」</li>
+    </ul>
+  </section>
+
+  <!-- ============ 附录 ============ -->
+  <section id="appendix">
+    <h2><span class="num">A</span>附录：STE 写作规则</h2>
+    <ul class="plain">
+      <li>一句一个意思。描述句不超过 25 字，步骤句不超过 20 字。</li>
+      <li>用主动语态和简单时态。不用完成时和进行时。</li>
+      <li>一个词只表示一个意思。术语首次出现时定义，之后固定使用。</li>
+      <li>不用未定义的缩写。不用「可能」「大概」「也许」。</li>
+      <li>段落不超过 6 句。复杂内容改用表格或编号列表。</li>
+      <li>先给结论，再给依据。</li>
+    </ul>
+  </section>
+
+  <footer>
+    数据口径：行数、文件数、主题数、组件数来自本地仓库快照；IG 与 TradingView 的数字来自 HAR 与公开页面。行数不等于质量。<br>
+    范围：五款产品统一对照；跨类产品已按「对我们可复用」修正评分，不做绝对排名。<br>
+    结论：图表学 TradingView，交易前预览学 IG，契约学 openctp，账本学璇玑，视觉与复盘学牛牛；代码不复制。
+  </footer>
+
+</div>
+</body>
+</html>

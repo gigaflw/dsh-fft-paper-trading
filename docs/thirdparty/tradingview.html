@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradingView 模拟盘架构调查 · HAR 实测</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+TC:wght@400&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --paper: #f5f5f5;
+    --paper-2: #ececec;
+    --ink: #2d3142;
+    --muted: #4f5d75;
+    --soft: #7a8399;
+    --rule: rgba(45,49,66,0.12);
+    --rule-solid: #bfc0c0;
+    --accent: #eb6c36;
+    --accent-tint: rgba(235,108,54,0.08);
+    --link: #2e5aa8;
+    --good: #2f6b47;
+    --bad: #a33b2a;
+    --warn: #8a6410;
+    --sans: 'Geist', 'Noto Sans TC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --serif: 'Instrument Serif', 'Noto Serif TC', 'Songti SC', serif;
+    --mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.62;
+    padding: 3.5rem 2rem 5rem;
+  }
+  .page { max-width: 1160px; margin: 0 auto; }
+
+  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.4rem; }
+  .eyebrow {
+    font-family: var(--mono); font-size: .68rem; font-weight: 500;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(1.9rem, 3vw + .8rem, 2.6rem);
+    letter-spacing: -.02em; line-height: 1.1; margin: .5rem 0 .6rem;
+  }
+  .lede { color: var(--muted); max-width: 78ch; }
+  .meta {
+    font-family: var(--mono); font-size: .72rem; color: var(--soft);
+    margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--rule);
+    line-height: 1.9;
+  }
+  .meta a, a { color: var(--link); text-decoration: none; border-bottom: 1px solid rgba(46,90,168,.28); }
+
+  .kpi {
+    display: grid; grid-template-columns: 1.1fr 1fr 1fr .9fr;
+    gap: 14px; margin: 2rem 0 .5rem;
+  }
+  .kpi-item { border-top: 2px solid var(--rule-solid); padding-top: .7rem; }
+  .kpi-item.focal { border-top-color: var(--accent); }
+  .kpi-num { font-family: var(--serif); font-size: 2rem; line-height: 1; letter-spacing: -.02em; }
+  .kpi-item.focal .kpi-num { color: var(--accent); }
+  .kpi-label {
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); margin-top: .5rem;
+  }
+  .kpi-note { font-size: .78rem; color: var(--soft); margin-top: .25rem; }
+
+  section { margin-top: 3.4rem; }
+  h2 {
+    font-family: var(--serif); font-weight: 400; font-size: 1.5rem;
+    letter-spacing: -.01em; padding-bottom: .6rem;
+    border-bottom: 1px solid var(--rule); margin-bottom: 1.2rem;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: .78rem; color: var(--soft);
+    margin-right: .6rem; letter-spacing: .06em;
+  }
+  h3 {
+    font-family: var(--sans); font-size: 1rem; font-weight: 600;
+    margin: 1.8rem 0 .5rem;
+  }
+  h3 .tag {
+    font-family: var(--mono); font-size: .64rem; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--soft);
+    margin-right: .5rem;
+  }
+  p { max-width: 80ch; }
+  p + p { margin-top: .65rem; }
+  strong { font-weight: 600; }
+  .note { font-size: .8rem; color: var(--soft); max-width: 86ch; margin-top: .7rem; }
+  .note code { font-size: .9em; }
+
+  figure { margin: 1.4rem 0 .4rem; }
+  .fig-scroll { width: 100%; overflow-x: auto; }
+  svg { width: 100%; min-width: 960px; display: block; }
+  figcaption {
+    font-family: var(--mono); font-size: .68rem; color: var(--soft);
+    margin-top: .5rem; line-height: 1.7;
+  }
+
+  .table-wrap { overflow-x: auto; margin-top: 1.1rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 640px; }
+  caption {
+    text-align: left; font-family: var(--mono); font-size: .68rem;
+    color: var(--soft); letter-spacing: .1em; text-transform: uppercase;
+    padding-bottom: .5rem;
+  }
+  th, td {
+    text-align: left; padding: .55rem .6rem;
+    border-bottom: 1px solid var(--rule); vertical-align: top;
+  }
+  thead th {
+    font-family: var(--mono); font-size: .64rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--rule-solid);
+  }
+  td.mono, th.mono { font-family: var(--mono); font-size: .74rem; }
+  tbody tr.focal td { background: var(--accent-tint); }
+  .yes { color: var(--good); font-weight: 600; }
+  .no { color: var(--bad); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 1.1rem; }
+  .card {
+    background: #fff; border: 1px solid var(--rule);
+    border-radius: 6px; padding: 15px 17px;
+  }
+  .card.tint { background: var(--paper-2); }
+  .card.focal { background: var(--accent-tint); border-color: var(--accent); }
+  .card .tag {
+    display: block; font-family: var(--mono); font-size: .63rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--soft);
+    margin-bottom: .45rem;
+  }
+  .card h4 { font-size: .95rem; font-weight: 600; margin-bottom: .35rem; }
+  .card p { font-size: .82rem; color: var(--muted); }
+  .card p + p { margin-top: .45rem; }
+
+  ol.steps { margin: .8rem 0 0 1.3rem; font-size: .88rem; color: var(--muted); }
+  ol.steps li { margin-bottom: .45rem; padding-left: .2rem; }
+  ol.steps li b { color: var(--ink); }
+  ul.plain { margin: .6rem 0 0 1.1rem; font-size: .86rem; color: var(--muted); }
+  ul.plain li { margin-bottom: .35rem; }
+  ul.plain li::marker { color: var(--soft); }
+
+  pre {
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 13px 15px; overflow-x: auto; margin-top: 1rem;
+    font-family: var(--mono); font-size: .74rem; line-height: 1.7;
+    color: var(--ink);
+  }
+  code { font-family: var(--mono); font-size: .88em; }
+  p code, td code, li code {
+    background: rgba(45,49,66,.06); padding: .08em .3em; border-radius: 3px;
+  }
+
+  .callout {
+    border-left: 2px solid var(--accent); background: var(--accent-tint);
+    padding: .8rem 1rem; margin-top: 1.1rem; font-size: .86rem;
+    color: var(--ink); max-width: 86ch;
+  }
+
+  footer {
+    margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: .68rem; color: var(--soft); line-height: 1.9;
+  }
+
+  @media (max-width: 860px) {
+    body { padding: 2rem 1.1rem 3rem; }
+    .kpi { grid-template-columns: 1fr 1fr; }
+    .cards { grid-template-columns: 1fr; }
+  }
+  @media print {
+    .fig-scroll { overflow-x: visible; }
+    svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Platform survey · TradingView</p>
+    <h1>TradingView 模拟盘架构调查</h1>
+    <p class="lede">用一次登录后的 HAR（876 个请求）还原 TradingView 的页面加载、图表鉴权、Paper Trading 账户与下单链路。只调查 TradingView 一个平台。</p>
+    <p class="meta">
+      证据来源　<code>tmp/cn.tradingview.com.har</code>（2026-10-20 06:04 UTC，876 条请求，21 个域名）<br>
+      页面　<code>cn.tradingview.com/chart/5itpVo39/</code>，图表品种 HKEX:9988，日线　·　账户　Paper Trading（free 段）<br>
+      调查方式　流量抓取 + 内联启动配置 + 前端 chunk 命名分析 + 公开页面交叉核对<br>
+      限制　HAR 中所有请求无 Cookie（疑似导出时已脱敏），认证细节未验证；只下了一笔市价单<br>
+      写作规范　ASD-STE100 简化技术英语的中文适配，规则见附录 A
+    </p>
+  </header>
+
+  <!-- ============ 速览 ============ -->
+  <section id="s0">
+    <div class="kpi">
+      <div class="kpi-item focal">
+        <div class="kpi-num">2 个</div>
+        <div class="kpi-label">模拟盘服务域名</div>
+        <div class="kpi-note">papertrading / papertrading-free</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">3 条</div>
+        <div class="kpi-label">WebSocket</div>
+        <div class="kpi-note">图表 socket.io + 公共/私有推送</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">728 个</div>
+        <div class="kpi-label">静态资源</div>
+        <div class="kpi-note">约 18.7 MB 文本</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">137 家</div>
+        <div class="kpi-label">接入券商</div>
+        <div class="kpi-note">交易面板 broker 列表</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 1 结论 ============ -->
+  <section id="s1">
+    <h2><span class="num">01</span>结论</h2>
+    <ol class="steps">
+      <li><b>TradingView 的模拟盘不是单个服务。</b>它拆成三块：账户与比赛（<code>papertrading</code>）、免费段账户执行（<code>papertrading-free</code>）、以及前端底部的交易面板。账户数据、下单、历史各走各的接口。</li>
+      <li><b>页面是服务端渲染 + 客户端 hydrate。</b>HTML 外壳 94 KB，图表设置与工作区状态直接内联；布局资源再用 <code>chart-token</code> 换 JWT，去 <code>charts-storage</code> 取。</li>
+      <li><b>图表数据主要走 WebSocket。</b><code>data.tradingview.com</code> 用 socket.io 协议传 K 线与报价；REST 只负责页面、账户和低频率查询。</li>
+      <li><b>模拟账户是「可配置模板」。</b>默认 10 万 USD，保证金率按资产类别配置（股票 100%、期货 5%、外汇 2%），佣金默认关闭；比赛直接用同一套模板加风控参数。</li>
+      <li><b>商业化靠「券商列表 + 比赛」。</b>交易面板接口一次返回 137 家券商（含国家、评分、开户导流链接），另有 The Leap 模拟比赛。模拟盘是拉新和练手入口。</li>
+    </ol>
+  </section>
+
+  <!-- ============ 2 范围 ============ -->
+  <section id="s2">
+    <h2><span class="num">02</span>调查范围与证据边界</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 1 · 已证明与未证明</caption>
+        <thead><tr><th>已证明</th><th>未证明</th></tr></thead>
+        <tbody>
+          <tr><td>页面启动配置、版本号、服务域名清单</td><td>登录流程与 Cookie / token 机制（HAR 无 Cookie）</td></tr>
+          <tr><td>728 个静态 chunk 的命名与体积分布</td><td>WebSocket 帧内容（只截到 101 握手）</td></tr>
+          <tr><td>Paper Trading 账户模型、保证金率、下单请求与响应</td><td>订单成交回报、改单、撤单、平仓（本次只下一笔市价单）</td></tr>
+          <tr><td>比赛账户模板与比赛参数</td><td>撮合与成交价规则</td></tr>
+          <tr><td>Broker 列表接口与导流字段</td><td>券商合作协议细节</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">HAR 中 876 条请求没有一条带 Cookie。最可能是导出时选了「sanitized」。因此本报告不判断认证方式，只描述接口与数据形状。</p>
+  </section>
+
+  <!-- ============ 3 页面与前端 ============ -->
+  <section id="s3">
+    <h2><span class="num">03</span>页面与前端</h2>
+    <p>页面 HTML 只有 94 KB，但里面直接写入了运行配置。关键值如下：</p>
+    <pre><code>window.environment          = "battle"
+window.BUILD_TIME           = "2026-10-19T17:32:06"
+window.WEBSOCKET_HOST       = "data.tradingview.com"
+window.WEBSOCKET_PRO_HOST   = "prodata.tradingview.com"
+window.WEBSOCKET_HOST_FOR_DEEP_BACKTESTING = "history-data.tradingview.com"
+window.TRADING_URLS = {
+  free: "https://papertrading-free.tradingview.com",
+  pro:  "https://papertrading.tradingview.com"
+}
+window.CONTESTS_URL = "https://contest.tradingview.com"
+window.CRUD_STORAGE_URL = "https://crud-storage.tradingview.com"
+window.countryCode = "JP"</code></pre>
+
+    <h3><span class="tag">Chunks</span>按功能拆包</h3>
+    <p>HAR 记录了 728 个静态请求，约 18.7 MB 文本，其中 387 个 JS、336 个 CSS。命名能直接看出功能边界：</p>
+    <div class="table-wrap">
+      <table>
+        <caption>表 2 · 命名 chunk 与体积</caption>
+        <thead><tr><th class="mono">chunk</th><th class="mono">体积</th><th>作用</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">trading.*.js</td><td class="mono">1.03 MB</td><td>交易域主包</td></tr>
+          <tr class="focal"><td class="mono">trading-order-ticket.*.js</td><td class="mono">559 KB</td><td>下单 ticket，独立拆包</td></tr>
+          <tr><td class="mono">symbol-search-dialog.*.js</td><td class="mono">410 KB</td><td>品种搜索</td></tr>
+          <tr><td class="mono">paper.*.js</td><td class="mono">—</td><td>Paper Trading 模块</td></tr>
+          <tr><td class="mono">paper-maintenance-checker.*.js</td><td class="mono">—</td><td>模拟盘维护状态检查</td></tr>
+          <tr><td class="mono">replay.*.js</td><td class="mono">181 KB</td><td>K 线回放</td></tr>
+          <tr><td class="mono">bottom-replay-trading-widget.*.js</td><td class="mono">—</td><td>回放 + 交易联动</td></tr>
+          <tr><td class="mono">runtime.*.js</td><td class="mono">193 KB</td><td>模块运行时</td></tr>
+          <tr><td class="mono">main_chart.*.js / chart-renderer.*.js</td><td class="mono">—</td><td>图表主逻辑与渲染器</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">交易面板、下单 ticket、品种搜索、回放、Paper Trading 都是独立 chunk，按需加载。这点与我们插件按功能拆包的方向一致。</p>
+
+    <h3><span class="tag">State</span>设置与布局</h3>
+    <ul class="plain">
+      <li>设置自动保存：<code>POST /savesettings/</code>，请求体是 multipart 里的一个 <code>delta</code> JSON，只传变化项。实测两次 delta 分别是 <code>chart.bottom-widgetbar</code> 的 <code>replay_trading</code> 与 <code>paper_trading</code> 状态。</li>
+      <li>图表清单：<code>GET /my-charts/</code> 返回用户所有布局，字段含 <code>id</code>、<code>image_url</code>（就是链接里的 hash）、<code>symbol</code>、<code>resolution</code>、<code>modified</code>。</li>
+      <li>布局资源：<code>charts-storage.tradingview.com</code> 按 <code>layoutId</code> 取，本次返回空对象，说明该布局没有额外共享资源，图表状态都在页面内联数据里。</li>
+      <li>自选表：<code>GET /api/v1/symbols_list/active/</code> 返回分组与品种列表，服务端存储。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 4 服务地图 ============ -->
+  <section id="s4">
+    <h2><span class="num">04</span>服务地图：浏览器直连 21 个域名</h2>
+    <p>按职责可以把 21 个域名分成六类。模拟盘是其中单独一组。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 520" role="img" aria-labelledby="tv-topo-title tv-topo-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="tv-topo-title">TradingView 浏览器直连的服务</title>
+          <desc id="tv-topo-desc">浏览器页面直连页面 API、静态资源、图表 WebSocket、推送 WebSocket、模拟盘服务和图表存储六个服务。</desc>
+          <defs>
+            <marker id="tv-topo-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+          </defs>
+
+          <!-- arrows first -->
+          <path d="M380,220 H348 Q340,220 340,212 V78 Q340,70 332,70 H300" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-topo-arrow)"/>
+          <line x1="380" y1="240" x2="300" y2="240" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#tv-topo-arrow)"/>
+          <path d="M380,260 H348 Q340,260 340,268 V402 Q340,410 332,410 H300" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-topo-arrow)"/>
+          <path d="M580,220 H612 Q620,220 620,212 V78 Q620,70 628,70 H660" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-topo-arrow)"/>
+          <line x1="580" y1="240" x2="660" y2="240" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-topo-arrow)"/>
+          <path d="M580,260 H612 Q620,260 620,268 V402 Q620,410 628,410 H660" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-topo-arrow)"/>
+
+          <!-- hub -->
+          <rect x="380" y="180" width="200" height="120" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+          <text x="480" y="228" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">浏览器页面</text>
+          <text x="480" y="248" font-family="'Geist Mono', monospace" font-size="8.5" fill="#4f5d75" text-anchor="middle">cn.tradingview.com/chart/…</text>
+          <text x="480" y="266" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="10" fill="#7a8399" text-anchor="middle">SSR 外壳 + 客户端 hydrate</text>
+
+          <!-- left targets -->
+          <rect x="40" y="40" width="260" height="60" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="170" y="66" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">模拟盘服务（重点）</text>
+          <text x="170" y="84" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">papertrading · papertrading-free</text>
+
+          <rect x="40" y="210" width="260" height="60" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="170" y="236" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">图表存储</text>
+          <text x="170" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">charts-storage · JWT</text>
+
+          <rect x="40" y="380" width="260" height="60" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+          <text x="170" y="406" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">周边服务</text>
+          <text x="170" y="424" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">pricealerts · scanner · news</text>
+
+          <!-- right targets -->
+          <rect x="660" y="40" width="260" height="60" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="790" y="66" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">页面与账户 API</text>
+          <text x="790" y="84" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">cn.tradingview.com · /api/v1/*</text>
+
+          <rect x="660" y="210" width="260" height="60" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="790" y="236" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">静态资源</text>
+          <text x="790" y="254" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">static.tradingview.com · 728 chunk</text>
+
+          <rect x="660" y="380" width="260" height="60" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="790" y="406" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">WebSocket 通道</text>
+          <text x="790" y="424" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">data + pushstream</text>
+
+          <!-- legend -->
+          <line x1="40" y1="482" x2="920" y2="482" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <text x="40" y="504" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.14em" fill="#4f5d75">LEGEND</text>
+          <line x1="112" y1="500" x2="144" y2="500" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#tv-topo-arrow)"/>
+          <text x="154" y="504" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">HTTPS / WSS 直连</text>
+          <rect x="300" y="494" width="14" height="10" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+          <text x="322" y="504" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">本次重点</text>
+        </svg>
+      </div>
+      <figcaption>图 1 · 浏览器直连六个服务组，模拟盘只是其中一组。图表数据、页面 API、推送通道互相独立。</figcaption>
+    </figure>
+
+    <div class="table-wrap">
+      <table>
+        <caption>表 3 · 服务分组</caption>
+        <thead><tr><th>组</th><th class="mono">域名</th><th>职责</th></tr></thead>
+        <tbody>
+          <tr class="focal"><td>模拟盘</td><td class="mono">papertrading · papertrading-free</td><td>账户、汇率、比赛、下单、历史</td></tr>
+          <tr><td>页面与账户</td><td class="mono">cn.tradingview.com</td><td>HTML、/api/v1/*、my-charts、savesettings、chart-token</td></tr>
+          <tr><td>静态资源</td><td class="mono">static.tradingview.com</td><td>728 个 JS/CSS chunk</td></tr>
+          <tr><td>图表数据</td><td class="mono">data.tradingview.com</td><td>socket.io WebSocket 图表数据 + /ping 心跳</td></tr>
+          <tr><td>消息推送</td><td class="mono">pushstream.tradingview.com</td><td><code>private_feed</code> / <code>public</code> 两条 WebSocket</td></tr>
+          <tr><td>图表存储</td><td class="mono">charts-storage.tradingview.com</td><td>布局资源，JWT 鉴权，按 layoutId 授权</td></tr>
+          <tr><td>周边</td><td class="mono">pricealerts · scanner · scanner-backend · news-mediator · notifications · crud-storage</td><td>提醒、筛选器、新闻、通知、订单预设</td></tr>
+          <tr><td>观测与营销</td><td class="mono">telemetry · snowplow-pixel · analytics.google · ad.doubleclick · googletagmanager</td><td>埋点、广告、实验</td></tr>
+          <tr><td>素材</td><td class="mono">s3-symbol-logo · s3.tradingview.com</td><td>品种 logo、配置 JSON</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 5 图表页 ============ -->
+  <section id="s5">
+    <h2><span class="num">05</span>图表页的启动与鉴权</h2>
+    <p>图表链接里的 hash 就是布局 ID。打开页面时，服务端先把布局和设置渲染进 HTML，然后客户端用 <code>chart-token</code> 换一个 JWT，再去图表存储取资源。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 280" role="img" aria-labelledby="tv-boot-title tv-boot-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="tv-boot-title">TradingView 图表页启动五步</title>
+          <desc id="tv-boot-desc">从 URL 布局 ID 开始，经过 HTML 外壳、chart-token 换 JWT、图表存储取资源，最后由 WebSocket 加载 K 线与推送。</desc>
+          <defs>
+            <marker id="tv-boot-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+          </defs>
+
+          <line x1="200" y1="147" x2="218" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-boot-arrow)"/>
+          <line x1="380" y1="147" x2="398" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-boot-arrow)"/>
+          <line x1="560" y1="147" x2="578" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-boot-arrow)"/>
+          <line x1="740" y1="147" x2="758" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-boot-arrow)"/>
+
+          <text x="120" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">01</text>
+          <text x="300" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">02</text>
+          <text x="480" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#eb6c36" text-anchor="middle">03</text>
+          <text x="660" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">04</text>
+          <text x="840" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">05</text>
+
+          <rect x="40" y="110" width="160" height="74" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="120" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">打开链接</text>
+          <text x="120" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/chart/{layoutId}/</text>
+
+          <rect x="220" y="110" width="160" height="74" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="300" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">HTML 外壳</text>
+          <text x="300" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">94 KB · initData</text>
+
+          <rect x="400" y="110" width="160" height="74" rx="6" fill="rgba(235,108,54,0.06)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="480" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">换 JWT</text>
+          <text x="480" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">GET /chart-token/</text>
+
+          <rect x="580" y="110" width="160" height="74" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="660" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">取布局资源</text>
+          <text x="660" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">charts-storage</text>
+
+          <rect x="760" y="110" width="160" height="74" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="840" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">加载行情</text>
+          <text x="840" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">data WS + pushstream</text>
+
+          <text x="480" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">JWT 声明：type=owner · layoutId · ownerId</text>
+          <text x="480" y="248" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#7a8399" text-anchor="middle">布局 ID 来自 URL；JWT 只对这一个布局有效，共享布局用另一个 chart_id</text>
+        </svg>
+      </div>
+      <figcaption>图 2 · 页面先渲染、再换令牌取资源。JWT 把访问权限限制在单个 layoutId 上。</figcaption>
+    </figure>
+
+    <ul class="plain">
+      <li><b>启动配置</b>：<code>window.BUILD_TIME</code>、<code>WEBSOCKET_HOST</code>、<code>TRADING_URLS</code>、<code>countryCode</code> 都内联在 HTML 里，前端不再请求配置接口。</li>
+      <li><b>chart-token</b>：返回 RS512 JWT，声明 <code>iss=tv_chart</code>、<code>type=owner</code>、<code>layoutId</code>、<code>ownerId</code>、<code>shared</code>。本次 9 次调用，每次打开/刷新布局都会换新令牌。</li>
+      <li><b>charts-storage</b>：按 <code>layout_id</code> 和 <code>chart_id</code> 取资源，本次返回空对象；图表状态（画线、指标、周期）已在 HTML 内联数据里。</li>
+      <li><b>行情</b>：<code>wss://data.tradingview.com/socket.io/websocket?from=chart/{layoutId}/&amp;date={BUILD_TIME}&amp;type=chart&amp;auth=sessionid</code>，用 socket.io 协议；另有 <code>GET /ping</code> 心跳。</li>
+      <li><b>推送</b>：<code>pushstream.tradingview.com/message-pipe-ws/private_feed</code> 与 <code>/public</code>。私有通道大概率承载订单/持仓变化，但本次未截获帧。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 6 模拟盘 ============ -->
+  <section id="s6">
+    <h2><span class="num">06</span>Paper Trading：账户 + 执行 + 比赛</h2>
+    <p>模拟盘由两个域名提供服务：<code>papertrading</code> 管账户列表、汇率、比赛和维护状态；<code>papertrading-free</code> 管免费段账户的账户快照、历史、保证金率和下单。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 300" role="img" aria-labelledby="tv-paper-title tv-paper-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="tv-paper-title">TradingView 模拟盘下单流程</title>
+          <desc id="tv-paper-desc">连接模拟盘后加载账户快照，查询保证金率，提交市价单得到 pending 状态，成交与持仓更新本次未截获。</desc>
+          <defs>
+            <marker id="tv-paper-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+          </defs>
+
+          <line x1="200" y1="147" x2="218" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-paper-arrow)"/>
+          <line x1="380" y1="147" x2="398" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-paper-arrow)"/>
+          <line x1="560" y1="147" x2="578" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-paper-arrow)"/>
+          <line x1="740" y1="147" x2="758" y2="147" stroke="#4f5d75" stroke-width="1" marker-end="url(#tv-paper-arrow)"/>
+
+          <text x="120" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">01</text>
+          <text x="300" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">02</text>
+          <text x="480" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#eb6c36" text-anchor="middle">03</text>
+          <text x="660" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#eb6c36" text-anchor="middle">04</text>
+          <text x="840" y="96" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">05</text>
+
+          <rect x="40" y="110" width="160" height="74" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="120" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">连接账户</text>
+          <text x="120" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/trading/accounts</text>
+
+          <rect x="220" y="110" width="160" height="74" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="300" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">账户快照</text>
+          <text x="300" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/trading/account/{id}</text>
+
+          <rect x="400" y="110" width="160" height="74" rx="6" fill="rgba(235,108,54,0.06)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="480" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">查保证金率</text>
+          <text x="480" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/trading/margin/rate</text>
+
+          <rect x="580" y="110" width="160" height="74" rx="6" fill="rgba(235,108,54,0.06)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="660" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">下单</text>
+          <text x="660" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/trading/place/{id}</text>
+
+          <rect x="760" y="110" width="160" height="74" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+          <text x="840" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">成交 / 持仓</text>
+          <text x="840" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">private_feed 推送</text>
+
+          <text x="120" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">100,000 USD</text>
+          <text x="480" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">股票 rate = 1.0</text>
+          <text x="660" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">status = pending</text>
+          <text x="840" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#7a8399" text-anchor="middle">本次未截获</text>
+          <text x="480" y="252" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#7a8399" text-anchor="middle">下单返回 pending，不是同步成交；成交结果应由推送或轮询账户更新</text>
+        </svg>
+      </div>
+      <figcaption>图 3 · 模拟盘下单链路。关键设计是「下单只返回受理状态，成交异步回填」。</figcaption>
+    </figure>
+
+    <h3><span class="tag">Account</span>账户模型</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>表 4 · 免费段模拟账户默认值（实测）</caption>
+        <thead><tr><th>字段</th><th class="mono">值</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr class="focal"><td>balance / initialBalance</td><td class="mono">100,000 USD</td><td>默认初始资金与当前余额</td></tr>
+          <tr><td>segment</td><td class="mono">free</td><td>免费段，走 papertrading-free</td></tr>
+          <tr><td>marginRates.futures</td><td class="mono">0.05</td><td>期货保证金 5%</td></tr>
+          <tr><td>marginRates.forex</td><td class="mono">0.02</td><td>外汇保证金 2%</td></tr>
+          <tr><td>marginRates.stocks</td><td class="mono">1.0</td><td>股票 100%，无杠杆</td></tr>
+          <tr><td>marginRates.crypto</td><td class="mono">0.1</td><td>加密资产 10%</td></tr>
+          <tr><td>commissions</td><td class="mono">disabled</td><td>默认不收佣金</td></tr>
+          <tr><td>marginCallEnabled</td><td class="mono">false</td><td>免费账户不触发强平</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3><span class="tag">Trade</span>下单请求与响应</h3>
+    <p>请求体是一个 JSON 字符串，却放在 <code>application/x-www-form-urlencoded</code> 的 body 里（不是标准表单字段）。实测内容：</p>
+    <pre><code>POST https://papertrading-free.tradingview.com/trading/place/38489125
+Content-Type: application/x-www-form-urlencoded
+
+{"symbol":"HKEX:9988","type":"market","qty":1,"side":"buy",
+ "outside_rth":false,"outside_rth_tp":false}
+
+200 OK
+{"symbol":"HKEX:9988","side":"buy","type":"market","qty":1,
+ "status":"pending","marginRate":1.0,"pointvalue":1.0,
+ "symboltype":"stock","currency":"HKD","id":3694243202,
+ "exp":1795154651,"outside_rth":false}</code></pre>
+    <p class="note">响应只给受理结果：订单 ID、状态 <code>pending</code>、保证金率、点值、币种。没有成交价、没有成交数量。成交与持仓要另取。</p>
+
+    <h3><span class="tag">API</span>模拟盘接口清单</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>表 5 · Paper Trading 实测接口</caption>
+        <thead><tr><th class="mono">方法 / 路径</th><th>作用</th><th>实测响应</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">POST /trading/accounts</td><td>账户列表</td><td>1 个账户，10 万 USD，free 段</td></tr>
+          <tr><td class="mono">POST /trading/request_currency_rates</td><td>汇率表</td><td>上百种货币对 USD 的汇率</td></tr>
+          <tr><td class="mono">GET /competitions</td><td>可见比赛列表</td><td>The Leap，含账户模板与风控参数</td></tr>
+          <tr><td class="mono">GET /planned_maintenance</td><td>维护状态</td><td><code>{}</code></td></tr>
+          <tr class="focal"><td class="mono">POST /trading/account/{id}</td><td>账户快照</td><td>balance / positions / orders / marginRates</td></tr>
+          <tr><td class="mono">POST /trading/get_trades/{id}</td><td>成交列表</td><td><code>[]</code>（新账户）</td></tr>
+          <tr><td class="mono">POST /trading/get_account_history/{id}</td><td>账户历史</td><td><code>[]</code></td></tr>
+          <tr><td class="mono">POST /trading/get_journal/{id}</td><td>交易日志</td><td><code>[]</code></td></tr>
+          <tr><td class="mono">GET /trading/margin/rate?accountId=&amp;symbol=</td><td>保证金率</td><td><code>{"rate":1.0}</code>（股票）</td></tr>
+          <tr class="focal"><td class="mono">POST /trading/place/{id}</td><td>下单</td><td>status <code>pending</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3><span class="tag">Contest</span>比赛账户模板</h3>
+    <p><code>GET /competitions</code> 返回的 The Leap 比赛，把账户参数直接写在比赛定义里。这是「同一套模拟盘，换参数就开比赛」的证据。</p>
+    <div class="table-wrap">
+      <table>
+        <caption>表 6 · The Leap — Commodities（实测）</caption>
+        <thead><tr><th>参数</th><th class="mono">值</th></tr></thead>
+        <tbody>
+          <tr><td>参赛人数</td><td class="mono">25,189</td></tr>
+          <tr><td>比赛时长</td><td class="mono">3 个交易日</td></tr>
+          <tr><td>初始资金</td><td class="mono">100,000 USD</td></tr>
+          <tr><td>佣金</td><td class="mono">0.01%（others）</td></tr>
+          <tr><td>保证金率</td><td class="mono">0.1（others）</td></tr>
+          <tr><td>强平</td><td class="mono">enabled，drawdownFloor 5%</td></tr>
+          <tr><td>奖励</td><td class="mono">订阅时长，前 250 名</td></tr>
+          <tr><td>限制</td><td class="mono">禁止国家列表 + 资产类型白名单</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3><span class="tag">Flags</span>前端能力开关</h3>
+    <p>页面内联的功能开关里有 20 多个与模拟盘相关，能直接看出产品能力边界：</p>
+    <ul class="plain">
+      <li><code>paper_margin_control</code>：可手动设置杠杆 / 保证金。</li>
+      <li><code>paper_multiple_levels_enabled</code>：多档止盈止损。</li>
+      <li><code>paper_order_confirmation_dialog</code>：下确认弹窗。</li>
+      <li><code>paper_outside_rth</code>：支持盘前盘后交易。</li>
+      <li><code>paper_subaccount_custom_currency</code>：子账户自定义币种。</li>
+      <li><code>paper_delay_trading</code>：延迟行情下的模拟交易。</li>
+      <li><code>paper_force_connect_pushstream</code>：强制连接推送通道。</li>
+      <li><code>paper_competition_leaderboard</code>、<code>paper_community_contests_banner_show_free</code>：比赛与排行榜运营位。</li>
+      <li><code>show_import_from_paper_trading_button</code>：把真实券商持仓导入模拟盘（功能开关）。</li>
+      <li><code>replay_trading_brackets</code>：K 线回放里也能挂止盈止损。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 7 合作模式 ============ -->
+  <section id="s7">
+    <h2><span class="num">07</span>合作模式：券商列表 + 比赛</h2>
+    <p><code>GET /api/v1/brokers/trading_panel</code> 一次返回 137 家券商，字段就是一套「导流产品」的数据结构：</p>
+    <ul class="plain">
+      <li>基本：<code>id</code>、<code>name</code>、<code>slug_name</code>、<code>is_featured</code>、评分 <code>rating_details</code>。</li>
+      <li>国家：<code>country_info.countries_codes</code>，按用户国家返回不同券商。</li>
+      <li>导流：<code>flags</code> 里的 <code>open_account_ref</code>、<code>referral_link</code>、<code>site.link</code>。</li>
+      <li>可交易品种：<code>tradable_instruments_types</code>（stock / etf / options…）。</li>
+      <li>成本信息：<code>fees</code>、<code>spread</code>、<code>min_deposit</code>、<code>max_leverage</code>。</li>
+      <li>监管：<code>regulation</code>（FSA、JSDA 等）。</li>
+    </ul>
+    <p>同类平台文档还提到两条公开的接入路径（本次未在 HAR 中验证）：免费 Advanced Charts 只能接自有数据；付费 Trading Platform 才带 Brokert API，正式接入要先签合作协议、再拿完整 REST 规范。券商接入后，交易面板会出现该券商，用户点「Open account」直接跳到券商开户页。</p>
+    <div class="callout"><b>对我们的含义：</b>如果目标是「让别家券商 / 数据商接入我们的模拟盘」，需要的是两样东西：一份稳定的 REST/WS 契约，一套能按国家、资产类别配置的账户模板。TradingView 把这两样都做成了接口。</div>
+  </section>
+
+  <!-- ============ 8 借鉴 ============ -->
+  <section id="s8">
+    <h2><span class="num">08</span>对我方模拟盘的借鉴</h2>
+    <div class="cards">
+      <div class="card focal">
+        <span class="tag">借鉴 · 账户层</span>
+        <h4>账户是可配置模板</h4>
+        <p>初始资金、按资产类别的保证金率、佣金、强平开关、币种，全部是账户字段，不是代码分支。比赛只是换一组模板参数。</p>
+        <p>对我们的意义：模拟盘账户表按这几个维度设计，比赛/教学/自测都能复用。</p>
+      </div>
+      <div class="card focal">
+        <span class="tag">借鉴 · 交易层</span>
+        <h4>下单只返回受理状态</h4>
+        <p><code>place</code> 返回 <code>pending</code>，成交通过推送或轮询回填。这样撮合、风控、结算可以异步，不会阻塞下单接口。</p>
+        <p>对我们的意义：下单接口与成交回填解耦，前端用账户快照 + 推送更新状态。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">借鉴 · 权限层</span>
+        <h4>资源级 JWT</h4>
+        <p><code>chart-token</code> 签发只对单个 <code>layoutId</code> 有效的 JWT，再访问图表存储。权限粒度落在单个资源，不靠会话全局权限。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">借鉴 · 前端层</span>
+        <h4>按功能拆 chunk + 增量设置</h4>
+        <p>交易、下单 ticket、品种搜索、回放、模拟盘各自独立 chunk；设置用 <code>delta</code> 增量保存，只传变化项。</p>
+      </div>
+    </div>
+
+    <h3><span class="tag">Caveats</span>不能依赖的部分</h3>
+    <ul class="plain">
+      <li><b>核心引擎闭源。</b>撮合、成交价、风控、比赛排名算法都看不到；HAR 只给接口形状。</li>
+      <li><b>认证未验证。</b>HAR 无 Cookie，无法证明会话机制；WS 的 <code>auth=sessionid</code> 只能说明它依赖会话。</li>
+      <li><b>成交链路缺失。</b>只有一笔市价单，没有改单、撤单、平仓、成交回报。</li>
+      <li><b>免费段与付费段可能不同。</b>本次是 free 段；pro 段走另一个域名，参数与限制未知。</li>
+      <li><b>地区限制。</b>本次 <code>countryCode=JP</code>，比赛带禁止国家列表；不同地区看到的券商和能力不同。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 9 风险 ============ -->
+  <section id="s9">
+    <h2><span class="num">09</span>风险与限制</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 7 · 本次调查的风险项</caption>
+        <thead><tr><th>等级</th><th>项</th><th>事实</th><th>影响</th></tr></thead>
+        <tbody>
+          <tr><td class="no">高</td><td>认证不可见</td><td>876 条请求无 Cookie，疑似脱敏导出</td><td>无法复现登录或接口调用</td></tr>
+          <tr><td class="no">高</td><td>执行链路缺失</td><td>只捕获一笔市价单</td><td>成交、改撤、平仓规则未知</td></tr>
+          <tr><td class="warn">中</td><td>单一样本</td><td>一个页面、一个品种、一个账户</td><td>不能代表全部资产类别</td></tr>
+          <tr><td class="warn">中</td><td>构建频繁</td><td>chunk 带 hash，BUILD_TIME 每日更新</td><td>接口与资源路径会变，不能当契约</td></tr>
+          <tr><td class="warn">中</td><td>免费段差异</td><td>只观察 free 段</td><td>pro 段行为未知</td></tr>
+          <tr><td>低</td><td>地区差异</td><td>countryCode=JP，比赛按国家限制</td><td>不同地区数据不同</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 10 证据索引 ============ -->
+  <section id="s10">
+    <h2><span class="num">10</span>证据索引</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 8 · 结论与 HAR 条目对照（entry 序号从 0 起）</caption>
+        <thead><tr><th>结论</th><th class="mono">HAR entry</th><th>证据</th></tr></thead>
+        <tbody>
+          <tr><td>启动配置内联</td><td class="mono">1</td><td>HTML 中的 BUILD_TIME、TRADING_URLS、WEBSOCKET_HOST</td></tr>
+          <tr><td>静态 chunk 拆分</td><td class="mono">大量</td><td>static.tradingview.com 728 条，命名 chunk 见正文</td></tr>
+          <tr><td>chart-token → JWT</td><td class="mono">80, 133, 496–499, 723–725</td><td>JWT 声明 type / layoutId / ownerId</td></tr>
+          <tr><td>布局存储</td><td class="mono">594, 738, 739, 748, 760, 765</td><td>charts-storage 请求与空 payload</td></tr>
+          <tr><td>图表 WebSocket</td><td class="mono">82</td><td>data.tradingview.com socket.io 101</td></tr>
+          <tr><td>推送通道</td><td class="mono">680, 681</td><td>pushstream private / public 101</td></tr>
+          <tr class="focal"><td>账户模型</td><td class="mono">789, 799</td><td>10 万 USD、保证金率、佣金关闭</td></tr>
+          <tr class="focal"><td>下单链路</td><td class="mono">805, 824</td><td>保证金率、place 请求与 pending 响应</td></tr>
+          <tr><td>比赛模板</td><td class="mono">791</td><td>The Leap 账户默认值</td></tr>
+          <tr><td>券商列表</td><td class="mono">511</td><td>137 家券商与导流字段</td></tr>
+          <tr><td>设置增量保存</td><td class="mono">0, 807</td><td>savesettings 的 delta 字段</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 11 术语 ============ -->
+  <section id="s11">
+    <h2><span class="num">11</span>术语表</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>术语</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>Paper Trading</td><td>TradingView 内置的模拟交易账户，用虚拟资金按真实行情交易</td></tr>
+          <tr><td>free / pro 段</td><td>免费用户与付费用户的模拟盘服务分组，走不同域名</td></tr>
+          <tr><td>layoutId</td><td>图表布局 ID，就是分享链接里的 hash，例如 <code>5itpVo39</code></td></tr>
+          <tr><td>JWT</td><td>JSON Web Token，本报告中用于图表存储的资源级授权</td></tr>
+          <tr><td>socket.io</td><td>WebSocket 之上的消息协议，带心跳与重连</td></tr>
+          <tr><td>pushstream</td><td>TradingView 的通用消息推送服务，分公共与私有通道</td></tr>
+          <tr><td>marginRate</td><td>保证金率。1.0 表示无杠杆，0.05 表示 20 倍</td></tr>
+          <tr><td>pointvalue</td><td>合约点值，价格变动一个点对应的金额</td></tr>
+          <tr><td>The Leap</td><td>TradingView 的模拟交易比赛</td></tr>
+          <tr><td>chunk</td><td>前端打包产物，按功能拆分、按需加载</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 12 来源 ============ -->
+  <section id="s12">
+    <h2><span class="num">12</span>来源</h2>
+    <ul class="plain">
+      <li>主证据：<code>tmp/cn.tradingview.com.har</code>（876 条请求，2026-10-20 06:04 UTC）</li>
+      <li>Paper Trading 功能说明：<a href="https://www.tradingview.com/support/solutions/43000516466-paper-trading-main-functionality/">TradingView 支持中心</a></li>
+      <li>模拟盘盈亏计算：<a href="https://www.tradingview.com/support/solutions/43000719857-how-is-position-profit-and-loss-in-paper-trading-calculated/">P&amp;L 规则</a></li>
+      <li>模拟盘杠杆：<a href="https://www.tradingview.com/support/solutions/43000742700-how-to-trade-with-leverage-in-paper-trading/">杠杆说明</a></li>
+      <li>券商合作：<a href="https://www.tradingview.com/brokerage-integration/">Brokerage Integration</a>（100+ 券商，签约后提供 REST 规范）</li>
+      <li>公开 REST 规范：TradingView REST API Specification for Brokers 1.21.0（公开页面加载的 OpenAPI 文档）</li>
+    </ul>
+  </section>
+
+  <!-- ============ 附录 ============ -->
+  <section id="appendix">
+    <h2><span class="num">A</span>附录：STE 写作规则</h2>
+    <ul class="plain">
+      <li>一句一个意思。描述句不超过 25 字，步骤句不超过 20 字。</li>
+      <li>用主动语态和简单时态。不用完成时和进行时。</li>
+      <li>一个词只表示一个意思。术语首次出现时定义，之后固定使用。</li>
+      <li>不用未定义的缩写。不用「可能」「大概」「也许」。</li>
+      <li>段落不超过 6 句。复杂内容改用表格或编号列表。</li>
+      <li>先给结论，再给依据。</li>
+    </ul>
+  </section>
+
+  <footer>
+    数据口径：所有数字来自 HAR 与页面内联配置；推断处已标注「未验证」或「疑似」。<br>
+    敏感信息：HAR 含用户 ID、用户名与布局 ID；报告只保留接口与字段形状，不出现用户名。<br>
+    调查范围：仅 TradingView，一个平台。IG 的分析另见 <code>ig-demo.html</code>，两者不混合。
+  </footer>
+
+</div>
+</body>
+</html>

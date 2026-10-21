@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IG 模拟盘架构调查 · HAR 实测</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+TC:wght@400&family=Noto+Sans+TC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --paper: #f5f5f5;
+    --paper-2: #ececec;
+    --ink: #2d3142;
+    --muted: #4f5d75;
+    --soft: #7a8399;
+    --rule: rgba(45,49,66,0.12);
+    --rule-solid: #bfc0c0;
+    --accent: #eb6c36;
+    --accent-tint: rgba(235,108,54,0.08);
+    --link: #2e5aa8;
+    --good: #2f6b47;
+    --bad: #a33b2a;
+    --warn: #8a6410;
+    --sans: 'Geist', 'Noto Sans TC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --serif: 'Instrument Serif', 'Noto Serif TC', 'Songti SC', serif;
+    --mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.62;
+    padding: 3.5rem 2rem 5rem;
+  }
+  .page { max-width: 1160px; margin: 0 auto; }
+
+  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.4rem; }
+  .eyebrow {
+    font-family: var(--mono); font-size: .68rem; font-weight: 500;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(1.9rem, 3vw + .8rem, 2.6rem);
+    letter-spacing: -.02em; line-height: 1.1; margin: .5rem 0 .6rem;
+  }
+  .lede { color: var(--muted); max-width: 78ch; }
+  .meta {
+    font-family: var(--mono); font-size: .72rem; color: var(--soft);
+    margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--rule);
+    line-height: 1.9;
+  }
+  .meta a, a { color: var(--link); text-decoration: none; border-bottom: 1px solid rgba(46,90,168,.28); }
+
+  .kpi {
+    display: grid; grid-template-columns: 1.1fr 1fr 1fr .9fr;
+    gap: 14px; margin: 2rem 0 .5rem;
+  }
+  .kpi-item { border-top: 2px solid var(--rule-solid); padding-top: .7rem; }
+  .kpi-item.focal { border-top-color: var(--accent); }
+  .kpi-num { font-family: var(--serif); font-size: 2rem; line-height: 1; letter-spacing: -.02em; }
+  .kpi-item.focal .kpi-num { color: var(--accent); }
+  .kpi-label {
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); margin-top: .5rem;
+  }
+  .kpi-note { font-size: .78rem; color: var(--soft); margin-top: .25rem; }
+
+  section { margin-top: 3.4rem; }
+  h2 {
+    font-family: var(--serif); font-weight: 400; font-size: 1.5rem;
+    letter-spacing: -.01em; padding-bottom: .6rem;
+    border-bottom: 1px solid var(--rule); margin-bottom: 1.2rem;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: .78rem; color: var(--soft);
+    margin-right: .6rem; letter-spacing: .06em;
+  }
+  h3 {
+    font-family: var(--sans); font-size: 1rem; font-weight: 600;
+    margin: 1.8rem 0 .5rem;
+  }
+  h3 .tag {
+    font-family: var(--mono); font-size: .64rem; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--soft);
+    margin-right: .5rem;
+  }
+  p { max-width: 80ch; }
+  p + p { margin-top: .65rem; }
+  strong { font-weight: 600; }
+  .note { font-size: .8rem; color: var(--soft); max-width: 86ch; margin-top: .7rem; }
+  .note code { font-size: .9em; }
+
+  figure { margin: 1.4rem 0 .4rem; }
+  .fig-scroll { width: 100%; overflow-x: auto; }
+  svg { width: 100%; min-width: 960px; display: block; }
+  figcaption {
+    font-family: var(--mono); font-size: .68rem; color: var(--soft);
+    margin-top: .5rem; line-height: 1.7;
+  }
+
+  .table-wrap { overflow-x: auto; margin-top: 1.1rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 640px; }
+  caption {
+    text-align: left; font-family: var(--mono); font-size: .68rem;
+    color: var(--soft); letter-spacing: .1em; text-transform: uppercase;
+    padding-bottom: .5rem;
+  }
+  th, td {
+    text-align: left; padding: .55rem .6rem;
+    border-bottom: 1px solid var(--rule); vertical-align: top;
+  }
+  thead th {
+    font-family: var(--mono); font-size: .64rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--rule-solid);
+  }
+  td.mono, th.mono { font-family: var(--mono); font-size: .74rem; }
+  tbody tr.focal td { background: var(--accent-tint); }
+  .yes { color: var(--good); font-weight: 600; }
+  .no { color: var(--bad); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 1.1rem; }
+  .card {
+    background: #fff; border: 1px solid var(--rule);
+    border-radius: 6px; padding: 15px 17px;
+  }
+  .card.tint { background: var(--paper-2); }
+  .card.focal { background: var(--accent-tint); border-color: var(--accent); }
+  .card .tag {
+    display: block; font-family: var(--mono); font-size: .63rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--soft);
+    margin-bottom: .45rem;
+  }
+  .card h4 { font-size: .95rem; font-weight: 600; margin-bottom: .35rem; }
+  .card p { font-size: .82rem; color: var(--muted); }
+  .card p + p { margin-top: .45rem; }
+
+  ol.steps { margin: .8rem 0 0 1.3rem; font-size: .88rem; color: var(--muted); }
+  ol.steps li { margin-bottom: .45rem; padding-left: .2rem; }
+  ol.steps li b { color: var(--ink); }
+  ul.plain { margin: .6rem 0 0 1.1rem; font-size: .86rem; color: var(--muted); }
+  ul.plain li { margin-bottom: .35rem; }
+  ul.plain li::marker { color: var(--soft); }
+
+  pre {
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 13px 15px; overflow-x: auto; margin-top: 1rem;
+    font-family: var(--mono); font-size: .74rem; line-height: 1.7;
+    color: var(--ink);
+  }
+  code { font-family: var(--mono); font-size: .88em; }
+  p code, td code, li code {
+    background: rgba(45,49,66,.06); padding: .08em .3em; border-radius: 3px;
+  }
+
+  .callout {
+    border-left: 2px solid var(--accent); background: var(--accent-tint);
+    padding: .8rem 1rem; margin-top: 1.1rem; font-size: .86rem;
+    color: var(--ink); max-width: 86ch;
+  }
+
+  footer {
+    margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: .68rem; color: var(--soft); line-height: 1.9;
+  }
+
+  @media (max-width: 860px) {
+    body { padding: 2rem 1.1rem 3rem; }
+    .kpi { grid-template-columns: 1fr 1fr; }
+    .cards { grid-template-columns: 1fr; }
+  }
+  @media print {
+    .fig-scroll { overflow-x: visible; }
+    svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Platform survey · IG demo</p>
+    <h1>IG 模拟盘架构调查</h1>
+    <p class="lede">用一次登录后的 HAR（169 个请求）还原 IG demo 的前端、接入层、行情通道和交易预览链路。只调查 IG 一个平台，不含其他平台。</p>
+    <p class="meta">
+      证据来源　<code>tmp/demo-deal.ig.com.har</code>（2026-10-20 05:38–05:39 UTC，169 条请求，8 个域名）<br>
+      账户　demo / CFD / USD / 中文站点 <code>inm</code>　·　调查方式　流量抓取 + 静态资源分析 + 公开文档对照<br>
+      限制　独立 demo 无法申请 API key，未做接口重放；本次未提交订单，未截获 WebSocket 帧<br>
+      写作规范　ASD-STE100 简化技术英语的中文适配，规则见附录 A
+    </p>
+  </header>
+
+  <!-- ============ 速览 ============ -->
+  <section id="s0">
+    <div class="kpi">
+      <div class="kpi-item focal">
+        <div class="kpi-num">9 个</div>
+        <div class="kpi-label">同源 BFF 前缀</div>
+        <div class="kpi-note">全部收敛在 demo-deal.ig.com</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">0 个</div>
+        <div class="kpi-label">Cookie</div>
+        <div class="kpi-note">认证靠 CST / X-SECURITY-TOKEN 请求头</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">1 条</div>
+        <div class="kpi-label">WebSocket</div>
+        <div class="kpi-note">Lightstreamer 2.5，wss://demo-wtp.ig.com</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-num">2 道</div>
+        <div class="kpi-label">下单前预览</div>
+        <div class="kpi-note">保证金预览 + 费用预览</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 1 结论 ============ -->
+  <section id="s1">
+    <h2><span class="num">01</span>结论</h2>
+    <ol class="steps">
+      <li><b>前端是单页微前端。</b>外壳加载 single-spa 和 SystemJS import maps，业务按模块拆成多个 bundle；图表是独立产品 <code>ig-charts</code>，从另一个域名加载。</li>
+      <li><b>后端是「一个域名 + 九个前缀」的 BFF 聚合。</b>所有业务请求都打 <code>demo-deal.ig.com</code>，用路径前缀区分服务：会话、用户、交易、成交、搜索、目录、图表、内容、报表。</li>
+      <li><b>认证不用 cookie。</b>每个业务请求带 <code>CST</code> 和 <code>X-SECURITY-TOKEN</code> 两个请求头；会话接口在响应头里下发 access / refresh token。</li>
+      <li><b>行情是双通道。</b>REST 拉图表快照与历史（<code>/chart/...</code>），WebSocket 收实时推送（Lightstreamer 2.5）。</li>
+      <li><b>模拟盘的重点在下单前。</b>先查市场详情，再调保证金预览，再调费用预览，最后才提交订单。这三步是模拟真实成交体验的核心，也是最值得我方借鉴的部分。</li>
+    </ol>
+  </section>
+
+  <!-- ============ 2 方法 ============ -->
+  <section id="s2">
+    <h2><span class="num">02</span>调查范围与方法</h2>
+    <p>HAR 覆盖一次完整的「打开工作区 → 浏览指数 → 点开图表 → 打开下单 ticket」过程。下表是本次能证明和不能证明的边界。</p>
+    <div class="table-wrap">
+      <table>
+        <caption>表 1 · 证据边界</caption>
+        <thead><tr><th>已证明</th><th>未证明</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>前端 bundle 组成、版本号、加载域名</td>
+            <td>登录流程本身（HAR 从已登录状态开始）</td>
+          </tr>
+          <tr>
+            <td>9 个 BFF 前缀、认证头、会话字段</td>
+            <td>网关之后的内部服务与数据库</td>
+          </tr>
+          <tr>
+            <td>市场详情、保证金、费用的请求与响应形状</td>
+            <td>订单提交后的执行、回报、撮合规则</td>
+          </tr>
+          <tr>
+            <td>图表的快照、历史数据格式</td>
+            <td>WebSocket 帧内容（只截到 101 握手）</td>
+          </tr>
+          <tr>
+            <td>demo 环境的独立域名与配置</td>
+            <td>demo 账本的重置、资金调整规则</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">账户是独立 demo（无 live 关联），因此无法生成 API key。这限制了接口重放，但不妨碍从流量还原架构。</p>
+  </section>
+
+  <!-- ============ 3 前端 ============ -->
+  <section id="s3">
+    <h2><span class="num">03</span>前端：单页微前端</h2>
+    <p>页面外壳只有 39 KB，先初始化 Grafana Faro 前端监控，再按 import map 逐个加载模块。Faro 配置里直接暴露了平台名、版本和环境：<code>name: WTP</code>、<code>version: 0.6918.0</code>、<code>environment: demo</code>。</p>
+
+    <h3><span class="tag">Loader</span>微前端装载器</h3>
+    <ul class="plain">
+      <li><b>single-spa</b> 做应用编排；<b>SystemJS</b> + import map 做模块解析。</li>
+      <li>import map 从 <code>demo-wtp.iglzwtpprd.ig.com</code> 拉取，分两份：业务 map（<code>/import-maps/app</code>）和共享依赖 map（<code>/shared-deps/app</code>）。</li>
+      <li>共享依赖固定为 <code>react</code>、<code>react-dom</code>、<code>single-spa</code>、<code>single-spa-react</code>、<code>lodash</code>、<code>moment</code>、<code>rsvp</code> 等，避免每个子应用重复打包。</li>
+      <li>代码里同时存在 <code>ember-simple-auth</code>、<code>ember-load-initializers</code>，说明平台正在从 Ember 迁移到 React 微前端，两代栈并存。</li>
+    </ul>
+
+    <h3><span class="tag">Bundles</span>实测模块清单</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>表 2 · 首屏加载的主要模块（来自 HAR 体积）</caption>
+        <thead><tr><th>模块</th><th class="mono">体积</th><th>作用</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">vendor-*.js</td><td class="mono">4.18 MB</td><td>三方依赖合集</td></tr>
+          <tr class="focal"><td class="mono">ig-charts.js</td><td class="mono">4.21 MB</td><td>图表引擎，独立域名 demo-charts.ig.com，版本 1.3319.0</td></tr>
+          <tr><td class="mono">platform-*.js</td><td class="mono">945 KB</td><td>平台壳：路由、会话、偏好、布局</td></tr>
+          <tr><td class="mono">ig-trading-*.js</td><td class="mono">412 KB</td><td>交易域：市场、订单、仓位、报价</td></tr>
+          <tr><td class="mono">react-apps-*.js</td><td class="mono">190 KB</td><td>React 子应用注册入口</td></tr>
+          <tr><td class="mono">iggroupsearchbrowse-*.js</td><td class="mono">219 KB</td><td>品种搜索与浏览</td></tr>
+          <tr><td class="mono">iggroupfeed-*.js</td><td class="mono">1.08 MB</td><td>资讯 / 新闻流</td></tr>
+          <tr><td class="mono">faro-web-sdk</td><td class="mono">83 KB</td><td>前端监控</td></tr>
+          <tr><td class="mono">notabene-sdk</td><td class="mono">331 KB</td><td>加密资产合规 SDK（加密品种用）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3><span class="tag">Workspace</span>工作区是服务端布局</h3>
+    <p>用户看到的「我的工作区」不是本地配置，而是服务端 JSON。每个面板有坐标、尺寸和 tab 类型，例如 <code>ig-positions</code>、<code>ig-orders</code>、<code>ig-alerts-management</code>。刷新页面后布局完全一致。</p>
+    <pre><code>GET /usermanagement/workspace/all/
+{
+  "currentWorkspace": {
+    "workspaceId": "N…5", "name": "我的工作区",
+    "workspaceData": { "panels": [ { "x": 21, "y": 41, "width": 75, "height": 34,
+      "tabs": [ { "type": "ig-positions" }, { "type": "ig-orders" },
+                { "type": "ig-alerts-management" } ] } ] }
+  }
+}</code></pre>
+    <p class="note">这解释了为什么分享出来的 workspace 链接必须登录：链接里的 hash 就是服务端的 workspaceId。</p>
+
+    <h3><span class="tag">Other</span>其他前端事实</h3>
+    <ul class="plain">
+      <li>站点标识 <code>siteId=inm</code>，语言 <code>zh_CN</code>，文案包独立加载（126 KB）。</li>
+      <li>字体 NotoSansSC 三个字重，每个约 2.1 MB；部分从 <code>a.c-dn.net</code> CDN 取。</li>
+      <li>有一个 624 KB 的混淆脚本（路径形如 <code>/4do5Lb…/AEG1k</code>），是反爬 / 风控挑战，不是业务代码。</li>
+      <li>监控：Faro 上报到 <code>api.ig.com/telemetrygateway/collect</code> 和 <code>telemetrygatewayhttp.ig.com/v1/metrics</code>。</li>
+      <li>营销与实验：Google Tag Manager（<code>trading.gtm.ig.com</code>）、GA、Optimizely。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 4 接入层 ============ -->
+  <section id="s4">
+    <h2><span class="num">04</span>接入层：一个域名，九个网关</h2>
+    <p>浏览器只直连三个 IG 域名：<code>demo-deal.ig.com</code>（页面 + 全部业务接口）、<code>demo-charts.ig.com</code>（图表引擎与 worker）、<code>demo-wtp.ig.com</code>（WebSocket）。业务接口再按路径前缀拆成九个网关。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 500" role="img" aria-labelledby="topo-title topo-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="topo-title">IG demo 前端直连的三个域名</title>
+          <desc id="topo-desc">浏览器单页应用直连同源 BFF、图表引擎和 Lightstreamer 三个域名；BFF 由九个路径前缀组成。</desc>
+          <defs>
+            <marker id="topo-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+          </defs>
+
+          <!-- arrows first -->
+          <path d="M210,238 H230 Q238,238 238,230 V110 Q238,102 246,102 H300" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#topo-arrow)"/>
+          <line x1="210" y1="258" x2="300" y2="258" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#topo-arrow)"/>
+          <path d="M210,278 H230 Q238,278 238,286 V384 Q238,392 246,392 H300" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#topo-arrow)"/>
+
+          <!-- SPA -->
+          <rect x="40" y="220" width="170" height="76" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+          <text x="125" y="250" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">浏览器 SPA</text>
+          <text x="125" y="268" font-family="'Geist Mono', monospace" font-size="8.5" fill="#4f5d75" text-anchor="middle">demo-deal.ig.com/web-platform</text>
+          <text x="125" y="283" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="10" fill="#7a8399" text-anchor="middle">single-spa + SystemJS</text>
+
+          <!-- 图表引擎 -->
+          <rect x="300" y="70" width="230" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="415" y="96" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">图表引擎</text>
+          <text x="415" y="114" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">demo-charts.ig.com · 1.3319.0</text>
+
+          <!-- BFF focal -->
+          <rect x="300" y="226" width="230" height="64" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="415" y="252" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">同源 BFF（重点）</text>
+          <text x="415" y="270" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">demo-deal.ig.com · 9 个前缀</text>
+
+          <!-- Lightstreamer -->
+          <rect x="300" y="360" width="230" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="415" y="386" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">Lightstreamer</text>
+          <text x="415" y="404" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">wss://demo-wtp.ig.com · LS 2.5</text>
+
+          <!-- 注解：前缀清单 -->
+          <rect x="620" y="190" width="300" height="132" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1"/>
+          <text x="636" y="210" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.12em" fill="#7a8399">9 BFF PREFIXES</text>
+          <text x="636" y="230" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75">/clientsecurity　/usermanagement</text>
+          <text x="636" y="248" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75">/nwtpdeal　/dealing-gateway</text>
+          <text x="636" y="266" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75">/findergateway　/wtp-gateway</text>
+          <text x="636" y="284" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75">/chart　/public-content-service</text>
+          <text x="636" y="302" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75">/platform-reporting-gateway</text>
+
+          <!-- legend -->
+          <line x1="40" y1="462" x2="920" y2="462" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <text x="40" y="484" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.14em" fill="#4f5d75">LEGEND</text>
+          <line x1="112" y1="480" x2="144" y2="480" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#topo-arrow)"/>
+          <text x="154" y="484" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">HTTPS / WSS 直连</text>
+          <rect x="300" y="474" width="14" height="10" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+          <text x="322" y="484" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#4f5d75">本次重点</text>
+        </svg>
+      </div>
+      <figcaption>图 1 · 浏览器只直连三个 IG 域名；九个业务网关全部挂在同源 <code>demo-deal.ig.com</code> 下，按路径前缀区分。</figcaption>
+    </figure>
+
+    <div class="table-wrap">
+      <table>
+        <caption>表 3 · 九个 BFF 前缀（全部实测命中）</caption>
+        <thead><tr><th class="mono">前缀</th><th>职责</th><th class="mono">实测入口</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">/clientsecurity</td><td>会话与账号安全</td><td class="mono">GET /v2/session</td></tr>
+          <tr><td class="mono">/usermanagement</td><td>用户、工作区、偏好、订阅</td><td class="mono">GET /workspace/all, /preferences/*</td></tr>
+          <tr><td class="mono">/findergateway</td><td>品种搜索与衍生合约</td><td class="mono">GET /v2/instruments, /v3/derivatives</td></tr>
+          <tr><td class="mono">/wtp-gateway</td><td>平台目录（分类）</td><td class="mono">GET /v2/categories</td></tr>
+          <tr class="focal"><td class="mono">/nwtpdeal</td><td>交易核心：市场详情、仓位、挂单、保证金预览</td><td class="mono">GET /v3/markets/details, /wtp/orders/*; POST /v3/margin/positions/otc</td></tr>
+          <tr><td class="mono">/dealing-gateway</td><td>成交辅助：重复下单窗口、费用预览</td><td class="mono">GET /repeat-deal-window/{id}; POST /costsandcharges/{id}/open</td></tr>
+          <tr><td class="mono">/chart</td><td>图表快照与历史</td><td class="mono">GET /snapshot/…, /…/batch/…</td></tr>
+          <tr><td class="mono">/public-content-service</td><td>站点内容、联系方式</td><td class="mono">GET /website/{site}/{locale}</td></tr>
+          <tr><td class="mono">/platform-reporting-gateway</td><td>报表与返佣</td><td class="mono">GET /volume-based-rebates/v1/tracker/{id}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">前缀命名能看出演进：<code>nwtpdeal</code> 是 new web trading platform 的交易服务，<code>dealing-gateway</code> 更靠近传统成交服务，两者并存。</p>
+  </section>
+
+  <!-- ============ 5 认证 ============ -->
+  <section id="s5">
+    <h2><span class="num">05</span>认证：不走 Cookie</h2>
+    <p>169 个请求里没有一个 <code>Cookie</code> 头。业务请求统一带两个自定义头，值都是 69 字符：</p>
+    <pre><code>GET /clientsecurity/v2/session
+cst: 5588b9…1887
+x-security-token: 5a781a…1952
+
+200 OK
+access-token: …
+refresh-token: …</code></pre>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>机制</th><th>实测事实</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>请求头认证</td><td><code>CST</code> 标识客户端会话，<code>X-SECURITY-TOKEN</code> 标识账户会话</td><td>前后端分离更彻底；跨域服务（图表、流）也能复用同一套头</td></tr>
+          <tr><td>令牌下发</td><td>会话接口响应头带 <code>access-token</code> / <code>refresh-token</code></td><td>OAuth 风格的短期令牌，配合刷新机制</td></tr>
+          <tr class="focal"><td>会话快照</td><td>一次返回账号、币种、时区、locale、流媒体端点</td><td>首屏只打一个会话接口就能初始化全部上下文</td></tr>
+          <tr><td>环境隔离</td><td>demo 使用独立主机（-deal / -charts / -wtp / -api）</td><td>同一套代码靠主机名切环境，配置在构建时注入</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>会话响应的关键字段（demo 实测，已脱敏）：</p>
+    <pre><code>{
+  "authenticationStatus": "AUTHENTICATED",
+  "accounts": [ { "accountId": "Z6FAKB", "siteType": "CFD", "currencyIsoCode": "USD" } ],
+  "currentAccountId": "Z6FAKB",
+  "clientLocale": "zh_CN",
+  "igCompany": "igintl",
+  "timezoneOffset": 7,
+  "lightstreamer2Endpoint": "https://demo-stream.ig.com"
+}</code></pre>
+    <p class="note">会话里同时给出 WebSocket 与 HTTP 两种流端点：WebSocket 用 <code>demo-wtp.ig.com/lightstreamer</code>，HTTP 备用是 <code>demo-stream.ig.com</code>。</p>
+  </section>
+
+  <!-- ============ 6 行情 ============ -->
+  <section id="s6">
+    <h2><span class="num">06</span>行情与图表：REST 拉取 + WebSocket 推送</h2>
+    <p>图表数据与实时行情分开走：历史与快照用 REST，实时变化用 Lightstreamer 推送。这正是我们在模拟盘里要解决的同一组问题。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 460" role="img" aria-labelledby="data-title data-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="data-title">IG demo 的行情数据流</title>
+          <desc id="data-desc">品种搜索、市场详情、图表历史三路 REST 数据进入页面与图表引擎；Lightstreamer 负责订阅与实时推送。</desc>
+          <defs>
+            <marker id="data-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+            <marker id="data-arrow-a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/>
+            </marker>
+          </defs>
+
+          <!-- arrows -->
+          <path d="M260,112 H350 Q358,112 358,120 V212 Q358,220 366,220 H410" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#data-arrow)"/>
+          <line x1="260" y1="232" x2="410" y2="232" stroke="#4f5d75" stroke-width="1" marker-end="url(#data-arrow)"/>
+          <path d="M260,352 H350 Q358,352 358,344 V308 Q358,300 366,300 H410" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#data-arrow)"/>
+          <line x1="610" y1="230" x2="720" y2="230" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#data-arrow-a)"/>
+          <line x1="720" y1="250" x2="610" y2="250" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#data-arrow-a)"/>
+
+          <!-- sources -->
+          <rect x="40" y="80" width="220" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="150" y="106" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">品种搜索</text>
+          <text x="150" y="124" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">/findergateway/v2/instruments</text>
+
+          <rect x="40" y="200" width="220" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="150" y="226" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">市场详情</text>
+          <text x="150" y="244" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">/nwtpdeal/v3/markets/details</text>
+
+          <rect x="40" y="320" width="220" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="150" y="346" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">图表数据</text>
+          <text x="150" y="364" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">/chart/snapshot · /chart/batch</text>
+
+          <!-- SPA -->
+          <rect x="410" y="200" width="200" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+          <text x="510" y="232" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">SPA + ig-charts</text>
+          <text x="510" y="252" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">图表渲染 / 报价面板 / DOM</text>
+
+          <!-- LS focal -->
+          <rect x="720" y="200" width="200" height="80" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="820" y="232" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="13" font-weight="600" fill="#2d3142" text-anchor="middle">Lightstreamer</text>
+          <text x="820" y="252" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">wss://demo-wtp.ig.com</text>
+
+          <!-- labels -->
+          <rect x="648" y="206" width="44" height="16" rx="2" fill="#f5f5f5"/>
+          <text x="670" y="218" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#4f5d75" text-anchor="middle">订阅</text>
+          <rect x="648" y="258" width="44" height="16" rx="2" fill="#f5f5f5"/>
+          <text x="670" y="270" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12" fill="#4f5d75" text-anchor="middle">推送</text>
+        </svg>
+      </div>
+      <figcaption>图 2 · REST 负责「拉」，Lightstreamer 负责「推」。两者都是同构上下文：认证头复用同一套会话令牌。</figcaption>
+    </figure>
+
+    <div class="table-wrap">
+      <table>
+        <caption>表 4 · 实测数据形状</caption>
+        <thead><tr><th>数据</th><th>形状要点</th><th class="mono">实测体积</th></tr></thead>
+        <tbody>
+          <tr><td>市场详情</td><td>五段：<code>instrumentData</code> / <code>dealingRulesData</code> / <code>marketSnapshotData</code> / <code>dealSettings</code> / <code>metaData</code>；报价含多档 <code>priceLadder</code></td><td class="mono">2.9 KB</td></tr>
+          <tr><td>图表快照</td><td><code>instrumentInfoDto</code>（支持周期、时区、精度）+ <code>intervalsDataPointsDto</code>（300 根）</td><td class="mono">90 KB</td></tr>
+          <tr class="focal"><td>图表历史</td><td>按时间窗口批量返回；每根 K 线含 <code>bid</code> / <code>ask</code> 的 OHLC 与成交量</td><td class="mono">1.38 MB</td></tr>
+          <tr><td>实时推送</td><td>Lightstreamer 2.5 over WebSocket，子协议 <code>TLCP-2.5.0.lightstreamer.com</code></td><td class="mono">—</td></tr>
+          <tr><td>品种列表</td><td>分页：<code>meta.totalResults/totalPages</code> + 每个品种的 <code>instrumentData</code> / <code>marketSnapshotData</code></td><td class="mono">33 KB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">K 线用 bid/ask 双价而不是单一成交价，这与 IG 的 CFD 报价模型一致：图表和盈亏都按可成交价计算。</p>
+  </section>
+
+  <!-- ============ 7 交易流程 ============ -->
+  <section id="s7">
+    <h2><span class="num">07</span>交易与模拟盘：先预览，后下单</h2>
+    <p>这是整份调查里最值得借鉴的一段。用户打开下单 ticket 的过程中，平台连打了两个预览接口，最后才允许提交。HAR 里没有提交，所以能证明「预览」，不能证明「执行」。</p>
+
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 960 280" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="flow-title">IG demo 下单前的六步流程</title>
+          <desc id="flow-desc">搜索品种、查看报价、预览保证金、预览费用、提交订单、查看仓位；提交订单未在本次抓包中出现。</desc>
+          <defs>
+            <marker id="flow-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+          </defs>
+
+          <!-- arrows -->
+          <line x1="174" y1="145" x2="192" y2="145" stroke="#4f5d75" stroke-width="1" marker-end="url(#flow-arrow)"/>
+          <line x1="322" y1="145" x2="340" y2="145" stroke="#4f5d75" stroke-width="1" marker-end="url(#flow-arrow)"/>
+          <line x1="470" y1="145" x2="488" y2="145" stroke="#4f5d75" stroke-width="1" marker-end="url(#flow-arrow)"/>
+          <line x1="618" y1="145" x2="636" y2="145" stroke="#4f5d75" stroke-width="1" marker-end="url(#flow-arrow)"/>
+          <line x1="766" y1="145" x2="784" y2="145" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#flow-arrow)"/>
+
+          <!-- step labels -->
+          <text x="110" y="98" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">01</text>
+          <text x="258" y="98" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">02</text>
+          <text x="406" y="98" font-family="'Geist Mono', monospace" font-size="8" fill="#eb6c36" text-anchor="middle">03</text>
+          <text x="554" y="98" font-family="'Geist Mono', monospace" font-size="8" fill="#eb6c36" text-anchor="middle">04</text>
+          <text x="702" y="98" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">05</text>
+          <text x="850" y="98" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">06</text>
+
+          <!-- boxes -->
+          <rect x="46" y="110" width="128" height="70" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="110" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">搜品种</text>
+          <text x="110" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/findergateway</text>
+
+          <rect x="194" y="110" width="128" height="70" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="258" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">看报价</text>
+          <text x="258" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/markets/details</text>
+
+          <rect x="342" y="110" width="128" height="70" rx="6" fill="rgba(235,108,54,0.06)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="406" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">保证金预览</text>
+          <text x="406" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/margin/positions/otc</text>
+
+          <rect x="490" y="110" width="128" height="70" rx="6" fill="rgba(235,108,54,0.06)" stroke="#eb6c36" stroke-width="1.2"/>
+          <text x="554" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">费用预览</text>
+          <text x="554" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/costsandcharges/open</text>
+
+          <rect x="638" y="110" width="128" height="70" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+          <text x="702" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">提交订单</text>
+          <text x="702" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">POST /positions/otc</text>
+
+          <rect x="786" y="110" width="128" height="70" rx="6" fill="#fff" stroke="#2d3142" stroke-width="1"/>
+          <text x="850" y="140" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#2d3142" text-anchor="middle">看仓位</text>
+          <text x="850" y="158" font-family="'Geist Mono', monospace" font-size="8" fill="#7a8399" text-anchor="middle">/positions · /orders</text>
+
+          <!-- measured callouts -->
+          <text x="406" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">实测 13.21 USD</text>
+          <text x="554" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" text-anchor="middle">实测 1.00 + 0.55/日</text>
+          <text x="702" y="212" font-family="'Geist Mono', monospace" font-size="9" fill="#7a8399" text-anchor="middle">本次未提交</text>
+          <text x="480" y="252" font-family="'Geist', 'Noto Sans TC', sans-serif" font-size="11" fill="#7a8399" text-anchor="middle">虚线表示 HAR 中未出现的步骤：只打开了 ticket，没有提交</text>
+        </svg>
+      </div>
+      <figcaption>图 3 · 下单前有两道服务端预览。保证金与费用都由服务端计算，前端只负责展示。</figcaption>
+    </figure>
+
+    <h3><span class="tag">Preview</span>两个预览接口</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>接口</th><th>请求要点</th><th>响应要点（实测）</th></tr></thead>
+        <tbody>
+          <tr class="focal">
+            <td class="mono">POST /nwtpdeal/v3/margin/positions/otc</td>
+            <td>品种、方向、手数、价格、<code>quoteId</code>、有效期、订单类型、<code>timeInForce</code></td>
+            <td><code>depositDeltaAccountCcy</code> = 13.21 USD（1 手 A50，名义 2,642.52）</td>
+          </tr>
+          <tr>
+            <td class="mono">POST /dealing-gateway/costsandcharges/{accountId}/open</td>
+            <td>账户、bid/ask、方向、手数、品种、止损/止盈、guaranteedStop</td>
+            <td>点差 1.00、隔夜融资 0.5501/日、手续费 0、换汇费 0、名义价值 2,642.52</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">两个请求共用同一个 <code>dealReference</code>，说明一次「看价 → 预览 → 提交」是同一笔报价上下文。预览结果只展示、不落单。</p>
+
+    <h3><span class="tag">Accounts</span>账户与仓位</h3>
+    <ul class="plain">
+      <li>仓位：<code>GET /nwtpdeal/wtp/orders/positions?priceInSizeFlag=true</code>；挂单：<code>GET /nwtpdeal/wtp/orders/workingorders</code>。本次都是空数组（新 demo 账户）。</li>
+      <li>重复下单窗口：<code>GET /dealing-gateway/repeat-deal-window/{accountId}</code>，返回最近可重复的成交列表。</li>
+      <li>偏好里能看到交易相关开关：<code>marketOrder</code>、<code>partialFill</code>、<code>showForceOpen</code>、<code>preferenceTradingFromChart</code>、<code>preferenceDma</code>。</li>
+      <li>品种分类实测 9 类：指数、外汇、加密、股票、大宗商品、债券利率、ETF、期权、牛熊证。</li>
+    </ul>
+    <p>下单前预览的实测数值（中国 A50 现货，1 手，价格 13,212.6）：</p>
+    <pre><code>保证金预览   depositDeltaAccountCcy = 13.21 USD
+费用预览     notionalValue        = 2,642.52 USD
+             openingSpread        = 1.00
+             overnightFundingFee  = 0.5501 / 日
+             totalOpening         = 1.00
+             totalDaily           = 0.5501
+             openingCommission    = 0
+             fxChargePercent      = 1%</code></pre>
+  </section>
+
+  <!-- ============ 8 环境 ============ -->
+  <section id="s8">
+    <h2><span class="num">08</span>环境与部署</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 5 · demo 环境的主机矩阵（实测）</caption>
+        <thead><tr><th>用途</th><th class="mono">demo 主机</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr class="focal"><td>平台与业务接口</td><td class="mono">demo-deal.ig.com</td><td>页面 + 九个 BFF 前缀</td></tr>
+          <tr><td>图表引擎</td><td class="mono">demo-charts.ig.com</td><td>ig-charts 1.3319.0、worker、图表设置</td></tr>
+          <tr><td>实时推送</td><td class="mono">demo-wtp.ig.com</td><td>Lightstreamer WebSocket</td></tr>
+          <tr><td>HTTP 流备用</td><td class="mono">demo-stream.ig.com</td><td>会话里下发的 <code>lightstreamer2Endpoint</code></td></tr>
+          <tr><td>import map 与共享依赖</td><td class="mono">demo-wtp.iglzwtpprd.ig.com</td><td>微前端版本清单</td></tr>
+          <tr><td>前端监控</td><td class="mono">api.ig.com · telemetrygatewayhttp.ig.com</td><td>Faro 采集与指标</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>从 bundle 里的配置对象还能看到 live 与 demo 的对应关系：<code>igApiBaseUrls</code> 把 <code>demo</code> 映射到 <code>demo-api.ig.com</code>，把 <code>prod</code> 映射到 <code>api.ig.com</code>；主机名 <code>demo-deal</code> / <code>deal</code> 决定加载哪套环境。同一份代码，不同环境只换配置。</p>
+    <p class="note">本次没有验证 live 环境。调查到的版本号：平台 WTP 0.6918.0，图表 1.3319.0，Lightstreamer 2.5。</p>
+  </section>
+
+  <!-- ============ 9 借鉴 ============ -->
+  <section id="s9">
+    <h2><span class="num">09</span>对我方模拟盘的借鉴</h2>
+    <p>以下只列事实与可复用设计，不代替设计决策。</p>
+    <div class="cards">
+      <div class="card focal">
+        <span class="tag">可借鉴 · 接口层</span>
+        <h4>同源 BFF + 头认证</h4>
+        <p>一个域名收敛九个网关前缀，前端只记一个 base URL。认证用两个请求头，不用 cookie，跨域服务和流服务都能复用。首屏只打一个 <code>/session</code> 就拿到账号、币种、时区、locale、流端点。</p>
+        <p>对我们的意义：插件前后端、行情服务、撮合服务可以共用一套会话令牌，减少 CORS 与鉴权分支。</p>
+      </div>
+      <div class="card focal">
+        <span class="tag">可借鉴 · 交易层</span>
+        <h4>下单前双预览</h4>
+        <p>先算保证金，再算费用（点差、隔夜、手续费、换汇），全部由服务端返回，前端只展示。用户看到的成本和真实成本一致，模拟盘才有说服力。</p>
+        <p>对我们的意义：自研模拟盘必须把「保证金」和「费用」做成独立计算接口，而不是在提交时才算。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">可借鉴 · 数据层</span>
+        <h4>REST + WebSocket 双通道</h4>
+        <p>历史与快照走 REST，实时走 WebSocket。K 线是 bid/ask 双价，盈亏按可成交价算。图表引擎独立成一个服务，前端只做渲染。</p>
+      </div>
+      <div class="card tint">
+        <span class="tag">可借鉴 · 体验层</span>
+        <h4>服务端工作区布局</h4>
+        <p>面板位置、尺寸、tab 类型都存在服务端，换设备登录布局一致。分享链接只带 workspaceId，权限由会话决定。</p>
+      </div>
+    </div>
+
+    <h3><span class="tag">Caveats</span>不能依赖的部分</h3>
+    <ul class="plain">
+      <li><b>闭源。</b>撮合、账本、风控、结算都没有公开规则；HAR 只能看到接口形状。</li>
+      <li><b>需要登录。</b>独立 demo 不能申请 API key，无法做接口重放或自动化测试；分享链接离开会话就打不开。</li>
+      <li><b>执行链路未取得。</b>订单提交、回报、部分成交、撤单都没在本次抓包里出现，只能从接口名推断。</li>
+      <li><b>反爬与风控。</b>页面带混淆挑战脚本；headless 自动化可能被识别。</li>
+      <li><b>法规与地区。</b>IG 产品受当地监管限制，demo 也不能无条件开放给所有地区。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 10 风险 ============ -->
+  <section id="s10">
+    <h2><span class="num">10</span>风险与限制</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 6 · 本次调查的风险项</caption>
+        <thead><tr><th>等级</th><th>项</th><th>事实</th><th>影响</th></tr></thead>
+        <tbody>
+          <tr><td class="no">高</td><td>证据单一</td><td>只抓了一次会话、一个品种、一个 ticket</td><td>不能代表全部品种与全部交易类型</td></tr>
+          <tr><td class="no">高</td><td>会话凭据敏感</td><td>HAR 内含 CST / X-SECURITY-TOKEN</td><td>文件只能本地保存，用完删除</td></tr>
+          <tr><td class="warn">中</td><td>执行链路缺失</td><td>未提交订单</td><td>撮合与回报机制只能推断</td></tr>
+          <tr><td class="warn">中</td><td>接口易变</td><td>平台版本 0.6918.0，bundle 带 hash</td><td>路径与字段可能随版本调整，不能当契约</td></tr>
+          <tr><td class="warn">中</td><td>反爬</td><td>混淆挑战脚本 + WAF</td><td>自动化复现成本高</td></tr>
+          <tr><td>低</td><td>文档滞后</td><td>IG 官方 Web API 样例 2024 年已标记 deprecated</td><td>公开文档与现网实现可能不一致</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 11 证据索引 ============ -->
+  <section id="s11">
+    <h2><span class="num">11</span>证据索引</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>表 7 · 结论与 HAR 条目对照（entry 序号为 0 起）</caption>
+        <thead><tr><th>结论</th><th class="mono">HAR entry</th><th>证据</th></tr></thead>
+        <tbody>
+          <tr><td>微前端与 import map</td><td class="mono">7, 8, 22, 23</td><td>system.js、import-map-loader、两份 import-map.json</td></tr>
+          <tr><td>图表引擎独立域名</td><td class="mono">48, 49, 116, 121</td><td>ig-charts.js / css / trading-charts / worker</td></tr>
+          <tr><td>九个 BFF 前缀</td><td class="mono">28, 29, 43, 55, 62, 91, 99, 105, 118, 126, 133, 149, 150</td><td>同源请求路径</td></tr>
+          <tr class="focal"><td>头认证、无 cookie</td><td class="mono">29, 43, 55, 105</td><td>CST + X-SECURITY-TOKEN；169 条请求无 Cookie</td></tr>
+          <tr><td>Lightstreamer 2.5</td><td class="mono">51</td><td>101 升级，子协议 TLCP-2.5.0</td></tr>
+          <tr><td>保证金 / 费用预览</td><td class="mono">149, 150</td><td>请求与响应体</td></tr>
+          <tr><td>工作区服务端布局</td><td class="mono">28</td><td>panels/tabs JSON</td></tr>
+          <tr><td>环境矩阵</td><td class="mono">4, 22, 29, 48, 51</td><td>demo 主机名与版本</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 12 术语 ============ -->
+  <section id="s12">
+    <h2><span class="num">12</span>术语表</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>术语</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>BFF</td><td>Backend for Frontend：把多个后端服务聚合成一个前端专用接口层</td></tr>
+          <tr><td>single-spa</td><td>前端微应用编排框架，负责加载和挂载多个子应用</td></tr>
+          <tr><td>import map</td><td>浏览器模块解析表，把模块名映射到 URL；SystemJS 负责加载</td></tr>
+          <tr><td>Lightstreamer</td><td>实时推送中间件，用 WebSocket 或 HTTP 流推送订阅数据</td></tr>
+          <tr><td>CST / X-SECURITY-TOKEN</td><td>IG 的客户端会话令牌与账户会话令牌，放在请求头里</td></tr>
+          <tr><td>epic</td><td>IG 的品种唯一代码，例如 <code>IX.D.XINHUA.IFM.IP</code></td></tr>
+          <tr><td>OTC / DMA</td><td>OTC：柜台外成交（做市）；DMA：直连市场成交</td></tr>
+          <tr><td>price ladder</td><td>报价梯：多档买卖价，供 DOM 与点价下单使用</td></tr>
+          <tr><td>Faro</td><td>Grafana 前端监控 SDK，采集页面性能与错误</td></tr>
+          <tr><td>dealReference</td><td>一次报价上下文的引用号，预览与提交共用</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 13 来源 ============ -->
+  <section id="s13">
+    <h2><span class="num">13</span>来源</h2>
+    <ul class="plain">
+      <li>主证据：<code>tmp/demo-deal.ig.com.har</code>（169 条请求，2026-10-20 05:38 UTC）</li>
+      <li>IG Labs 开发者文档：<a href="https://labs.ig.com/gettingstarted">labs.ig.com/gettingstarted</a>（API key、demo/live 环境）</li>
+      <li>IG demo 账户说明：<a href="https://www.ig.com/uk/demo-account">ig.com/uk/demo-account</a>（10,000 虚拟资金、15,000+ 市场）</li>
+      <li>IG 开源样例：<a href="https://github.com/IG-Group/ig-webapi-java-sample">IG-Group/ig-webapi-java-sample</a>（REST + Lightstreamer 用法、CST/XST 头）</li>
+      <li>IG FIX 与 B2B 样例：<a href="https://github.com/IG-Group/ig-fix-dma-trading-example">FIX DMA</a>、<a href="https://github.com/IG-Group/ig-fix-otc-trading-example">FIX OTC</a>、<a href="https://github.com/IG-Group/ig-webapi-vendor-sample">B2B vendor</a></li>
+      <li>本地快照：图表与前端 bundle 已缓存于 <code>tmp/ig-tv/</code></li>
+    </ul>
+  </section>
+
+  <!-- ============ 附录 ============ -->
+  <section id="appendix">
+    <h2><span class="num">A</span>附录：STE 写作规则</h2>
+    <ul class="plain">
+      <li>一句一个意思。描述句不超过 25 字，步骤句不超过 20 字。</li>
+      <li>用主动语态和简单时态。不用完成时和进行时。</li>
+      <li>一个词只表示一个意思。术语首次出现时定义，之后固定使用。</li>
+      <li>不用未定义的缩写。不用「可能」「大概」「也许」。</li>
+      <li>段落不超过 6 句。复杂内容改用表格或编号列表。</li>
+      <li>先给结论，再给依据。</li>
+    </ul>
+  </section>
+
+  <footer>
+    数据口径：所有数字来自 HAR 与页面静态资源，不做推断；推断处已标注「推断」或「未验证」。<br>
+    敏感信息：HAR 含 demo 会话令牌，仅本地使用；报告中不出现明文凭据。<br>
+    调查范围：仅 IG demo，一个平台。其他平台另立文档，不混入本文。
+  </footer>
+
+</div>
+</body>
+</html>
