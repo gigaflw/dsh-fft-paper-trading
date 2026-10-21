@@ -1,10 +1,12 @@
 import type { PaperSettings } from '../contract.js'
-import type { AccountState, FillRecord, LedgerEvent } from './types.js'
+import { PAPER_LEDGER_VERSION } from '../contract.js'
+import type { AccountState, FillRecord, LedgerEvent, Order } from './types.js'
 
 export function emptyState(accountId: string): AccountState {
   return {
     accountId,
     version: 1,
+    ledgerVersion: PAPER_LEDGER_VERSION,
     initialCashCents: 0,
     cashCents: 0,
     settings: {
@@ -17,15 +19,19 @@ export function emptyState(accountId: string): AccountState {
       enableT1: true,
       quoteTtlSec: 30,
       maxOrderNotionalCents: 0,
+      maxParticipationRate: 0.10,
+      fillModel: 'volume-share',
     },
     positions: {},
     orders: {},
     fills: [],
     tradeDate: '',
+    lastOpenedDate: '',
     blocked: false,
     lastSeq: 0,
     createdAt: '',
     dayEquity: [],
+    gaps: {},
   }
 }
 
@@ -37,7 +43,9 @@ function openState(state: AccountState, settings: PaperSettings, initialCashCent
   state.orders = {}
   state.fills = []
   state.dayEquity = []
+  state.gaps = {}
   state.tradeDate = tradeDate
+  state.lastOpenedDate = ''
   state.blocked = false
 }
 
@@ -77,39 +85,74 @@ function applyFill(state: AccountState, fill: FillRecord): void {
   state.fills.push(fill)
 }
 
+/** Fill legacy orders that predate the partial-fill fields. */
+function orderOf(state: AccountState, order: Order): Order {
+  order.filledQty ??= order.status === 'filled' ? order.qty : 0
+  order.remainingQty ??= Math.max(0, order.qty - order.filledQty)
+  return order
+}
+
+function applyFillToOrder(order: Order, fill: FillRecord, complete: boolean): void {
+  const previousQty = order.filledQty
+  const nextQty = previousQty + fill.qty
+  const previousCost = (order.avgFillPrice ?? fill.price) * previousQty
+  order.filledQty = nextQty
+  order.remainingQty = Math.max(0, order.qty - nextQty)
+  order.avgFillPrice = nextQty > 0 ? (previousCost + fill.price * fill.qty) / nextQty : fill.price
+  order.fillPrice = fill.price
+  order.fees = order.fees === undefined
+    ? fill.fees
+    : {
+        commissionCents: order.fees.commissionCents + fill.fees.commissionCents,
+        stampCents: order.fees.stampCents + fill.fees.stampCents,
+        transferCents: order.fees.transferCents + fill.fees.transferCents,
+        totalCents: order.fees.totalCents + fill.fees.totalCents,
+      }
+  order.status = complete || order.remainingQty === 0 ? 'filled' : 'partially_filled'
+  if (order.status === 'filled') order.filledAt = fill.ts
+  order.updatedAt = fill.ts
+}
+
 /** Apply one ledger event in place. Callers own cloning. */
 export function applyEvent(state: AccountState, event: LedgerEvent): AccountState {
   switch (event.type) {
     case 'account.opened': {
-      const { settings, initialCashCents, tradeDate, accountId } = event.payload
+      const { settings, initialCashCents, tradeDate, accountId, ledgerVersion } = event.payload
       openState(state, settings, initialCashCents, tradeDate)
       state.accountId = accountId
+      state.ledgerVersion = ledgerVersion ?? 1
       state.createdAt = event.ts
       break
     }
     case 'account.reset': {
       const { settings, initialCashCents, tradeDate } = event.payload
       openState(state, settings, initialCashCents, tradeDate)
+      state.ledgerVersion = PAPER_LEDGER_VERSION
       break
     }
     case 'order.submitted': {
-      state.orders[event.payload.order.id] = { ...event.payload.order }
+      const order = orderOf(state, { ...event.payload.order })
+      state.orders[order.id] = order
       break
     }
     case 'order.rejected': {
-      state.orders[event.payload.order.id] = { ...event.payload.order, status: 'rejected', reason: event.payload.reason }
+      const order = orderOf(state, { ...event.payload.order })
+      order.status = 'rejected'
+      order.reason = event.payload.reason
+      state.orders[order.id] = order
+      break
+    }
+    case 'order.partially_filled': {
+      const order = state.orders[event.payload.orderId]
+      const fill = event.payload.fill
+      if (order !== undefined) applyFillToOrder(orderOf(state, order), fill, false)
+      applyFill(state, fill)
       break
     }
     case 'order.filled': {
       const order = state.orders[event.payload.orderId]
       const fill = event.payload.fill
-      if (order !== undefined) {
-        order.status = 'filled'
-        order.filledAt = fill.ts
-        order.fillPrice = fill.price
-        order.fees = fill.fees
-        order.updatedAt = fill.ts
-      }
+      if (order !== undefined) applyFillToOrder(orderOf(state, order), fill, true)
       applyFill(state, fill)
       break
     }
@@ -119,6 +162,36 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
         order.status = event.payload.reason === 'expired' ? 'expired' : 'canceled'
         order.reason = event.payload.reason
         order.updatedAt = event.payload.at
+        order.remainingQty = Math.max(0, order.qty - (order.filledQty ?? 0))
+      }
+      break
+    }
+    case 'order.released': {
+      const order = state.orders[event.payload.orderId]
+      if (order !== undefined && order.status === 'queued') {
+        order.status = 'pending'
+        order.updatedAt = event.payload.at
+      }
+      break
+    }
+    case 'day.pre_opened': {
+      // The new trade date starts with the opening auction; T+1 stays locked
+      // until day.opened at 09:30.
+      state.tradeDate = event.payload.date
+      break
+    }
+    case 'day.opened': {
+      const point = event.payload
+      state.tradeDate = point.date
+      state.lastOpenedDate = point.date
+      state.gaps = point.gaps
+      for (const position of Object.values(state.positions)) {
+        if (state.settings.enableT1) position.available = position.qty
+        const open = point.openPrices[position.symbol]
+        if (open !== undefined) {
+          position.lastPrice = open
+          position.lastTs = event.ts
+        }
       }
       break
     }
@@ -128,9 +201,12 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
       if (index >= 0) state.dayEquity[index] = point
       else state.dayEquity.push(point)
       state.dayEquity.sort((a, b) => a.date.localeCompare(b.date))
-      state.tradeDate = point.nextDate ?? point.date
-      if (state.settings.enableT1) {
-        for (const position of Object.values(state.positions)) position.available = position.qty
+      // v2 advances the trade date and unlocks T+1 at the next open.
+      if (state.ledgerVersion < 2) {
+        state.tradeDate = point.nextDate ?? point.date
+        if (state.settings.enableT1) {
+          for (const position of Object.values(state.positions)) position.available = position.qty
+        }
       }
       break
     }
@@ -164,9 +240,10 @@ export function verify(state: AccountState): string[] {
     issues.push(`现金与成交不一致: 期望 ${expected}，实际 ${state.cashCents}`)
   }
   for (const order of Object.values(state.orders)) {
-    if (order.status === 'filled') {
-      const fill = state.fills.find(item => item.orderId === order.id)
-      if (fill === undefined) issues.push(`订单 ${order.id} 已成交但无成交记录`)
+    const filledQty = order.filledQty ?? 0
+    if (filledQty > order.qty) issues.push(`订单 ${order.id} 成交数量超过委托`)
+    if (order.status === 'filled' && !state.fills.some(item => item.orderId === order.id)) {
+      issues.push(`订单 ${order.id} 已成交但无成交记录`)
     }
   }
   return issues

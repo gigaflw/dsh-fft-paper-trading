@@ -68,8 +68,35 @@ export function createPaperRpcHandler(service: PaperService): PaperRpcHandler {
         }
         case 'market/bars': {
           const input = record(payload)
-          return ok(await service.bars(text(input.symbol, 'symbol'), typeof input.limit === 'number' ? input.limit : 60))
+          const symbol = text(input.symbol, 'symbol')
+          const limit = typeof input.limit === 'number' ? input.limit : 60
+          if (input.interval === 'minute') {
+            return ok(await service.minuteBars(symbol, typeof input.date === 'string' ? input.date : undefined))
+          }
+          return ok(await service.dailyBars(symbol, limit))
         }
+        case 'market/status':
+          return ok(await service.marketStatus())
+        case 'market/search': {
+          const input = record(payload)
+          return ok(await service.search(text(input.query, 'query'), typeof input.limit === 'number' ? input.limit : 10))
+        }
+        case 'market/list': {
+          const input = record(payload ?? {})
+          return ok(await service.marketList({
+            board: typeof input.board === 'string' ? input.board : undefined,
+            page: typeof input.page === 'number' ? input.page : undefined,
+            pageSize: typeof input.pageSize === 'number' ? input.pageSize : undefined,
+          }))
+        }
+        case 'review/daily': {
+          const input = record(payload ?? {})
+          return ok(await service.dailyReport(typeof input.date === 'string' ? input.date : undefined))
+        }
+        case 'review/roundtrips':
+          return ok(await service.roundtrips())
+        case 'cash/flow':
+          return ok(await service.cashFlow())
         case 'order/preview':
           return ok(await service.preview(draft(payload)))
         case 'order/place': {

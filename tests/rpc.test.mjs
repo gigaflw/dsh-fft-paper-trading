@@ -6,12 +6,13 @@ import { PaperService } from '../lib/service/paper-service.js'
 import { AccountRepo } from '../lib/store/repo.js'
 import { createPaperRpcHandler } from '../lib/service/rpc.js'
 import { createPaperRoute } from '../lib/service/route.js'
+import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
 
 const NOW = new Date('2026-10-19T02:00:00.000Z')
 
 test('rpc: preview, place, unknown endpoint and envelope', async () => {
   const home = join(process.cwd(), 'tmp', 'paper-trading-test', `rpc-${process.pid}-${Date.now()}`)
-  const prices = new Map([['600519', { symbol: '600519', last: 10, bid: 9.99, ask: 10, ts: NOW.toISOString() }]])
+  const prices = new Map([['600519', { symbol: '600519', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }]])
   const data = {
     async quotes(symbols) {
       const rows = symbols.map(symbol => prices.get(symbol)).filter(Boolean)
@@ -20,9 +21,18 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     async dailyBars() {
       return { state: 'ok', bars: [] }
     },
+    async minuteBars() {
+      return { state: 'ok', bars: [] }
+    },
+    async search() {
+      return []
+    },
+    async marketList() {
+      return { state: 'ok', quotes: [], page: 1 }
+    },
   }
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data, now: () => NOW })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => NOW })
   const handler = createPaperRpcHandler(service)
   const route = createPaperRoute(handler)
   try {

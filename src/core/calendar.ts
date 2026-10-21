@@ -29,9 +29,9 @@ export function addDays(date: string, days: number): string {
   return dateFormatter.format(base)
 }
 
-/** Monday..Friday. Holidays are deliberately not modelled in the MVP. */
+/** Monday..Friday. Holidays come from the calendar port, not this fallback. */
 export function isTradeDay(date: string): boolean {
-  const day = parseDate(date).getUTCDay()
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay()
   return day >= 1 && day <= 5
 }
 

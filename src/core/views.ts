@@ -4,6 +4,7 @@ import type {
   FillView,
   OrderDraft,
   OrderView,
+  MarketStatus,
   PaperSettings,
   PreviewView,
   Quote,
@@ -14,6 +15,7 @@ import { computeFees } from './fees.js'
 import { estimatePrice } from './risk.js'
 import { equityCents } from './engine.js'
 import { daysBetween } from './calendar.js'
+import { priceLimitFor } from './price-limit.js'
 import type { AccountState, FillRecord, Order, Position } from './types.js'
 
 export function toPositionView(position: Position): AccountView['positions'][number] {
@@ -50,7 +52,11 @@ export function toOrderView(order: Order): OrderView {
     updatedAt: order.updatedAt,
     filledAt: order.filledAt,
     fillPrice: order.fillPrice,
-    amountCents: order.fillPrice === undefined ? undefined : amountCents(order.fillPrice, order.qty),
+    filledQty: order.filledQty,
+    remainingQty: order.remainingQty,
+    avgFillPrice: order.avgFillPrice,
+    note: order.note,
+    amountCents: order.avgFillPrice === undefined ? undefined : amountCents(order.avgFillPrice, order.filledQty),
     feesCents: fill,
   }
 }
@@ -96,14 +102,25 @@ export function toAccountView(state: AccountState): AccountView {
   }
 }
 
-export function previewOrder(state: AccountState, draft: OrderDraft, quote: Quote | null, settings: PaperSettings): PreviewView {
+export function previewOrder(
+  state: AccountState,
+  draft: OrderDraft,
+  quote: Quote | null,
+  settings: PaperSettings,
+  session?: MarketStatus,
+): PreviewView {
   const price = estimatePrice(draft, quote, settings) ?? 0
   const amount = amountCents(price, draft.qty)
   const fees = computeFees(amount, draft.side, settings)
+  const priceLimit = priceLimitFor(draft.symbol, quote?.name, quote?.prevClose)
   const warnings: string[] = []
   if (quote === null && draft.type === 'market' && draft.price === undefined) {
     warnings.push('没有可用行情，请填写参考价或改用限价单')
   }
+  if (priceLimit !== undefined && price > 0 && (price < priceLimit.lower || price > priceLimit.upper)) {
+    warnings.push(`价格超出涨跌停范围 ${priceLimit.lower.toFixed(2)}–${priceLimit.upper.toFixed(2)}`)
+  }
+  if (session !== undefined && !session.canMatch) warnings.push('当前时段不能连续成交，委托将排队')
   if (draft.side === 'sell') {
     const available = state.positions[draft.symbol]?.available ?? 0
     if (available < draft.qty) warnings.push(`可卖不足：可卖 ${available} 股`)
@@ -126,6 +143,8 @@ export function previewOrder(state: AccountState, draft: OrderDraft, quote: Quot
     availableQty: state.positions[draft.symbol]?.available ?? 0,
     maxBuyQty: Math.max(0, maxBuyQty),
     quote: quote ?? undefined,
+    priceLimit,
+    session,
     warnings,
   }
 }

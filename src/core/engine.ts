@@ -1,5 +1,6 @@
-import type { PaperSettings, Quote } from '../contract.js'
-import type { AccountState, DayPoint, FillRecord, LedgerEvent, Order } from './types.js'
+import type { FillModel, PaperSettings, Quote, SessionPhase } from '../contract.js'
+import { PAPER_LEDGER_VERSION } from '../contract.js'
+import type { AccountState, DayOpened, DayPoint, FillRecord, LedgerEvent, Order, PositionSnapshot } from './types.js'
 import { tradeDateOf } from './calendar.js'
 import { amountCents } from './money.js'
 import { computeFees } from './fees.js'
@@ -39,7 +40,7 @@ export function openAccount(
   const events: LedgerEvent[] = []
   append(working, events, {
     type: 'account.opened',
-    payload: { accountId, settings, initialCashCents: settings.initialCashCents, tradeDate },
+    payload: { accountId, settings, initialCashCents: settings.initialCashCents, tradeDate, ledgerVersion: PAPER_LEDGER_VERSION },
   }, ts)
   return { events, state: working }
 }
@@ -60,26 +61,56 @@ export function resetAccount(
   return { events, state: working }
 }
 
-function makeFill(order: Order, price: number, ts: string, settings: PaperSettings): FillRecord {
-  const amount = amountCents(price, order.qty)
+function fillQty(order: Order, barVolume: number | undefined, settings: PaperSettings): number {
+  const remaining = order.remainingQty
+  if (settings.fillModel === 'unlimited' || barVolume === undefined || barVolume <= 0) return remaining
+  const capped = Math.floor(barVolume * settings.maxParticipationRate)
+  const lots = Math.floor(capped / 100) * 100
+  if (order.side === 'buy') return Math.max(0, Math.min(remaining, lots))
+  return Math.max(0, Math.min(remaining, capped))
+}
+
+function makeFill(
+  state: AccountState,
+  order: Order,
+  price: number,
+  qty: number,
+  ts: string,
+  settings: PaperSettings,
+  barTs?: string,
+): FillRecord {
+  const amount = amountCents(price, qty)
+  const index = state.fills.filter(item => item.orderId === order.id).length + 1
   return {
-    id: `fill-${order.id}`,
+    id: `fill-${order.id}-${index}`,
     orderId: order.id,
     symbol: order.symbol,
     name: order.name,
     side: order.side,
     price,
-    qty: order.qty,
+    qty,
     amountCents: amount,
     fees: computeFees(amount, order.side, settings),
     ts,
     tradeDate: tradeDateOf(ts),
+    ...(barTs === undefined ? {} : { barTs }),
+    fillModel: settings.fillModel,
   }
 }
 
+export interface SubmitOptions {
+  /** Whether the current phase allows continuous matching. */
+  matchable: boolean
+  phase?: SessionPhase
+  /** Minute-bar volume for a participation-capped fill. */
+  barVolume?: number
+  barTs?: string
+}
+
 /**
- * Submit one order and, when it crosses immediately, fill it in the same batch.
- * Risk runs before any event is written; a rejection is still a ledger event.
+ * Submit one order. Risk runs before any event is written; a rejection is still
+ * a ledger event. Orders accepted outside the matching phase are `queued` and
+ * never fill until a later tick.
  */
 export function submit(
   state: AccountState,
@@ -91,14 +122,17 @@ export function submit(
     limitPrice?: number
     price?: number
     name?: string
+    note?: string
+    tradeDate?: string
   },
   quote: Quote | null,
   requestId: string,
   ts: string,
+  options: SubmitOptions = { matchable: true },
 ): EngineResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
-  const tradeDate = tradeDateOf(ts)
+  const tradeDate = draft.tradeDate ?? tradeDateOf(ts)
   const order: Order = {
     id: `ord-${tradeDate}-${state.lastSeq + 1}`,
     requestId,
@@ -108,12 +142,16 @@ export function submit(
     type: draft.type,
     qty: draft.qty,
     limitPrice: draft.limitPrice,
-    status: 'pending',
+    status: options.matchable ? 'pending' : 'queued',
+    note: draft.note,
+    phase: options.phase,
     createdAt: ts,
     updatedAt: ts,
+    filledQty: 0,
+    remainingQty: draft.qty,
     tradeDate,
   }
-  const risk = checkOrder(working, draft, quote, working.settings)
+  const risk = checkOrder(working, draft, quote, working.settings, tradeDate)
   if (!risk.ok) {
     const rejected: Order = { ...order, status: 'rejected', reason: `${risk.code}: ${risk.message}` }
     append(working, events, {
@@ -122,24 +160,33 @@ export function submit(
     }, ts)
     return { events, state: working, order: working.orders[rejected.id] }
   }
-
-  append(working, events, { type: 'order.submitted', payload: { order, quote } }, ts)
-  if (quote !== null) {
+  append(working, events, { type: 'order.submitted', payload: { order, quote: quote ?? { ...emptyQuote(draft.symbol) }, phase: options.phase } }, ts)
+  if (options.matchable && quote !== null) {
     const decision = decideFill(order, quote, working.settings, Date.parse(ts))
     if (decision.fill && decision.price !== undefined) {
-      append(working, events, {
-        type: 'order.filled',
-        payload: { orderId: order.id, fill: makeFill(order, decision.price, ts, working.settings) },
-      }, ts)
+      const qty = fillQty(order, options.barVolume, working.settings)
+      if (qty > 0) {
+        const complete = qty >= order.remainingQty
+        append(working, events, {
+          type: complete ? 'order.filled' : 'order.partially_filled',
+          payload: { orderId: order.id, fill: makeFill(working, order, decision.price, qty, ts, working.settings, options.barTs) },
+        }, ts)
+      }
     }
   }
   return { events, state: working, order: working.orders[order.id] }
 }
 
+function emptyQuote(symbol: string): Quote {
+  return { symbol, last: 0, marketTs: null }
+}
+
 export function cancelOrder(state: AccountState, orderId: string, ts: string): EngineResult {
   const order = state.orders[orderId]
   if (order === undefined) return { events: [], state, order: undefined }
-  if (order.status !== 'pending') return { events: [], state, order }
+  if (order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled') {
+    return { events: [], state, order }
+  }
   const working = clone(state)
   const events: LedgerEvent[] = []
   append(working, events, { type: 'order.canceled', payload: { orderId, reason: 'user', at: ts } }, ts)
@@ -152,45 +199,36 @@ export interface TickResult extends EngineResult {
   notices: string[]
 }
 
-/**
- * Refresh prices and process pending orders. The service calls this on demand;
- * there is no background loop in the MVP.
- */
-export function tick(state: AccountState, quotes: Quote[], ts: string): TickResult {
+/** Match resting orders against a fresh quote/bar. Day expiry is handled by closeDay. */
+export function tick(
+  state: AccountState,
+  quotes: Quote[],
+  ts: string,
+  barVolumes: Record<string, number> = {},
+): TickResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
   const filled: Order[] = []
   const expired: Order[] = []
   const notices: string[] = []
-  const tradeDate = tradeDateOf(ts)
-
-  if (state.tradeDate !== '' && tradeDate > state.tradeDate) {
-    const closed: DayPoint = { date: working.tradeDate, equityCents: equityCents(working), cashCents: working.cashCents, nextDate: tradeDate }
-    append(working, events, { type: 'day.closed', payload: closed }, ts)
-    for (const order of Object.values(working.orders)) {
-      if (order.status !== 'pending') continue
-      append(working, events, { type: 'order.canceled', payload: { orderId: order.id, reason: 'expired', at: ts } }, ts)
-      expired.push(working.orders[order.id])
-    }
-  }
-
   const quoteMap = new Map(quotes.map(quote => [quote.symbol, quote]))
+
   for (const quote of quotes) {
     const position = working.positions[quote.symbol]
     if (position !== undefined) {
       position.lastPrice = quote.last
-      position.lastTs = quote.ts
+      position.lastTs = quote.marketTs ?? quote.ts ?? ts
     }
   }
 
   for (const order of Object.values(working.orders)) {
-    if (order.status !== 'pending') continue
+    if (order.status !== 'pending' && order.status !== 'partially_filled') continue
     const quote = quoteMap.get(order.symbol)
     if (quote === undefined) continue
     const decision = decideFill(order, quote, working.settings, Date.parse(ts))
     if (!decision.fill || decision.price === undefined) continue
     if (order.side === 'buy') {
-      const amount = amountCents(decision.price, order.qty)
+      const amount = amountCents(decision.price, order.remainingQty)
       const fees = computeFees(amount, 'buy', working.settings)
       if (working.cashCents < amount + fees.totalCents) {
         append(working, events, { type: 'order.canceled', payload: { orderId: order.id, reason: 'insufficient_cash', at: ts } }, ts)
@@ -199,20 +237,138 @@ export function tick(state: AccountState, quotes: Quote[], ts: string): TickResu
       }
     } else {
       const position = working.positions[order.symbol]
-      if (position === undefined || position.available < order.qty) {
+      if (position === undefined || position.available < order.remainingQty) {
         append(working, events, { type: 'order.canceled', payload: { orderId: order.id, reason: 'insufficient_position', at: ts } }, ts)
         notices.push(`${order.symbol} 挂单因可卖不足取消`)
         continue
       }
     }
+    const qty = fillQty(order, barVolumes[order.symbol], working.settings)
+    if (qty <= 0) {
+      notices.push(`${order.symbol} 挂单受成交量约束暂未成交`)
+      continue
+    }
+    const complete = qty >= order.remainingQty
     append(working, events, {
-      type: 'order.filled',
-      payload: { orderId: order.id, fill: makeFill(order, decision.price, ts, working.settings) },
+      type: complete ? 'order.filled' : 'order.partially_filled',
+      payload: { orderId: order.id, fill: makeFill(working, order, decision.price, qty, ts, working.settings, quote.marketTs ?? undefined) },
     }, ts)
     filled.push(working.orders[order.id])
   }
 
   return { events, state: working, filled, expired, notices }
+}
+
+/** Promote queued orders once continuous matching is available again (e.g. 13:00). */
+export function releaseQueued(state: AccountState, ts: string, tradeDate?: string): EngineResult {
+  const working = clone(state)
+  const events: LedgerEvent[] = []
+  for (const order of Object.values(working.orders)) {
+    if (order.status !== 'queued') continue
+    if (tradeDate !== undefined && order.tradeDate !== tradeDate) continue
+    append(working, events, { type: 'order.released', payload: { orderId: order.id, at: ts } }, ts)
+  }
+  return { events, state: working }
+}
+
+export interface DayCloseOptions {
+  date: string
+  nextTradeDate: string
+  ts: string
+  recordedAt: string
+  quotes: Quote[]
+  closeSource: 'daily' | 'last' | 'missing'
+}
+
+/** Close one trade date: snapshot, day-order expiry. T+1 stays for the next open. */
+export function closeDay(state: AccountState, options: DayCloseOptions): EngineResult {
+  const working = clone(state)
+  const events: LedgerEvent[] = []
+  const closePrices: Record<string, number> = {}
+  for (const quote of options.quotes) closePrices[quote.symbol] = quote.last
+  const positions: PositionSnapshot[] = Object.values(working.positions).map(position => ({
+    symbol: position.symbol,
+    name: position.name,
+    qty: position.qty,
+    available: position.available,
+    costCents: position.costCents,
+    lastPrice: position.lastPrice,
+  }))
+  for (const position of Object.values(working.positions)) {
+    const close = closePrices[position.symbol]
+    if (close !== undefined) {
+      position.lastPrice = close
+      position.lastTs = options.ts
+    }
+  }
+  const feesCents = working.fills
+    .filter(fill => fill.tradeDate === options.date)
+    .reduce((sum, fill) => sum + fill.fees.totalCents, 0)
+  const point: DayPoint = {
+    date: options.date,
+    equityCents: equityCents(working),
+    cashCents: working.cashCents,
+    nextDate: options.nextTradeDate,
+    feesCents,
+    closePrices,
+    positions,
+    gaps: working.gaps,
+    closeSource: options.closeSource,
+    recordedAt: options.recordedAt,
+  }
+  append(working, events, { type: 'day.closed', payload: point }, options.ts)
+  for (const order of Object.values(working.orders)) {
+    if (order.tradeDate !== options.date) continue
+    if (order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled') continue
+    append(working, events, { type: 'order.canceled', payload: { orderId: order.id, reason: 'expired', at: options.ts } }, options.ts)
+  }
+  return { events, state: working }
+}
+
+/** Switch to the new trade date at 09:15 without unlocking T+1. */
+export function preOpenDay(state: AccountState, date: string, ts: string): EngineResult {
+  const working = clone(state)
+  const events: LedgerEvent[] = []
+  append(working, events, { type: 'day.pre_opened', payload: { date, at: ts } }, ts)
+  return { events, state: working }
+}
+
+export interface DayOpenOptions {
+  date: string
+  ts: string
+  recordedAt: string
+  quotes: Quote[]
+}
+
+/** Open a trade date: advance tradeDate, snapshot opens/gaps, unlock T+1. */
+export function openDay(state: AccountState, options: DayOpenOptions): EngineResult {
+  const working = clone(state)
+  const events: LedgerEvent[] = []
+  const openPrices: Record<string, number> = {}
+  const prevClose: Record<string, number> = {}
+  const gaps: Record<string, number> = {}
+  for (const quote of options.quotes) {
+    openPrices[quote.symbol] = quote.last
+    if (quote.prevClose !== undefined) {
+      prevClose[quote.symbol] = quote.prevClose
+      gaps[quote.symbol] = quote.prevClose > 0 ? (quote.last - quote.prevClose) / quote.prevClose : 0
+    }
+  }
+  const payload: DayOpened = {
+    date: options.date,
+    openPrices,
+    prevClose,
+    gaps,
+    t1Unlocked: working.settings.enableT1,
+    recordedAt: options.recordedAt,
+  }
+  append(working, events, { type: 'day.opened', payload }, options.ts)
+  for (const order of Object.values(working.orders)) {
+    if (order.status === 'queued' && order.tradeDate === options.date) {
+      append(working, events, { type: 'order.released', payload: { orderId: order.id, at: options.ts } }, options.ts)
+    }
+  }
+  return { events, state: working }
 }
 
 /** Mark-to-market equity in cents; falls back to cost basis when no price is known. */

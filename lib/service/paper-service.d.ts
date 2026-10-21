@@ -1,9 +1,11 @@
-import type { AccountView, FillView, OrderDraft, OrderView, PaperSettings, PreviewView, ReviewView, TickView } from '../contract.js';
+import type { AccountView, CashFlowEntry, DayReport, FillView, MarketStatus, OrderDraft, OrderView, PaperSettings, PreviewView, ReviewView, RoundTrip, TickView } from '../contract.js';
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js';
+import type { TradingCalendarPort } from '../data/trading-calendar-port.js';
 import type { AccountStore } from '../store/port.js';
 export interface PaperServiceOptions {
     repo: AccountStore;
     data: MarketDataPort;
+    calendar: TradingCalendarPort;
     settings?: PaperSettings;
     accountId?: string;
     now?: () => Date;
@@ -11,7 +13,7 @@ export interface PaperServiceOptions {
         warn(message: string): void;
     };
 }
-/** Orchestrates the ledger, the data port and the clock. No IO of its own. */
+/** Orchestrates the ledger, the data port, the calendar and the clock. No IO of its own. */
 export declare class PaperService {
     private readonly options;
     private readonly settings;
@@ -25,11 +27,22 @@ export declare class PaperService {
     private symbolsInPlay;
     /**
      * Fetch quotes once and normalise failures into the port's four-state result,
-     * so every caller (preview, place, tick, rollover) reports the same shape.
+     * so every caller (preview, place, tick, day boundaries) reports the same shape.
      */
     private fetchQuotes;
-    private rollover;
+    private fetchBars;
+    private boundaryQuotes;
+    private hasClosed;
+    private runClose;
+    private runOpen;
+    /**
+     * Idempotent clock advance: close every due trade date and open the next one.
+     * Missed sessions produce snapshots only, never fills.
+     */
+    private advanceTo;
     private quoteFor;
+    private volumeFor;
+    private orderDateFor;
     preview(draft: OrderDraft): Promise<PreviewView>;
     place(draft: OrderDraft, requestId?: string): Promise<OrderView>;
     cancel(orderId: string): Promise<OrderView>;
@@ -38,13 +51,28 @@ export declare class PaperService {
     trades(): Promise<FillView[]>;
     review(period?: '7d' | '30d' | 'all'): Promise<ReviewView>;
     quote(symbols: string[]): Promise<QuoteResult>;
-    bars(symbol: string, limit?: number): Promise<BarsResult>;
+    dailyBars(symbol: string, limit?: number): Promise<BarsResult>;
+    minuteBars(symbol: string, date?: string): Promise<BarsResult>;
+    search(query: string, limit?: number): Promise<Awaited<ReturnType<MarketDataPort['search']>>>;
+    marketList(input?: {
+        board?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<import("../contract.js").MarketListResult>;
     settingsView(): Promise<PaperSettings>;
+    private marketStatusAt;
+    private nextBoundaryFor;
+    marketStatus(): Promise<MarketStatus>;
+    cashFlow(): Promise<CashFlowEntry[]>;
+    dailyReport(date?: string): Promise<DayReport[]>;
+    roundtrips(): Promise<RoundTrip[]>;
     /**
      * Wipe the account while keeping its current settings. The reset command goes
      * through the same append path as every other command, so the ledger still
      * verifies and the pre-reset file is copied aside first.
      */
     reset(confirm: boolean): Promise<AccountView>;
+    /** Exposed for tests/scenarios: current equity in cents after advancing the clock. */
+    equityCents(): Promise<number>;
 }
 //# sourceMappingURL=paper-service.d.ts.map

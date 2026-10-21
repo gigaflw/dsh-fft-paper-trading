@@ -31,7 +31,9 @@ export function renderPreview(preview: PreviewView): string {
 
 export function renderOrder(order: OrderView): string {
   const status: Record<OrderView['status'], string> = {
+    queued: '已排队',
     pending: '挂单中',
+    partially_filled: '部分成交',
     filled: '已成交',
     canceled: '已撤单',
     rejected: '已拒绝',

@@ -16,7 +16,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-tools'
 import { registerPaperTools, type ToolsLike } from './agent/tools.js'
 import { FtshareMarketData, type FtshareDataLike } from './data/ftshare-market-data.js'
+import { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
 import type { MarketDataPort } from './data/market-data-port.js'
+import type { TradingCalendarPort } from './data/trading-calendar-port.js'
+import { WeekdayTradingCalendar } from './data/trading-calendar-port.js'
 import { UnavailableMarketData } from './data/unavailable-market-data.js'
 import { PaperService } from './service/paper-service.js'
 import { createPaperRoute, type HostConnectionLike } from './service/route.js'
@@ -31,6 +34,8 @@ export { createPaperRpcHandler } from './service/rpc.js'
 export { createPaperRoute } from './service/route.js'
 export { AccountRepo } from './store/repo.js'
 export { FtshareMarketData } from './data/ftshare-market-data.js'
+export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
+export { WeekdayTradingCalendar } from './data/trading-calendar-port.js'
 export { UnavailableMarketData } from './data/unavailable-market-data.js'
 
 export const name = '@ft/dsh-fft-paper-trading'
@@ -48,20 +53,28 @@ export function apply(ctx: Context): void {
   // FTShare adapter can appear (or disappear) later without rebuilding the
   // service, the route or the tools.
   let market: MarketDataPort = new UnavailableMarketData()
+  let calendar: TradingCalendarPort = new WeekdayTradingCalendar()
   const data: MarketDataPort = {
     quotes: symbols => market.quotes(symbols),
     dailyBars: (symbol, limit) => market.dailyBars(symbol, limit),
+    minuteBars: (symbol, date) => market.minuteBars(symbol, date),
+    search: (query, limit) => market.search(query, limit),
+    marketList: input => market.marketList(input),
   }
 
-  const service = new PaperService({ repo, data, logger })
+  const service = new PaperService({ repo, data, calendar, logger })
   const handler = createPaperRpcHandler(service)
 
   ctx.inject(['ftshareData'], scope => {
-    const adapter = new FtshareMarketData(scope.get('ftshareData') as unknown as FtshareDataLike)
+    const service = scope.get('ftshareData') as unknown as FtshareDataLike
+    const adapter = new FtshareMarketData(service)
+    const calendarAdapter = new FtshareTradingCalendar(service)
     market = adapter
+    calendar = calendarAdapter
     scope.effect(
       () => () => {
         if (market === adapter) market = new UnavailableMarketData()
+        if (calendar === calendarAdapter) calendar = new WeekdayTradingCalendar()
       },
       'ft-paper-trading: FTShare adapter',
     )

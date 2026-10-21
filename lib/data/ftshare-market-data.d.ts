@@ -1,3 +1,4 @@
+import type { MarketListResult, SymbolHit } from '../contract.js';
 import type { BarsResult, MarketDataPort, QuoteResult } from './market-data-port.js';
 /** Structural slice of `ctx.ftshareData`; no runtime import across packages. */
 export interface FtshareToolInfoLike {
@@ -39,8 +40,16 @@ export declare class FtshareMarketData implements MarketDataPort {
     private call;
     private quoteFor;
     private toQuote;
+    private toListQuote;
     quotes(symbols: string[]): Promise<QuoteResult>;
     dailyBars(symbol: string, limit: number): Promise<BarsResult>;
+    minuteBars(symbol: string, date?: string): Promise<BarsResult>;
+    search(query: string, limit: number): Promise<SymbolHit[]>;
+    marketList(input?: {
+        board?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<MarketListResult>;
     private toBar;
 }
 export {};
