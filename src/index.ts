@@ -26,6 +26,7 @@ import { createPaperRoute, type HostConnectionLike } from './service/route.js'
 import { createPaperRpcHandler } from './service/rpc.js'
 import { AccountRepo } from './store/repo.js'
 import { resolveDshHome } from './store/paths.js'
+import { WatchlistStore } from './store/watchlist.js'
 import { DEFAULT_ACCOUNT_ID } from './contract.js'
 
 export * from './contract.js'
@@ -48,6 +49,7 @@ export function apply(ctx: Context): void {
   const logger = ctx.logger('ft-paper-trading')
   const home = resolveDshHome()
   const repo = new AccountRepo({ home, accountId: DEFAULT_ACCOUNT_ID, logger })
+  const watchlist = new WatchlistStore(home)
 
   // One mutable slot behind a stable port: the service holds the port, the
   // FTShare adapter can appear (or disappear) later without rebuilding the
@@ -62,7 +64,7 @@ export function apply(ctx: Context): void {
     marketList: input => market.marketList(input),
   }
 
-  const service = new PaperService({ repo, data, calendar, logger })
+  const service = new PaperService({ repo, data, calendar, watchlist, logger })
   const handler = createPaperRpcHandler(service)
 
   ctx.inject(['ftshareData'], scope => {

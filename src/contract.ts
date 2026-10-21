@@ -262,6 +262,10 @@ export interface CashFlowEntry {
   ref?: string
 }
 
+export interface WatchlistView {
+  symbols: string[]
+}
+
 export interface RoundTrip {
   symbol: string
   name?: string

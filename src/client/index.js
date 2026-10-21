@@ -41,11 +41,21 @@ window.__ModuleLoader__.load({
       return `${number >= 0 ? '+' : ''}${number.toFixed(2)}`
     }
     const statusText = {
+      queued: '排队',
       pending: '挂单',
+      partially_filled: '部分成交',
       filled: '成交',
       canceled: '已撤',
       rejected: '拒绝',
       expired: '过期',
+    }
+    const PHASE_TEXT = {
+      pre_open: '集合竞价',
+      continuous_am: '上午连续竞价',
+      lunch: '午休',
+      continuous_pm: '下午连续竞价',
+      auction_close: '收盘竞价',
+      closed: '已收盘',
     }
 
     const CSS = `
@@ -204,7 +214,36 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function Dashboard() {
+
+    /** Candlestick/line chart from daily or minute bars; no external chart lib. */
+    function PriceChart({ bars, interval }) {
+      if (!Array.isArray(bars) || bars.length === 0) return h('div', { className: 'pt-empty' }, '暂无 K 线数据')
+      const width = 640
+      const height = 200
+      const values = bars.map(bar => bar.close)
+      const min = Math.min(...bars.map(bar => bar.low ?? bar.close))
+      const max = Math.max(...bars.map(bar => bar.high ?? bar.close))
+      const span = max - min || Math.max(1, max * 0.02)
+      const x = index => bars.length === 1 ? width / 2 : (index / (bars.length - 1)) * (width - 20) + 10
+      const y = value => height - ((value - min) / span) * (height - 24) - 12
+      const line = bars.map((bar, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(bar.close).toFixed(1)}`).join(' ')
+      return h('svg', { className: 'pt-chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': interval === 'minute' ? '分时图' : '日K线' },
+        interval === 'minute'
+          ? h('path', { d: line, fill: 'none', stroke: 'var(--pt-accent, #cf5623)', strokeWidth: 1.6 })
+          : h('g', null, bars.map((bar, index) => {
+            const up = bar.close >= bar.open
+            const color = up ? 'var(--pt-rise, #f04462)' : 'var(--pt-fall, #00b578)'
+            const top = y(Math.max(bar.open, bar.close))
+            const bottom = y(Math.min(bar.open, bar.close))
+            return h('g', { key: `${bar.time}-${index}` },
+              h('line', { x1: x(index), x2: x(index), y1: y(bar.high), y2: y(bar.low), stroke: color, strokeWidth: 1 }),
+              h('rect', { x: x(index) - 2.5, y: top, width: 5, height: Math.max(1, bottom - top), fill: color }),
+            )
+          })),
+      )
+    }
+
+    function Dashboard({ renderSlot } = {}) {
       const [account, setAccount] = useState(null)
       const [orders, setOrders] = useState([])
       const [trades, setTrades] = useState([])
@@ -216,6 +255,18 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState(false)
       const [quote, setQuote] = useState(null)
       const [preview, setPreview] = useState(null)
+      const [session, setSession] = useState(null)
+      const [searchQuery, setSearchQuery] = useState('')
+      const [searchHits, setSearchHits] = useState([])
+      const [marketList, setMarketList] = useState(null)
+      const [marketBoard, setMarketBoard] = useState('main')
+      const [bars, setBars] = useState([])
+      const [barInterval, setBarInterval] = useState('day')
+      const [daily, setDaily] = useState([])
+      const [cashFlow, setCashFlow] = useState([])
+      const [trips, setTrips] = useState([])
+      const [watchlist, setWatchlist] = useState([])
+      const [watchOnly, setWatchOnly] = useState(false)
       const [form, setForm] = useState({
         symbol: '600519',
         side: 'buy',
@@ -223,6 +274,7 @@ window.__ModuleLoader__.load({
         qty: '100',
         limitPrice: '',
         price: '',
+        note: '',
       })
 
       const alive = useRef(true)
@@ -233,17 +285,19 @@ window.__ModuleLoader__.load({
 
       const loadAll = useCallback(async (quiet = false) => {
         try {
-          const [nextAccount, nextOrders, nextTrades, nextReview] = await Promise.all([
+          const [nextAccount, nextOrders, nextTrades, nextReview, nextSession] = await Promise.all([
             rpc('account/get'),
             rpc('list/orders'),
             rpc('list/trades'),
             rpc('review/get', { period }),
+            rpc('market/status'),
           ])
           if (!alive.current) return
           setAccount(nextAccount)
           setOrders(nextOrders)
           setTrades(nextTrades)
           setReview(nextReview)
+          setSession(nextSession)
           if (!quiet) setError('')
         } catch (cause) {
           if (alive.current) setError(cause.message)
@@ -271,6 +325,74 @@ window.__ModuleLoader__.load({
         return () => clearInterval(timer)
       }, [tick])
 
+      const loadBars = useCallback(async (symbol = form.symbol) => {
+        if (!symbol.trim()) return
+        try {
+          const result = await rpc('market/bars', { symbol: symbol.trim(), interval: barInterval, limit: 80 })
+          if (alive.current) setBars(result.bars ?? [])
+        } catch (cause) {
+          if (alive.current) setError(cause.message)
+        }
+      }, [form.symbol, barInterval])
+
+      const runSearch = useCallback(async () => {
+        if (!searchQuery.trim()) return
+        try {
+          setSearchHits(await rpc('market/search', { query: searchQuery.trim(), limit: 12 }))
+        } catch (cause) {
+          setError(cause.message)
+        }
+      }, [searchQuery])
+
+      const loadMarket = useCallback(async (page = 1) => {
+        try {
+          setMarketList(await rpc('market/list', { board: marketBoard, page, pageSize: 50 }))
+        } catch (cause) {
+          setError(cause.message)
+        }
+      }, [marketBoard])
+
+      const loadReviewDetail = useCallback(async () => {
+        try {
+          const [nextDaily, nextCash, nextTrips] = await Promise.all([
+            rpc('review/daily'),
+            rpc('cash/flow'),
+            rpc('review/roundtrips'),
+          ])
+          if (!alive.current) return
+          setDaily(nextDaily)
+          setCashFlow(nextCash)
+          setTrips(nextTrips)
+        } catch (cause) {
+          if (alive.current) setError(cause.message)
+        }
+      }, [])
+
+      useEffect(() => {
+        if (tab === 'market') void loadBars()
+      }, [tab, barInterval, loadBars])
+
+      useEffect(() => {
+        if (tab === 'review') void loadReviewDetail()
+      }, [tab, loadReviewDetail])
+
+      useEffect(() => {
+        if (tab === 'market') {
+          void loadMarket(1)
+          rpc('watchlist/get').then(result => { if (alive.current) setWatchlist(result.symbols ?? []) }).catch(() => {})
+        }
+      }, [tab, marketBoard, loadMarket])
+
+      const toggleWatch = useCallback(async (symbol) => {
+        const next = watchlist.includes(symbol) ? watchlist.filter(item => item !== symbol) : [...watchlist, symbol]
+        try {
+          const result = await rpc('watchlist/set', { symbols: next })
+          if (alive.current) setWatchlist(result.symbols ?? next)
+        } catch (cause) {
+          if (alive.current) setError(cause.message)
+        }
+      }, [watchlist])
+
       const refreshQuote = useCallback(async () => {
         if (!form.symbol.trim()) return
         setBusy(true)
@@ -292,6 +414,7 @@ window.__ModuleLoader__.load({
         qty: Number(form.qty),
         limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
         price: form.type === 'market' && form.price !== '' ? Number(form.price) : undefined,
+        note: form.note.trim() === '' ? undefined : form.note.trim(),
       }), [form])
 
       const doPreview = useCallback(async () => {
@@ -351,8 +474,8 @@ window.__ModuleLoader__.load({
         }
       }, [loadAll])
 
-      const pending = useMemo(() => orders.filter(order => order.status === 'pending'), [orders])
-      const history = useMemo(() => orders.filter(order => order.status !== 'pending'), [orders])
+      const pending = useMemo(() => orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled'), [orders])
+      const history = useMemo(() => orders.filter(order => order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled'), [orders])
       const positions = account?.positions ?? []
 
       if (account === null) {
@@ -366,7 +489,10 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-head' },
             h('div', null,
               h('h3', { className: 'pt-title' }, '模拟盘'),
-              h('div', { className: 'pt-sub' }, `${account.tradeDate} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`),
+              h('div', { className: 'pt-sub' },
+                `${account.tradeDate} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
+                session && !session.canMatch ? h('span', { className: 'pt-note' }, '（仅可预埋限价单）') : null,
+              ),
             ),
             h('div', { className: 'pt-row' },
               h('button', { className: 'pt-btn', onClick: () => loadAll(), disabled: busy }, '刷新'),
@@ -383,7 +509,7 @@ window.__ModuleLoader__.load({
           error ? h('div', { className: 'pt-error' }, error) : null,
           notice ? h('div', { className: 'pt-note' }, notice) : null,
           h('div', { className: 'pt-tabs' },
-            [['trade', '交易'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
+            [['trade', '交易'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
               h('button', { key, className: 'pt-tab', 'data-active': tab === key, onClick: () => setTab(key) }, label),
             ),
           ),
@@ -419,9 +545,7 @@ window.__ModuleLoader__.load({
               quote ? h('div', { className: 'pt-quote', style: { marginTop: 8 } },
                 h('span', null, `${quote.symbol} ${quote.name ?? ''}`),
                 h('span', null, `现价 ${quote.last.toFixed(2)}`),
-                h('span', null, `买一 ${quote.bid.toFixed(2)}`),
-                h('span', null, `卖一 ${quote.ask.toFixed(2)}`),
-                h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : new Date(quote.ts).toLocaleTimeString()),
+                h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : quote.marketTs ? new Date(quote.marketTs).toLocaleTimeString() : '无行情时间'),
               ) : h('div', { className: 'pt-note', style: { marginTop: 8 } }, '未取到行情时可填参考价，市价单按参考价成交。'),
               form.type === 'market' ? h('div', { className: 'pt-row', style: { marginTop: 8 } },
                 h(Field, { label: '参考价（可选）' }, h(DebouncedNumber, {
@@ -431,7 +555,13 @@ window.__ModuleLoader__.load({
               ) : null,
               h('div', { className: 'pt-row', style: { marginTop: 8 } },
                 h('button', { className: 'pt-btn', onClick: doPreview, disabled: busy }, '预览'),
-                h('button', { className: 'pt-btn pt-btn-primary', onClick: doSubmit, disabled: busy }, form.side === 'buy' ? '买入' : '卖出'),
+                h('button', { className: 'pt-btn pt-btn-primary', onClick: doSubmit, disabled: busy || (form.type === 'market' && session !== null && !session.canMatch) }, form.side === 'buy' ? '买入' : '卖出'),
+              ),
+              h('div', { className: 'pt-row', style: { marginTop: 8 } },
+                h(Field, { label: '备注（复盘用）' }, h('input', {
+                  className: 'pt-input', style: { flex: 1, minWidth: 180 }, value: form.note, maxLength: 120,
+                  onChange: event => setForm(prev => ({ ...prev, note: event.target.value })),
+                })),
               ),
             ),
             h('div', { className: 'pt-card' },
@@ -445,6 +575,95 @@ window.__ModuleLoader__.load({
                 h('div', null, h('span', null, '成交后现金'), h('span', null, cents(preview.cashAfterCents))),
                 preview.warnings.length > 0 ? h('div', { className: 'pt-warn' }, preview.warnings.join('；')) : null,
               ) : h('div', { className: 'pt-empty' }, '点「预览」计算费用与现金影响'),
+            ),
+          ) : null,
+
+
+          tab === 'market' ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+            h('div', { className: 'pt-card' },
+              h('div', { className: 'pt-card-title' }, '搜索标的'),
+              h('div', { className: 'pt-row' },
+                h('input', {
+                  className: 'pt-input', style: { flex: 1, minWidth: 200 }, value: searchQuery,
+                  placeholder: '代码或名称，例如 600519 / 贵州茅台',
+                  onChange: event => setSearchQuery(event.target.value),
+                  onKeyDown: event => { if (event.key === 'Enter') void runSearch() },
+                }),
+                h('button', { className: 'pt-btn', onClick: runSearch, disabled: busy }, '搜索'),
+              ),
+              searchHits.length > 0 ? h('div', { style: { marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 } },
+                searchHits.map(hit => h('div', { key: hit.symbol, className: 'pt-row' },
+                  h('button', {
+                    className: 'pt-btn', style: { flex: 1, justifyContent: 'flex-start' },
+                    onClick: () => {
+                      setForm(prev => ({ ...prev, symbol: hit.symbol }))
+                      setQuote(null)
+                      setTab('trade')
+                      rpc('market/quote', { symbols: [hit.symbol] }).then(result => setQuote(result.quotes[0] ?? null)).catch(cause => setError(cause.message))
+                      void loadBars(hit.symbol)
+                    },
+                  }, `${hit.symbol} ${hit.name}`),
+                  h('button', { className: 'pt-btn', onClick: () => toggleWatch(hit.symbol) }, watchlist.includes(hit.symbol) ? '已自选' : '加自选'),
+                )),
+              ) : null,
+            ),
+            h('div', { className: 'pt-card' },
+              h('div', { className: 'pt-row' },
+                h('div', { className: 'pt-card-title', style: { margin: 0 } }, '全市场'),
+                [['main', '主板'], ['star', '科创板'], ['chi_next', '创业板'], ['bjse', '北交所'], ['xshg', '沪市'], ['xshe', '深市']].map(([key, label]) =>
+                  h('button', { key, className: 'pt-btn', 'data-active': marketBoard === key, onClick: () => setMarketBoard(key) }, label),
+                ),
+                h('button', { className: 'pt-btn', 'data-active': watchOnly, onClick: () => setWatchOnly(value => !value) }, '只看自选'),
+                h('button', { className: 'pt-btn', onClick: () => loadMarket((marketList?.page ?? 1) + 1) }, '下一页'),
+              ),
+              marketList === null ? h('div', { className: 'pt-empty' }, '加载行情…')
+                : marketList.quotes.length === 0 ? h('div', { className: 'pt-empty' }, marketList.notice ?? '没有行情')
+                  : h(Table, null,
+                    h('thead', null, h('tr', null, ['代码', '名称', '现价', '涨跌幅', '状态', '自选'].map(label => h('th', { key: label }, label)))),
+                    h('tbody', null, marketList.quotes.filter(item => !watchOnly || watchlist.includes(item.symbol)).slice(0, 50).map(item => {
+                      const change = item.prevClose && item.prevClose > 0 ? (item.last - item.prevClose) / item.prevClose : null
+                      return h('tr', {
+                        key: `${item.symbol}-${item.last}`, style: { cursor: 'pointer' },
+                        onClick: () => { setForm(prev => ({ ...prev, symbol: item.symbol })); setQuote(item); setTab('trade'); void loadBars(item.symbol) },
+                      },
+                        h('td', null, item.symbol),
+                        h('td', null, item.name ?? '—'),
+                        h('td', null, item.last.toFixed(2)),
+                        h('td', { className: change !== null && change < 0 ? 'pt-down' : 'pt-up' }, change === null ? '—' : pct(change)),
+                        h('td', null, item.status ?? '—'),
+                        h('td', null, h('button', { className: 'pt-btn', onClick: event => { event.stopPropagation(); void toggleWatch(item.symbol) } }, watchlist.includes(item.symbol) ? '★' : '☆')),
+                      )
+                    })),
+                  ),
+            ),
+            h('div', { className: 'pt-card' },
+              h('div', { className: 'pt-row' },
+                h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${form.symbol} K 线`),
+                h('div', { className: 'pt-seg' },
+                  [['day', '日K'], ['minute', '分时']].map(([key, label]) =>
+                    h('button', { key, 'data-active': barInterval === key, onClick: () => setBarInterval(key) }, label),
+                  ),
+                ),
+                h('button', { className: 'pt-btn', onClick: () => loadBars() }, '刷新'),
+              ),
+              (() => {
+                const slot = typeof renderSlot === 'function'
+                  ? renderSlot('paperTrading.kline', {
+                    symbol: form.symbol,
+                    onIdentity: (symbol, name) => {
+                      if (!symbol) return
+                      setForm(prev => ({ ...prev, symbol }))
+                      setQuote(prev => prev && prev.symbol === symbol ? prev : null)
+                      void loadBars(symbol)
+                    },
+                  })
+                  : null
+                if (slot) return h('div', { style: { height: 420, minHeight: 280, marginTop: 8 } }, slot)
+                return h('div', null,
+                  h(PriceChart, { bars, interval: barInterval }),
+                  h('div', { className: 'pt-note' }, '安装 dsh_kline 后此处由它提供完整 K 线视图；当前为内置简图。'),
+                )
+              })(),
             ),
           ) : null,
 
@@ -535,6 +754,45 @@ window.__ModuleLoader__.load({
                   ))),
                 ),
               ),
+              h('div', null,
+                h('div', { className: 'pt-sub' }, '日终报告'),
+                daily.length === 0 ? h('div', { className: 'pt-empty' }, '暂无日终快照') : h(Table, null,
+                  h('thead', null, h('tr', null, ['日期', '权益', '当日盈亏', '费用', '收盘价来源'].map(label => h('th', { key: label }, label)))),
+                  h('tbody', null, daily.slice(-14).reverse().map(row => h('tr', { key: row.date },
+                    h('td', null, row.date),
+                    h('td', null, money(row.equity)),
+                    h('td', { className: row.dayPnl >= 0 ? 'pt-up' : 'pt-down' }, signed(row.dayPnl)),
+                    h('td', null, money(row.fees)),
+                    h('td', null, row.closeSource === 'daily' ? '日K收盘' : row.closeSource === 'last' ? '最后报价' : '缺失'),
+                  ))),
+                ),
+              ),
+              h('div', null,
+                h('div', { className: 'pt-sub' }, '资金流水'),
+                cashFlow.length === 0 ? h('div', { className: 'pt-empty' }, '暂无流水') : h(Table, null,
+                  h('thead', null, h('tr', null, ['时间', '类型', '金额', '余额'].map(label => h('th', { key: label }, label)))),
+                  h('tbody', null, cashFlow.slice(-30).reverse().map((row, index) => h('tr', { key: `${row.ts}-${index}` },
+                    h('td', null, new Date(row.ts).toLocaleString()),
+                    h('td', null, row.type),
+                    h('td', { className: row.amount >= 0 ? 'pt-up' : 'pt-down' }, signed(row.amount)),
+                    h('td', null, money(row.balance)),
+                  ))),
+                ),
+              ),
+              h('div', null,
+                h('div', { className: 'pt-sub' }, '回合统计'),
+                trips.length === 0 ? h('div', { className: 'pt-empty' }, '暂无已平仓回合') : h(Table, null,
+                  h('thead', null, h('tr', null, ['代码', '数量', '成本', '收入', '盈亏', '持有天数'].map(label => h('th', { key: label }, label)))),
+                  h('tbody', null, trips.slice(0, 30).map(trip => h('tr', { key: trip.symbol },
+                    h('td', null, trip.symbol),
+                    h('td', null, trip.qty),
+                    h('td', null, money(trip.cost)),
+                    h('td', null, money(trip.proceeds)),
+                    h('td', { className: trip.pnl >= 0 ? 'pt-up' : 'pt-down' }, signed(trip.pnl)),
+                    h('td', null, trip.holdingDays),
+                  ))),
+                ),
+              ),
             ) : h('div', { className: 'pt-empty' }, '加载复盘…'),
           ) : null,
         ),
@@ -565,6 +823,9 @@ window.__ModuleLoader__.load({
       ctx.slots.inject('main', () => ctx.slots.register({
         name: 'main',
         key: PANEL_ID,
+        children: {
+          'paperTrading.kline': { kind: 'single', scope: 'root' },
+        },
       }, Dashboard))
     }
 

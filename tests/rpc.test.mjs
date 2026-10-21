@@ -7,6 +7,7 @@ import { AccountRepo } from '../lib/store/repo.js'
 import { createPaperRpcHandler } from '../lib/service/rpc.js'
 import { createPaperRoute } from '../lib/service/route.js'
 import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
+import { WatchlistStore } from '../lib/store/watchlist.js'
 
 const NOW = new Date('2026-10-19T02:00:00.000Z')
 
@@ -32,7 +33,7 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     },
   }
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => NOW })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), watchlist: new WatchlistStore(home), now: () => NOW })
   const handler = createPaperRpcHandler(service)
   const route = createPaperRoute(handler)
   try {
@@ -63,6 +64,25 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     const account = await call('account/get', {})
     assert.equal(account.ok, true)
     assert.equal(account.value.positions.length, 1)
+
+    const status = await call('market/status', {})
+    assert.equal(status.ok, true)
+    assert.equal(status.value.tradeDate, '2026-10-19')
+    assert.equal(status.value.phase, 'continuous_am')
+
+    const watch = await call('watchlist/set', { symbols: ['600519'] })
+    assert.deepEqual(watch.value.symbols, ['600519'])
+    const watched = await call('watchlist/get', {})
+    assert.deepEqual(watched.value.symbols, ['600519'])
+
+    const bars = await call('market/bars', { symbol: '600519', interval: 'minute' })
+    assert.equal(bars.ok, true)
+    const daily = await call('review/daily', {})
+    assert.equal(daily.ok, true)
+    const flow = await call('cash/flow', {})
+    assert.equal(flow.ok, true)
+    const trips = await call('review/roundtrips', {})
+    assert.equal(trips.ok, true)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

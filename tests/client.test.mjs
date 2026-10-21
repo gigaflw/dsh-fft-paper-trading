@@ -63,6 +63,12 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.equal(panellist.options.id, 'ft-paper-trading')
   assert.ok(main, 'main panel missing')
   assert.equal(main.options.key, 'ft-paper-trading')
+  assert.deepEqual(main.options.children, {
+    'paperTrading.kline': { kind: 'single', scope: 'root' },
+  })
+  assert.match(source, /market\/status/)
+  assert.match(source, /review\/daily/)
+  assert.match(source, /paperTrading\.kline/)
   const glyph = panellist.component({ size: 16 })
   assert.ok(glyph, 'glyph did not render')
 })

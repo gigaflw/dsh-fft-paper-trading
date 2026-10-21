@@ -112,6 +112,7 @@ export class FtshareMarketData implements MarketDataPort {
   private readonly quoteTools: string[]
   private readonly klineTools: string[]
   private known: Set<string> | undefined
+  private suspensionCache: { date: string; symbols: Set<string> } | undefined
 
   constructor(private readonly service: FtshareDataLike, overrides: Mapping = {}) {
     this.quoteTools = overrides.quoteTools ?? DEFAULT_QUOTE_TOOLS
@@ -228,7 +229,28 @@ export class FtshareMarketData implements MarketDataPort {
     if (quotes.length === 0) {
       return { state: denied ? 'denied' : 'failed', quotes, notice: notices.join('；') || '行情不可用' }
     }
+    const suspended = await this.suspendedSymbols()
+    for (const quote of quotes) {
+      if (suspended.has(quote.symbol)) quote.status = 'suspended'
+    }
     return { state: 'ok', quotes, notice: notices.length > 0 ? notices.join('；') : undefined }
+  }
+
+  private async suspendedSymbols(): Promise<Set<string>> {
+    const date = todayTradeDate()
+    if (this.suspensionCache?.date === date) return this.suspensionCache.symbols
+    const symbols = new Set<string>()
+    try {
+      const result = await this.call('ft_v1_suspension_list', { page: 1, page_size: 200 })
+      for (const row of result.rows) {
+        const symbol = String(row.symbol ?? '').toUpperCase()
+        if (symbol !== '') symbols.add(symbol)
+      }
+    } catch {
+      // The suspension list is best effort; an outage must not block quotes.
+    }
+    this.suspensionCache = { date, symbols }
+    return symbols
   }
 
   async dailyBars(symbol: string, limit: number): Promise<BarsResult> {
