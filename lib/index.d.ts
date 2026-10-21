@@ -1,0 +1,28 @@
+/**
+ * Host entry for the paper-trading plugin.
+ *
+ * One business row carries both halves: this entry attaches the RPC route and
+ * the `paper_*` tools lazily; the browser half is a separate static module
+ * loaded by DSH's module scan.
+ *
+ * The three attachments are independent on purpose. Market data is the only
+ * optional dependency — the ledger, the panel and the tools must stay available
+ * without it, so quotes degrade to the port's `failed` state instead of taking
+ * the whole row down.
+ * @module @ft/dsh-fft-paper-trading
+ */
+import type { Context } from '@deepseek-ai/cordis';
+export * from './contract.js';
+export { PaperService } from './service/paper-service.js';
+export { createPaperRpcHandler } from './service/rpc.js';
+export { createPaperRoute } from './service/route.js';
+export { AccountRepo } from './store/repo.js';
+export { FtshareMarketData } from './data/ftshare-market-data.js';
+export { UnavailableMarketData } from './data/unavailable-market-data.js';
+export declare const name = "@ft/dsh-fft-paper-trading";
+/**
+ * Services are attached lazily: the browser scan needs this row's fiber, so the
+ * plugin must not gate activation on optional services.
+ */
+export declare function apply(ctx: Context): void;
+//# sourceMappingURL=index.d.ts.map
