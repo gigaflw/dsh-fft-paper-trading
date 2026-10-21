@@ -97,6 +97,15 @@ export function createPaperRpcHandler(service: PaperService): PaperRpcHandler {
           return ok(await service.roundtrips())
         case 'cash/flow':
           return ok(await service.cashFlow())
+        case 'watchlist/get':
+          return ok({ symbols: await service.watchlist() })
+        case 'watchlist/set': {
+          const input = record(payload ?? {})
+          const symbols = Array.isArray(input.symbols)
+            ? input.symbols.filter((item): item is string => typeof item === 'string')
+            : []
+          return ok({ symbols: await service.setWatchlist(symbols) })
+        }
         case 'order/preview':
           return ok(await service.preview(draft(payload)))
         case 'order/place': {

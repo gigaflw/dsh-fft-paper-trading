@@ -1,6 +1,6 @@
 # 模拟盘子插件架构
 
-> 状态：v0.1 已落地（分支 `feat/paper-trading`，包版本 `0.1.0`）；v0.2 的 P0/P1 设计见 §19（待实施）。
+> 状态：v0.1 已落地；v0.2 P0/P1 已实施（分支 `feat/paper-trading`），K 线视图由 dsh_kline 的 slot 提供，详见 §19.12。
 > 本文写架构、模块边界、账本与扩展方式；v0.1 的范围与验收见 [mvp.md](mvp.md)。
 > 配图：图 1–3 见文内。
 > 目标包：`@ft/dsh-fft-paper-trading`
@@ -548,7 +548,7 @@ $DSH_HOME/paper-trading/
 | D20 | 日终/隔夜/回合/流水全部从事件推导 | 避免第二套账本，报表与持仓现金天然一致（§19.6） |
 | D21 | 不引入 Nautilus/Lean 运行时 | LGPL/Apache 之外还有语言与数据适配成本；只借模型边界（§19.10） |
 
-## 19 v0.2：P0/P1 改造设计（待实施）
+## 19 v0.2：P0/P1 改造设计
 
 > 本节是增量设计，§1–18 仍是 v0.1 现状。目标：把「账本正确」升级为「市场节奏正确」——时间不加速、非交易时段不成交、收盘用收盘价、次日开盘才解锁 T+1。
 > 外部事实：[开源模拟交易实现](../../thirdparty/sim-trading-open-source.md)；选型分析：[P0/P1 选型](../../investigation/sim-trading-p0-p1.md)。
@@ -931,6 +931,23 @@ src/service/market-clock.ts  # 定时器 + advanceTo 补算
 
 **本仓自己实现**：时段门禁、日终/开盘快照、涨跌停、参与率部分成交、日终/隔夜/回合/流水。理由是产品参考已经给了目标，实现机制再借开源项目的模型边界；不引运行时、数据源已固定、账本必须可重放。
 
+### 19.12 K 线视图接入（dsh_kline slot）
+
+paper-trading **不自己画完整 K 线**，只声明一个子槽位；dsh_kline 安装时把可嵌入视图注册进来：
+
+```text
+paper-trading main 注册
+  children: { 'paperTrading.kline': { kind: 'single', scope: 'root' } }
+        │
+        ├─ dsh_kline 未安装：paper-trading 渲染内置 SVG 简图（日 K / 分时）
+        └─ dsh_kline 安装：ctx.slots.inject('paperTrading.kline', register(PaperKlinePanel))
+```
+
+- 槽位名 `paperTrading.kline`，props `{ symbol, onIdentity(symbol, name) }`；
+- `PaperKlinePanel` 复用 `StandaloneKlineApp`，数据、指标、画线仍由 dsh_kline 负责；
+- 在 K 线内选标的会通过 `onIdentity` 回填交易 ticket 并刷新简图；paper-trading 不直接 import dsh_kline 的运行时值（DSH 禁止跨特性包值导入）；
+- dsh_kline 侧改动在本地分支 `feat/paper-trading-panel`，发布新版本后把 bundle 的 `@ftshare-lab/dsh-kline` pin 前移即可；未发布时功能自动降级为内置简图。
+
 ### 19.11 不做 / 推迟
 
 - 保证金、卖空、强平（现金账户；两融是产品范围变更）；
@@ -944,14 +961,14 @@ src/service/market-clock.ts  # 定时器 + advanceTo 补算
 
 > 下面是 v0.1 的状态机；v0.2 增加 `queued` 与 `partially_filled`，见 §19.5。
 
-订单状态：`pending → filled | canceled | rejected | expired`；`pending` 只能被 `tick`、撤单或过期改变。
+订单状态：`queued → pending → partially_filled → filled`，以及 `canceled / rejected / expired`；只有 `pending` / `partially_filled` 能被 `tick` 改变，`queued` 在 `day.opened` 释放。
 
 ```
 提交 ──风控拒绝──▶ rejected
   │
-  ├─市价─▶ filled
-  └─限价─▶ pending ──tick 命中──▶ filled
-                 └──撤单/过期──▶ canceled / expired
+  ├─连续竞价──▶ pending ──tick 命中──▶ partially_filled ──▶ filled
+  │                 └──撤单/收盘──▶ canceled / expired
+  └─非连续时段──▶ queued ──day.opened──▶ pending
 ```
 
 ![图 3 · 报单生命周期](figures/fig-3.png)

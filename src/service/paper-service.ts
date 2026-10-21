@@ -24,12 +24,14 @@ import type { AccountState, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js'
 import type { AccountStore } from '../store/port.js'
+import type { WatchlistStore } from '../store/watchlist.js'
 import { PaperError } from './errors.js'
 
 export interface PaperServiceOptions {
   repo: AccountStore
   data: MarketDataPort
   calendar: TradingCalendarPort
+  watchlist?: WatchlistStore
   settings?: PaperSettings
   accountId?: string
   now?: () => Date
@@ -398,6 +400,15 @@ export class PaperService {
     return this.options.data.marketList(input)
   }
 
+  async watchlist(): Promise<string[]> {
+    return this.options.watchlist?.read() ?? []
+  }
+
+  async setWatchlist(symbols: string[]): Promise<string[]> {
+    if (this.options.watchlist === undefined) throw new PaperError('INVALID_ARGUMENT', '自选存储不可用', 503)
+    return this.options.watchlist.write(symbols)
+  }
+
   async settingsView(): Promise<PaperSettings> {
     let state = await this.ensureAccount()
     state = await this.advanceTo(state)
@@ -457,7 +468,8 @@ export class PaperService {
   }
 
   async dailyReport(date?: string): Promise<DayReport[]> {
-    const state = await this.ensureAccount()
+    let state = await this.ensureAccount()
+    state = await this.advanceTo(state)
     const points = date === undefined ? state.dayEquity : state.dayEquity.filter(point => point.date === date)
     let previous = state.initialCashCents
     const reports: DayReport[] = []
@@ -490,7 +502,8 @@ export class PaperService {
   }
 
   async roundtrips(): Promise<RoundTrip[]> {
-    const state = await this.ensureAccount()
+    let state = await this.ensureAccount()
+    state = await this.advanceTo(state)
     const lots = new Map<string, { qty: number; cost: number; openedAt?: string }>()
     const trips = new Map<string, RoundTrip>()
     for (const fill of state.fills) {
