@@ -132,5 +132,6 @@ v0.1 完成的三条判定：
 ## 8 后续
 
 - 架构与扩展方式：见 [design.md](design.md) §14。
+- v0.2 P0/P1（真实市场节奏）：见 [design.md](design.md) §19。
 - 版本路线：见 [design.md](design.md) §16。
 - 风险与待验证：见 [design.md](design.md) §17。

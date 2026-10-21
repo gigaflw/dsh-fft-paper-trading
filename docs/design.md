@@ -1,7 +1,8 @@
 # 模拟盘子插件架构
 
-> 状态：v0.1 已落地（分支 `feat/paper-trading`，包版本 `0.1.0`）。本文只写架构、模块边界、账本与扩展方式；
-> v0.1 的范围与验收见 [mvp.md](mvp.md)。配图：图 1–3 见文内。
+> 状态：v0.1 已落地（分支 `feat/paper-trading`，包版本 `0.1.0`）；v0.2 的 P0/P1 设计见 §19（待实施）。
+> 本文写架构、模块边界、账本与扩展方式；v0.1 的范围与验收见 [mvp.md](mvp.md)。
+> 配图：图 1–3 见文内。
 > 目标包：`@ft/dsh-fft-paper-trading`
 
 ## 1 目标与产品边界
@@ -39,11 +40,14 @@
 | 按需 tick + 市价/限价 | 简化撮合，全量成交 | ● | |
 | Agent 工具 | 8 个 `paper_*` 工具 | ● | |
 | 权益曲线 / 复盘统计 | 纯 SVG + 日终快照 | ● | |
-| 设置页 | 只读 `settings/get` | ○ | v0.2 写入 |
-| 工具卡 | 预览 / 委托 / 账户 / 复盘卡 | ○ | v0.2 |
-| K 线 + 交易标记 | `market/bars` 已有，页面未接 | ○ | v0.2 |
-| 行情缓存 / 交易日历接口 | 目前按次拉取、工作日兜底 | ○ | v0.2 |
-| 涨跌停 / 部分成交 / 止损单 | 更真实规则 | ○ | v0.3 |
+| 交易时段 / 日切 / 收盘开盘快照 | 真实节奏的基础，见 §19.2–19.3 | ○ | v0.2 P0 |
+| 行情时间语义 | `marketTs` + `fetchedAt`，见 §19.3 | ○ | v0.2 P0 |
+| 搜索 / 自选 / 列表 / 分时 / K 线 | FTShare 有数据源，见 §19.4 | ○ | v0.2 P1 |
+| 部分成交 / 涨跌停 / 停牌 | 最新价/OHLC + 参与率上限，见 §19.5 | ○ | v0.2 P1 |
+| 日终 / 隔夜 / 回合 / 资金流水 | 从事件推导，见 §19.6 | ○ | v0.2 P1 |
+| 设置页 | 只读 `settings/get` | ○ | v0.3 写入 |
+| 工具卡 | 预览 / 委托 / 账户 / 复盘卡 | ○ | v0.3 |
+| 止损 / 条件单 / 保证金 / 卖空 / 强平 | 现金账户；两融是产品范围变更 | ○ | 另议 |
 | 多账户 / 通知 / 导入导出 | 扩展能力 | ○ | v0.3 |
 
 ## 4 总体架构
@@ -260,11 +264,13 @@ interface AccountState {
 | 限价买 | `ask ≤ limit` 成交，成交价 `min(limit, ask × (1 + bps))` |
 | 限价卖 | `bid ≥ limit` 成交，成交价 `max(limit, bid × (1 - bps))` |
 | 部分成交 | v0.1 不做；一次全量 |
-| 有效期 | 当日有效；下一交易日首次 tick 过期（`order.canceled` + `reason=expired`） |
+| 有效期 | 当日有效；v0.1 在下一交易日首次 tick 过期，v0.2 改为 15:00 过期（§19.2） |
 | 手数 | 买入 100 的整数倍；卖出不超过可卖，可零股 |
 | 费用 | 佣金 `max(金额 × 0.025%, 5 元)`；印花税卖出 0.05%；过户费双向 0.001% |
 | T+1 | 买入当日 `available = 0`；下一交易日 `day.closed` 解锁 |
 | 涨跌停 | 未做；`risk` 已留 `maxOrderNotionalCents` 单笔上限 |
+
+> 实测 FTShare 不返回 bid/ask，v0.1 适配器用 last 兜底，因此实际成交价等价于按 last 计算；v0.2 显式改为 last/OHLC（§19.5），不再保留 spread 语义。
 
 `tick` 的顺序：跨日 → 写 `day.closed` 并过期挂单 → 刷新持仓最新价 → 逐笔判断限价单 → 资金/持仓不足则撤单并给 notice。
 
@@ -495,18 +501,23 @@ $DSH_HOME/paper-trading/
 | 版本 | 内容 |
 | --- | --- |
 | v0.1（已落地） | 左侧栏面板（交易/持仓/订单/复盘）+ 8 个工具 + 事件账本 + 权益曲线 |
-| v0.2 | 工具卡、K 线 + 交易标记、设置写入、报价缓存、交易日历接口 |
-| v0.3 | 涨跌停、部分成交、止损单、多账户、导入导出、通知 |
+| v0.2（P0+P1，见 §19） | 交易时段/日切/收盘开盘快照、行情时间语义、搜索/自选/列表/分时/K 线、部分成交/涨跌停/停牌、日终/隔夜/回合/资金流水 |
+| v0.3 | 工具卡、设置写入、止损/条件单、多账户、通知、导入导出 |
+| 另议 | 保证金 / 卖空 / 强平（两融模拟，属产品范围变更） |
 
 ## 17 风险与待验证
 
 | 风险 | 影响 | 处理 |
 | --- | --- | --- |
-| FTShare 快照字段可能不含 bid/ask | 成交价只能用 last 兜底 | 适配器归一，缺买卖价时用 last |
+| FTShare 不返回 bid/ask（已实测） | 成交价只能用 last，不能模拟 spread | 适配器不填买卖价；撮合用 last/OHLC + 滑点（§19.3、§19.5） |
 | 每次 MCP 调用新建会话 | 首包延迟偏高 | 报价缓存（v0.2）；tick 合并请求 |
-| `quote.ts` 是取数时间 | 收盘后仍按最后价成交 | 语义写进适配器注释；不用它判定行情陈旧 |
-| 日历只按工作日 | 节假日 T+1 多解锁一天 | 接 `ft_v1_time_trading_calendar`（v0.2） |
-| 单账户、单写者 | 多窗口/多进程写同一文件没有锁 | 进程内队列串行；跨进程另议 |
+| 无 L1/L2 盘口（已实测） | 只能做「最新价 + 参与率」撮合 | 不显示盘口、不伪造深度；明确 `volume-share` 假设（§19.5） |
+| 列表排序不可靠（已实测） | 无法直接做全市场涨幅榜 | `order_by` 只验证到升序；P1 不做涨幅榜，不依赖未确认的 `filter` 语法 |
+| 收盘后探针看不到盘中效果 | 分钟 bar 在盘中是部分完成还是含当前分钟未知 | 交易时段内复验一次，再固化 TTL 与 `marketTs` 口径（§19.9） |
+| 宿主休眠/退出错过收盘 | 快照延迟、T+1 解锁晚 | `ctx.timeout` 到点触发 + `advanceTo(now)` 幂等补算；离线不补成交（§19.2） |
+| 涨跌停/ST 比例随规则变化 | 拒单错误 | 板块比例集中配置，实现前按交易所现行规则复核 |
+| 部分成交依赖分钟成交量 | 参与率假设影响真实感 | 可配置参与率；无成交量时退回全量并标记 `unlimited` |
+| 开源许可 | 复制 LGPL/GPL 代码会污染许可 | 只借架构与规则，不复制代码（§19.10） |
 | 公司行为不处理 | 长期成本失真 | README 写明；v0.3 另议 |
 | 客户端单文件 | 页面增多后难维护 | 先按页签拆函数；过 1000 行再引打包器 |
 | 工具在全局模式可见 | 标准模式出现模拟盘工具 | 按 §14.8 收进 preset |
@@ -529,8 +540,409 @@ $DSH_HOME/paper-trading/
 | D12 | 行情端口可缺省（`UnavailableMarketData`） | 行情服务是可选依赖，账本与面板不能因它缺失而消失 |
 | D13 | 存储与行情都以端口注入 service | 换后端/换数据源不动业务；测试用假端口即可 |
 | D14 | 重置也走 `append` 与对账 | 破坏性操作同样受不变量保护；备份先于写入 |
+| D15 | 交易日历来自 FTShare，时段表内置，集合竞价单独建模 | 节假日会变、时段是规则；日历库都不建模竞价（§19.2） |
+| D16 | 行情用 `marketTs` + `fetchedAt` 两个时间戳 | 取数时间不能代表行情时间，否则盘后仍会成交（§19.3） |
+| D17 | 收盘 15:00 写快照，交易日次日 09:30 切换 | 自然日 00:00 切日会半夜解锁 T+1、写错快照（§19.2） |
+| D18 | 离线期间不补成交，只补收盘快照 | 补成交会造出用户没看见的成交；保守假设可解释（§19.2） |
+| D19 | 只做最新价/OHLC + 参与率上限的部分成交 | 没有买卖价与深度数据，不伪造盘口；部分成交必须可重放（§19.5） |
+| D20 | 日终/隔夜/回合/流水全部从事件推导 | 避免第二套账本，报表与持仓现金天然一致（§19.6） |
+| D21 | 不引入 Nautilus/Lean 运行时 | LGPL/Apache 之外还有语言与数据适配成本；只借模型边界（§19.10） |
+
+## 19 v0.2：P0/P1 改造设计（待实施）
+
+> 本节是增量设计，§1–18 仍是 v0.1 现状。目标：把「账本正确」升级为「市场节奏正确」——时间不加速、非交易时段不成交、收盘用收盘价、次日开盘才解锁 T+1。
+> 外部事实：[开源模拟交易实现](../../thirdparty/sim-trading-open-source.md)；选型分析：[P0/P1 选型](../../investigation/sim-trading-p0-p1.md)。
+
+### 19.1 目标与范围
+
+**P0（先做，故事的前提）**
+
+- 交易时段、午休、节假日、集合竞价、收盘/开盘时点；
+- 行情时间语义（`marketTs` vs `fetchedAt`）；
+- 15:00 收盘快照、次日 09:30 开盘快照与 T+1 解锁；
+- 盘后只预埋、市价拒绝；离线跨日不补成交。
+
+**P1（随后，故事的体验）**
+
+- 搜索/自选/全市场列表/分时/K 线；
+- 部分成交、涨跌停、停牌；
+- 日终/隔夜/跳空/回合统计/资金流水；
+- 委托备注，用于复盘「为什么选这个标的」。
+
+**明确不做**：保证金/卖空/强平、L2 深度、止损/条件单、工具卡、设置写入、多账户；时间加速永远不做。
+
+### 19.2 交易时段与日切（P0）
+
+**日历与时段分离**
+
+```ts
+interface TradingCalendarPort {
+  isTradingDay(date: string): Promise<boolean>
+  nextTradingDay(date: string): Promise<string>
+  tradingDays(from: string, to: string): Promise<string[]>
+  /** 数据来源，用于界面提示与排障。 */
+  readonly source: 'ftshare' | 'fallback'
+}
+```
+
+- 适配器 `FtshareTradingCalendar` 调 `ft_v1_time_trading_calendar` 与 `ft_v1_time_get_nth_trade_date`，按区间缓存 1 天；
+- FTShare 日历的入参与返回都是 **YYYYMMDD 整数**（实测 `trade_dates` 为整数数组）；适配器在边界转换，内部统一 `YYYY-MM-DD`；
+- 取不到时回退「周一至周五」并标 `source: 'fallback'`，界面显示日历降级，而不是静默当成准确；
+- 时段表是交易所规则，集中在 `core/session.ts`，不散落在 service/UI：
+
+| 阶段 | 时间（Asia/Shanghai） | 可提交 | 可连续撮合 | 说明 |
+| --- | --- | --- | --- | --- |
+| `pre_open` | 09:15–09:30 | 限价 | 否 | 集合竞价；09:20/09:25 的撤单差异先按可撤简化，落地前按交易所规则复核 |
+| `continuous_am` | 09:30–11:30 | 市价/限价 | 是 | |
+| `lunch` | 11:30–13:00 | 限价预埋 | 否 | 市价拒绝 |
+| `continuous_pm` | 13:00–14:57 | 市价/限价 | 是 | |
+| `auction_close` | 14:57–15:00 | 限价 | 否 | 收盘集合竞价，收盘价取日线收盘 |
+| `closed` | 15:00–次日 09:15 | 限价预埋 | 否 | 市价拒绝；当日未成交单已在 15:00 过期，新单为次日预埋 |
+
+**订单门禁**
+
+- `place` 先调 `advanceTo(now)`，再取 `sessionAt(now)`：
+  - 市价只在 `continuous_am` / `continuous_pm` 接受；其余阶段返回 `SESSION_CLOSED` 或 `AUCTION_ONLY`（A 股竞价阶段实际也接受市价申报，这里先按拒绝简化，落地前复核）；
+  - 限价在任意阶段可接受：撮合阶段进 `pending`，非撮合阶段进 `queued`，都写 `order.submitted`；
+  - 竞价阶段的限价单不连续撮合，开盘/收盘按开盘价/收盘价判定是否成交；
+  - 当日有效：15:00 对 `tradeDate == 当日` 的未成交单写 `order.canceled(reason=expired)`，不再等次日首次 tick；
+  - 收盘后（`closed`）的限价单是**为下一交易日预埋**：订单记 `tradeDate = nextTradingDay`、状态 `queued`，不参与当日 15:00 过期，次日 09:15 起归入新交易日。
+- 撤单任意阶段可用；已成交/已过期返回 `ORDER_NOT_PENDING`。
+- 新错误码：`SESSION_CLOSED`、`AUCTION_ONLY`、`PRICE_LIMIT`、`SUSPENDED`、`INSUFFICIENT_LIQUIDITY`。
+
+**日切与补算**
+
+- `tradeDate` 在 **09:15 进入 pre_open** 时切换（集合竞价订单属于新交易日），不在自然日 00:00；
+- 15:00 写 `day.closed`（收盘价、权益、费用、持仓、下一交易日）；09:30 写 `day.opened`（开盘价、昨收、跳空、T+1 解锁）；09:15–09:30 之间只切交易日、不解锁；
+- 所有 service 方法入口统一 `advanceTo(now)`：按交易日顺序补齐遗漏的收盘快照；宿主定时器只负责及时触发，不承担唯一职责；
+- **离线期间不补成交**：宿主不在线时挂单保持原状态，恢复后从当前时段继续；只补收盘快照与 T+1。理由见选型文档 §5；
+- 定时器用 `ctx.effect` 包住原生 `setTimeout/clearTimeout`（DSH 文档的推荐写法，随插件卸载清理）；宿主也提供 `ctx.timeout/ctx.interval`，类型图可见时可直接用；不要用 `setInterval` 秒级轮询。
+
+### 19.3 行情时间与收盘/开盘（P0）
+
+**两个时间戳**
+
+```ts
+interface Quote {
+  symbol: string
+  name?: string
+  last: number
+  /** 实测 FTShare 不返回买一/卖一；字段保留兼容，适配器不填，撮合不得依赖。 */
+  bid?: number
+  ask?: number
+  prevClose?: number
+  /** 行情时间：bar/trade 的时间；取不到时为 null，表示不可用于成交。 */
+  marketTs: string | null
+  /** 取数时间：只用于展示延迟与排障。 */
+  fetchedAt: string
+  source?: string
+}
+```
+
+- 适配器从分钟/日 K 的 bar 时间取 `marketTs`；`ft_v4_stock_realtime_day_kline` 用当日 bar 的结束时间；
+- `ft_v4_stock_realtime_minute_kline` 的 `ts_millis` 是 bar 的**收盘时间**，`ts_millis_open` 是开盘时间；实测最后一根为 15:00，首根 09:30，没有 09:15–09:25 竞价 bar；
+- `quoteFresh` = `session.canMatch` && `marketTs != null` && `now - marketTs <= quoteTtlSec` && `marketTs` 属于当前交易日；**不能用 `fetchedAt` 判新鲜**；
+- 收盘后估值可以用最后收盘价，但成交判定必须 `canMatch=false`。
+
+**收盘价与开盘价**
+
+- 收盘价：优先当日日 K 的 `close`（16:00 后通常可取）；取不到时用最后连续竞价报价并标 `closeSource: 'last'`；
+- 开盘价：当日第一根分钟 K 的开盘价（或 09:30 后第一条报价）；取不到时标 `openSource: 'missing'`，不猜测；
+- 快照事件：
+
+```ts
+type DayOpened = {
+  date: string
+  openPrices: Record<string, number>
+  prevClose: Record<string, number>
+  gaps: Record<string, number>       // (open - prevClose) / prevClose
+  t1Unlocked: boolean
+  recordedAt: string
+}
+type DayClosed = {
+  date: string
+  closePrices: Record<string, number>
+  equityCents: number
+  cashCents: number
+  feesCents: number
+  positions: PositionSnapshot[]
+  nextTradeDate: string
+  closeSource: 'daily' | 'last'
+  recordedAt: string
+}
+```
+
+- 事件 `ts` 写边界时间（09:30 / 15:00），`payload.recordedAt` 写实际补算时间；两者分开，重放与展示都不混淆；
+- 账本版本 `PAPER_LEDGER_VERSION` 从 1 升到 2；新账户在 `account.opened` 的 payload 写 `ledgerVersion: 2`，旧日志缺这个字段按 1 处理；
+- v1 日志没有 `day.opened`，重放时按旧语义在 `day.closed` 解锁；v2 才按开盘解锁，保证老账户可读。
+
+### 19.4 行情面（P1）
+
+FTShare 目录里已有的数据源（`packages/dsh-fft-ftshare/catalog.json`）：
+
+| 能力 | 接口 | 实测/用途 |
+| --- | --- | --- |
+| 搜索 | `ft_v1_search` | 返回 `symbol/name/board/close/change/change_rate`；无买卖价 |
+| 全市场 A 股实时 | `ft_v1_daec_stocks` | 5909 只，`page_size` 实测 500 可用；含 `st/status/prev_close/board/volume` |
+| 代码与名称全集 | `ft_v1_stock_list` | 5575 条，代码 + 名称 |
+| 板块筛选 | `ft_v2_stock_list_filter` | `board` 枚举 `star/chi_next/bjse/xshg/xshe/main`；`page_size` 500 |
+| 停牌 | `ft_v1_suspension_list` | 当日全量停牌，含类型/原因/复牌时间 |
+| 涨跌停池 | `ft_v1_limit_list` | `up/down/up_break`，含首次封板时间、封单金额、开板次数、涨跌停价 |
+| 实时 1 分钟 K | `ft_v4_stock_realtime_minute_kline` | 实测 241 根（09:30–11:30、13:00–15:00），无竞价 bar；volume 为股数 |
+| 历史分钟 | `ft_v2_stock_minutes` / `_batch` | 多日分时 |
+| 分时价格/均价 | `ft_v4_daec_history_prices` | 分时图；返回 price/avg_price/volume/turnover |
+| 日/周/月 K | `ft_v1_stock_candlesticks` | 收盘后含当日 bar；volume 为股数 |
+| 封单金额 | `ft_v2_stock_minute_seal` | 判断封死涨停（可选；当日 600519 无封单返回空） |
+
+**已实测的数据缺口**
+
+- **没有买一/卖一，也没有 L2/L3 盘口**：搜索、全市场列表、实时日 K、实时分钟 K 都只给最新价/OHLC；界面不显示盘口，撮合不能用 spread。
+- `ft_v1_daec_stocks` 的 `order_by=change_rate` 只验证到升序（跌幅方向）；`DESC` 会把退市/空值排在最前，不能直接当「涨幅榜」。
+- `filter` 的可用语法未确认（`st = false`、`status=Normal` 均返回 0 行），P1 不依赖它做筛选。
+- `ft_v1_daec_stocks.ts_millis` 是快照更新时间（实测 16:29），不是收盘时间；不能当 `marketTs`。
+
+**端口增量**
+
+```ts
+interface MarketDataPort {
+  quotes(symbols: string[]): Promise<QuoteResult>
+  dailyBars(symbol: string, limit: number): Promise<BarsResult>
+  minuteBars(symbol: string, date?: string): Promise<BarsResult>
+  search(query: string, limit?: number): Promise<SymbolHit[]>
+  marketList(filter?: { board?: string; page?: number; pageSize?: number }): Promise<MarketListResult>
+}
+
+interface MarketListResult {
+  state: DataState
+  /** 当前页行情；字段与 Quote 一致。 */
+  quotes: Quote[]
+  page: number
+  total?: number
+  notice?: string
+}
+```
+
+- `SymbolHit { symbol, name, exchange }`；
+- 搜索/列表/分钟都要按 `DataState` 四态归一，缺数据不抛错；
+- **没有 L1/L2**：界面只展示最新价、涨跌幅、成交量额，不展示盘口；撮合只用最新价/OHLC，不伪造 spread；
+- 自选不是账本：`$DSH_HOME/paper-trading/watchlist.json`，600 权限、原子写；交易账户重置不影响自选。
+
+**客户端**
+
+- 新增「行情」页签：搜索框、自选表、涨停/跌停/停牌池、全市场分页列表；
+- 不做全市场「涨幅榜」：上游 `order_by` 不能可靠降序；要做得本地全量拉取（约 12 次 500 条）并缓存，P1 先不做，避免用错误排序误导用户；
+- 点击标的同时刷新报价并回填交易页；
+- 分时与日 K 复用纯 SVG；分时用 `ft_v4_stock_realtime_minute_kline`，日 K 用 `ft_v1_stock_candlesticks`；
+- 轮询：页面可见时 3 秒刷新当前标的报价，隐藏时停；切换标的后立即拉一次；
+- 客户端文件预计超过 1000 行：按 settings 的 tsdown 方案拆 `src/client/` 多文件，不手写拼接。
+
+### 19.5 撮合真实性（P1）
+
+**规则顺序（固定，便于测试与解释）**
+
+1. 时段门禁（§19.2）→ 2. 停牌 → 3. 涨跌停 → 4. 手数/资金/持仓 → 5. 成交价与部分成交 → 6. 费用与 T+1。
+
+**涨跌停**
+
+| 板块 | 比例（相对昨收） | 备注 |
+| --- | --- | --- |
+| 主板 | ±10% | |
+| ST / *ST | ±5% | 按名称/标记识别，落地前复核 |
+| 创业板 / 科创板 | ±20% | 注册制 |
+| 北交所 | ±30% | |
+| 新股/无昨收 | 不设限 | 标记 `unknown` |
+
+实测板块值：`ft_v2_stock_list_filter` 返回 `board=sh/sz/sh_star/sz_chi_next/bj`；`ft_v1_daec_stocks` 返回 `XsheMain/XshgMain` 等。映射：`sh`/`sz` 且非 ST → 10%，`sh_star`/`sz_chi_next` → 20%，`bj` → 30%，ST/*ST → 5%。`st` 字段在退市股上可能为 false，必须同时看 `status=Normal` 与名称前缀。
+
+- 价格按 0.01 取整；买单高于涨停价、卖单低于跌停价 → `PRICE_LIMIT`；
+- 涨停价买入、跌停价卖出默认不成交（封死假设）；可选接 `ft_v2_stock_minute_seal` 判断封单，未接时按 `high == low == 涨停/跌停` 判一字板；
+- 跌停价买入、涨停价卖出允许（对手方有流动性），但受参与率上限约束；
+- `prevClose` 缺失时用上一交易日日 K 收盘；两者都没有则不设涨跌停，标 `priceLimitSource: 'unknown'`；
+- 当日已触板的股票可直接用 `ft_v1_limit_list` 的 `limit_up_price/limit_down_price`（实测字段）校准；封死判断用 `limit_up_seal_value`、开板次数用 `limit_up_break_count`，比 `high == low` 更可靠。
+
+**停牌**
+
+- 优先用 `ft_v1_suspension_list`（实测当日返回全量停牌，含全天/临停/原因）；拿不到列表时才看日 K 成交量 0 或 `ft_v1_daec_stocks.status == 'Suspended'`；完全取不到数据是 `QUOTE_UNAVAILABLE`，不能混同；
+- 停牌期间拒单；持仓按最后收盘价估值，不产生成交。
+
+**部分成交**
+
+- 新增设置 `maxParticipationRate`（默认 0.10）与 `fillModel: 'volume-share' | 'unlimited'`；
+- `volume-share`：单次可成交数量 = `min(剩余, floor(本根分钟成交量 × 参与率))`；买入再向下取 100 的整数倍，小于 100 股则不成交；
+- 一根 bar 内可多次成交；订单状态 `partially_filled`，剩余继续挂；可撤剩余；
+- 没有分钟成交量时退回 `unlimited` 并在成交事件标 `fillModel: 'unlimited'`，界面提示「未按成交量约束」；
+- 成交 ID 确定性：`fill-<orderId>-<n>`；同一 bar + 同一订单顺序固定，重放一致。
+
+**成交价**
+
+- 市价（taker）：按最新价 `last` 加/减滑点；FTShare 没有买卖价，不能用 spread 定价；
+- 限价（taker）：穿价时按限价与对手价中更优者；
+- 限价（maker）：bar 的低价 ≤ 买价 / 高价 ≥ 卖价才成交，按限价；
+- 撮合优先用分钟 bar 的 OHLC 判定限价是否触达，没有分钟 bar 时才退回最新价；bar 内路径按 `open → high → low → close`（可配置），只用于判定触达，不重建逐笔；
+- 集合竞价：开盘按开盘价、收盘按收盘价，只判是否穿越，不做连续撮合；
+- 不模拟队列位置（没有逐笔数据）；同一价格的多笔订单按 `acceptedAt` 顺序成交，作为可解释的近似。
+
+**状态机**
+
+```
+提交 ──时段/风控拒绝──▶ rejected
+  ├─非撮合阶段限价──▶ queued ──开盘/进入连续竞价──▶ pending
+  └─撮合阶段──▶ pending ──部分成交──▶ partially_filled ──▶ filled
+                     ├──撤单/收盘过期──▶ canceled / expired
+                     └──资金/持仓不足──▶ canceled
+```
+
+### 19.6 复盘、流水与报告（P1）
+
+- **资金流水**：从 `account.opened/reset` + `order.filled` 推导逐笔余额（时间、类型、金额、余额、关联订单），不新增第二套账本；
+- **日终报告**：日期、收盘权益、当日盈亏、费用、T+1 可卖、持仓、跳空；端点 `review/daily`；
+- **隔夜/跳空**：开盘价 vs 昨收，逐持仓计算隔夜盈亏；
+- **回合统计**：平均成本法（与账本一致），按标的聚合已平仓数量、成本、收入、盈亏、持仓天数；胜率、盈亏比、平均持仓时长；端点 `review/roundtrips`；
+- **备注**：`OrderDraft.note?: string`（≤120 字），随 `order.submitted` 落账，复盘页可见；
+- **导出**：`review/export { dataset: 'daily'|'cash'|'roundtrips', format: 'csv' }`，P1 可后置；
+- UI：复盘页加「日终 / 隔夜 / 回合 / 流水」分区；交易 ticket 加备注。
+
+### 19.7 模块、端口与调度增量
+
+```
+src/core/session.ts          # 阶段、门禁、下一边界（纯函数）
+src/core/price-limit.ts      # 板块比例、涨跌停价
+src/core/fills.ts            # 参与率、成交序列、部分成交
+src/core/reports.ts          # 日终、隔夜、回合
+src/data/trading-calendar-port.ts
+src/data/ftshare-trading-calendar.ts
+src/store/watchlist.ts       # UI 偏好，不入账本
+src/service/market-clock.ts  # 定时器 + advanceTo 补算
+```
+
+- `PaperService` 只新增 `advanceTo`/`marketStatus`/`search`/`marketList`/`minuteBars`/`dailyReport`/`roundtrips`/`cashFlow` 等编排方法；成交规则仍留在 `core`；
+- `MarketClock` 依赖 `TradingCalendarPort` + 定时器，不依赖行情；行情缺失时仍能推进日切；
+- 所有时间来自注入的 `now()`；测试用假时钟覆盖午休、收盘、跨节假日。
+
+### 19.8 契约、RPC、工具、UI 增量
+
+**契约**
+
+- `SessionPhase`、`MarketStatus { phase, tradeDate, canSubmit, canMatch, nextBoundary, reason }`；
+- `Quote.marketTs/fetchedAt`；`OrderStatus` 增加 `queued` / `partially_filled`；
+- `OrderView` 增加 `filledQty/remainingQty/avgFillPrice/note`；
+- `PriceLimit { upper, lower, ratio, source }`；
+- `DayReport`、`CashFlowEntry`、`RoundTrip`、`SymbolHit`；
+- 事件：新增 `day.opened`、`order.partially_filled`（payload 带本次 `fill`）；扩展 `day.closed`、`order.submitted`（阶段、备注）、`order.filled`（`fillId`、`barTs`、`liquidity`、`fillModel`）；
+- 账本版本 2，回放兼容 v1。
+
+**RPC**
+
+| endpoint | 作用 |
+| --- | --- |
+| `market/status` | 当前阶段、下一开/收盘、是否可交易 |
+| `market/search` | 代码/名称搜索 |
+| `market/list` | 全市场分页列表（代码/涨跌幅，按页加载） |
+| `market/bars`（`interval`） | 日 K / 当日/历史分钟 K |
+| `watchlist/get` / `watchlist/set` | 自选读写 |
+| `review/daily` | 日终报告 |
+| `review/roundtrips` | 回合统计 |
+| `cash/flow` | 资金流水 |
+
+`market/bars` 增加 `interval: 'day' | 'minute'` 与可选 `date`，默认 `day`，保持旧调用兼容；不再单列分钟 K 端点。
+
+**工具**
+
+- 新增 `paper_market`：`{ action: 'status'|'search'|'list', query?, board?, page? }`；
+- `paper_quote` 输出阶段与行情时间；盘后明确「不可成交」；
+- `paper_status` 加日终摘要；`paper_review` 加 `daily` / `roundtrips`；
+- 下单工具透传 `note`。
+
+**客户端**
+
+- 行情页（搜索/自选/列表）、分时/K 线、会话状态徽标、下单按钮禁用原因；
+- 复盘页日终/隔夜/回合/流水；ticket 备注；
+- 部分成交显示已成交/剩余；
+- 文件拆分方案见 §19.4。
+
+### 19.9 测试与验收
+
+**已核对（2026-10-21 FTShare 实调）**
+
+| 项 | 实测结果 | 对设计的影响 |
+| --- | --- | --- |
+| 交易日历 | `market/start_date/end_date` 必须是 **YYYYMMDD 整数**；返回 `trade_dates` 整数数组；2026-10-01～07 被正确跳过 | 适配器做整数 ↔ ISO 日期转换，内部仍用 `YYYY-MM-DD` |
+| 搜索 | `ft_v1_search` 返回 `symbol/name/board/close/change/change_rate`，**无买卖价** | 搜索只做选择，不提供盘口 |
+| 全市场列表 | 5909 只；`page_size=500` 可用；含 `st/status/prev_close/board/volume`；`ts_millis` 是快照时间（16:29） | 列表分页加载；`marketTs` 不能取它 |
+| 列表排序 | `order_by=change_rate` 为升序；`DESC` 把退市/空值排在最前；`filter` 未确认 | 不做全市场涨幅榜，不依赖 `filter` |
+| 代码全集 | `ft_v1_stock_list` 5575 条 | 代码校验/离线搜索兜底 |
+| 板块筛选 | `ft_v2_stock_list_filter` 的 `board`：`star/chi_next/bjse/xshg/xshe/main`；返回 `board=sh/sz/sh_star/sz_chi_next/bj` | 涨跌停比例按 board 映射 |
+| 停牌 | `ft_v1_suspension_list` 当日返回全量停牌（全天/临停/原因） | 停牌判定优先用它，不看成交量猜 |
+| 涨跌停池 | `ft_v1_limit_list` 支持 `up/down/up_break`，含涨跌停价、封单金额、开板时间 | 触板/封死判定用它校准 |
+| 实时分钟 K | 241 根（09:30–11:30、13:00–15:00）；`ts_millis` 是 bar 收盘时间；无 09:15–09:25 竞价 bar；volume 为股数；收盘后返回全日 | 首根 09:30 可用；`marketTs` 取 `ts_millis`；参与率用股数 |
+| 日 K | 收盘后含当日 bar（close 1309.69） | 收盘快照取日 K close |
+| 分时 | `ft_v4_daec_history_prices` 241 条，含 `price/avg_price/volume/turnover` | 分时图直接用 |
+| 市场快照 | `ft_v1_daec_market_snapshot` 返回 `status=closed` 与涨跌分布 | 可作辅助展示，不作为时段依据 |
+| 定时器 | DSH 有 cordis timer：`ctx.timeout/ctx.interval` 随 fiber 回收 | 用 `ctx.timeout` 排边界，不用原生轮询 |
+| 盘口 | 搜索/列表/实时 K 均无买一/卖一，无 L1/L2 | 界面与撮合都只基于最新价/OHLC |
+
+**仍未验证**：交易时段内分钟 bar 是否含当前未完成分钟、MCP 速率限制、涨跌停/ST 比例的交易所现行文本、DSH 休眠/唤醒时 timer 的实际行为。前两项在 P1 开工前补测，后两项按规则复核与 `advanceTo` 兜底。
+
+**单元**
+
+- 时段：节假日、午休、集合竞价、收盘边界、下一交易日；
+- 行情时间：`marketTs` 缺失/过期/跨日；盘后报价不可成交；
+- 涨跌停：主板/ST/创业板/北交所、舍入、越界拒单、一字板；
+- 部分成交：参与率、100 股取整、多次成交、剩余撤销、重放一致；
+- 日切：15:00 快照、09:30 T+1、跳空、跨多日补算、离线不补成交；
+- 报表：日终/隔夜/回合/流水与持仓现金对账。
+
+**集成**
+
+- 用假时钟 + 假日历 + 固定行情重放用户故事 8 步；
+- 重启续跑；无行情降级；断网/服务缺失；账本 v1 → v2 回放。
+
+**验收（对应用户故事）**
+
+1. 15:30 市价单拒绝，限价单 `queued`；次日 09:30 按开盘价判定；
+2. 15:00 快照用收盘价；T+1 次日 09:30 才解锁；
+3. 离线跨日不产生成交，只补快照；
+4. 部分成交可重放，剩余可撤；
+5. 涨停买入/跌停卖出/停牌有明确拒绝码；
+6. 搜索、自选、分时、日 K 可用；界面不显示盘口（数据源没有），只显示最新价；
+7. 日终、隔夜、回合、流水与账本一致，可导出。
+
+### 19.10 参考与取舍
+
+**产品层**（五产品调研：[`docs/investigation/sim-trading-competitors.html`](../../investigation/sim-trading-competitors.html)）：
+
+| 能力 | 借谁 | 说明 |
+| --- | --- | --- |
+| 交易日历 / 账户总览 / 复盘空态 | 牛牛1号（Apache-2.0） | 交易日历、收益曲线、操作日志、空态/加载态 |
+| 账本纪律 / 对账 / 幂等 / 失败关闭 | 璇玑（无 License） | 只学设计，不复制代码 |
+| 图表 / 交易标记 / 下单 ticket | TradingView | K 线、指标、画线、盘口、交易标记 |
+| 预览 / 受理与成交分离 | IG demo | v0.1 已落地 |
+| 撮合契约 / 仿真环境分层 | openctp（BSD-3） | 接口契约与双模式；A 股现货规则自己实现 |
+
+**实现机制层**（补充参考，事实见 [`docs/thirdparty/sim-trading-open-source.md`](../../thirdparty/sim-trading-open-source.md)）：
+
+| 参考 | 借什么 | 不借 / 注意 | 许可 |
+| --- | --- | --- | --- |
+| QuantConnect Lean | 数据驱动的交易时段/节假日/提前收盘、下一开收盘；成交前先判交易所开关门；限价只在穿越时成交、跳空按开盘价；行情过旧等待 | 不引入 .NET 运行时；其股票 fill model 的深度部分成交仍是 TODO | Apache-2.0 |
+| NautilusTrader | 沙盒 = 实时数据 + 模拟执行；撮合引擎与成交模型分层；L1 剩余差一档；事件溯源 seq + 快照；现金账户全额结算 | 不复制源码（LGPL）；不引入 Rust/Python 内核 | LGPL-3.0 |
+| freqtrade dry-run | 真实行情 + 模拟钱包、订单不下发；市价按订单簿量 + 滑点上限；限价超时；离线不补成交 | 不复制代码（GPL）；不照搬加密现货规则 | GPL-3.0 |
+| exchange_calendars | XSHG 09:30–11:30 / 13:00–15:00 与预计算节假日，可作为对照测试 | 不引入 Python；它不建模集合竞价 | Apache-2.0 |
+| openctp | 接口契约分层、仿真/实盘环境切换 | CTP 期货规则不适用 A 股现货 | 见原调研 |
+
+**本仓自己实现**：时段门禁、日终/开盘快照、涨跌停、参与率部分成交、日终/隔夜/回合/流水。理由是产品参考已经给了目标，实现机制再借开源项目的模型边界；不引运行时、数据源已固定、账本必须可重放。
+
+### 19.11 不做 / 推迟
+
+- 保证金、卖空、强平（现金账户；两融是产品范围变更）；
+- L2/L3 盘口与逐档撮合（无数据源）；
+- 止损/条件单/算法单（P2）；
+- 工具卡、设置写入（v0.3，与「真实节奏」无关）；
+- 多账户、分红送转、通知（v0.3）；
+- 时间加速/快进（永远不做）。
 
 ## 附录 A：错误码与状态机
+
+> 下面是 v0.1 的状态机；v0.2 增加 `queued` 与 `partially_filled`，见 §19.5。
 
 订单状态：`pending → filled | canceled | rejected | expired`；`pending` 只能被 `tick`、撤单或过期改变。
 
