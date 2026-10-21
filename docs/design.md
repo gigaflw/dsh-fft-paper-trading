@@ -1,0 +1,555 @@
+# 模拟盘子插件架构
+
+> 状态：v0.1 已落地（分支 `feat/paper-trading`，包版本 `0.1.0`）。本文只写架构、模块边界、账本与扩展方式；
+> v0.1 的范围与验收见 [mvp.md](mvp.md)。配图：图 1–3 见文内。
+> 目标包：`@ft/dsh-fft-paper-trading`
+
+## 1 目标与产品边界
+
+**目标**
+
+- 在 DSH 内提供 A 股模拟交易工作台：行情、预览、下单、撤单、持仓、复盘。
+- 人和模型共用同一套账本：界面操作与 Agent 工具写入同一个 `PaperService`。
+- 账本确定、可审计、可重放；重启不丢状态；异常时失败关闭。
+
+**产品非目标（长期不做）**
+
+- 实盘、券商接入、融资融券、期货期权、港股美股。
+- 策略引擎、因子库、回测平台（本插件只做「模拟执行 + 复盘」，不抢投研舱的活）。
+- 多币种、分红送转、除权除息（公司行为只记录假设，不自动处理）。
+- 实时行情推送与盘口深度（按需拉取，不建推送通道）。
+
+## 2 与竞品的关系
+
+| 来源 | 借什么 | 落到哪里 |
+| --- | --- | --- |
+| TradingView | 交易页布局、K 线与交易标记 | 交易页；K 线待做 |
+| IG demo | 下单前预览、受理与成交分离 | `order/preview`、订单 `pending` + `tick` |
+| openctp | 稳定契约、撮合模式可配、环境分层 | `contract.ts`、`matching.ts`、service 边界 |
+| 璇玑 | 事件账本、对账、幂等、失败关闭 | `core/ledger`、`core/replay`、启动校验 |
+| 牛牛1号 | 账户卡、收益曲线、交易日历、空态 | 账户头、复盘页、各表空态 |
+
+## 3 已落地能力与后续阶段
+
+| 能力 | 说明 | v0.1 | 后续 |
+| --- | --- | --- | --- |
+| 左侧栏面板 | `sidebar.panellist` 图标 + `main` 面板 | ● | |
+| 交易 / 持仓 / 订单 / 复盘 | 四个页签 | ● | |
+| 事件账本 + 重放 + 对账 | JSONL，失败关闭 | ● | |
+| 按需 tick + 市价/限价 | 简化撮合，全量成交 | ● | |
+| Agent 工具 | 8 个 `paper_*` 工具 | ● | |
+| 权益曲线 / 复盘统计 | 纯 SVG + 日终快照 | ● | |
+| 设置页 | 只读 `settings/get` | ○ | v0.2 写入 |
+| 工具卡 | 预览 / 委托 / 账户 / 复盘卡 | ○ | v0.2 |
+| K 线 + 交易标记 | `market/bars` 已有，页面未接 | ○ | v0.2 |
+| 行情缓存 / 交易日历接口 | 目前按次拉取、工作日兜底 | ○ | v0.2 |
+| 涨跌停 / 部分成交 / 止损单 | 更真实规则 | ○ | v0.3 |
+| 多账户 / 通知 / 导入导出 | 扩展能力 | ○ | v0.3 |
+
+## 4 总体架构
+
+![图 1 · 模块分层与依赖](figures/fig-1.png)
+
+两个 Cordis 实例、三个平面：
+
+| 平面 | 位置 | 职责 |
+| --- | --- | --- |
+| 浏览器半 | 宿主 Web UI | 左侧栏面板、四个页签、RPC 调用；不 import 宿主模块、不读文件 |
+| 宿主半 | Node 进程 | RPC 路由、应用服务、领域内核、事件账本、行情适配 |
+| Agent 半 | 同进程 | 注册 `paper_*` 工具，调用同一个应用服务 |
+
+**技术选择**
+
+- 独立子包 `@ft/dsh-fft-paper-trading`，一行宿主入口 + 浏览器半。
+- 宿主 `tsc` 到 `lib/`；浏览器半是手写单文件 JS，构建时原样复制为 `lib/client.js`，带 `window.__ModuleLoader__.load` banner。
+- 依赖：`ftshareData`（可选行情）、`tools`（Agent 工具）、`connection`（RPC 路由）、`slots`（UI 位置）。
+- 存储：`$DSH_HOME/paper-trading/` 的 JSONL 事件文件，不引数据库。
+- 图表：自绘 SVG，不引图表库。
+
+**依赖方向（硬约束）**
+
+```
+client(panel) ──HTTP──▶ route ──▶ service ──▶ core
+                                    │  │
+                                    │  └──▶ MarketDataPort ◀── FTShare adapter
+                                    └─────▶ AccountStore   ◀── JSONL repo
+agent(tools) ──────────────────────▶ service
+core    不 import store / data / service / cordis / fs
+store   只 import core 的类型、事件应用与账本校验（不 import service）
+data    只 import contract 的类型
+service 只 import core 与两个端口，不 import fs / cordis
+entry   负责装配与适配器切换；route / tools / data 三条 attach 互不阻塞
+client  不 import 宿主任何模块，只走自己的 RPC 路由
+```
+
+**装配方式**（`src/index.ts`）
+
+1. 先建 `AccountRepo`（JSONL）与 `PaperService`；行情端口先指向 `UnavailableMarketData`。
+2. `ctx.inject(['ftshareData'])` 出现时把端口换成 `FtshareMarketData`，消失时换回不可用实现。
+3. `ctx.inject(['connection'])` 与 `ctx.inject(['tools'])` 各自挂路由与工具。
+4. 因此没有行情服务时，账户、持仓、订单、复盘、重置仍可用；报价与 tick 以四态失败返回，不会拖垮整行。
+
+## 5 模块拆分
+
+### 5.1 目录（实际结构）
+
+```
+packages/dsh-fft-paper-trading/
+  package.json               # exports: . / ./client / ./contract
+  cordis.patch.yml           # 一行业务行
+  tsconfig.json
+  src/
+    index.ts                 # 宿主入口：装配 service、切换行情适配器、挂 route / tools
+    contract.ts              # 跨平面类型、常量、错误码（无运行时依赖）
+    core/                    # 纯领域，禁止 IO
+      types.ts               # 状态与事件类型
+      money.ts               # 金额（整数分）与滑点
+      fees.ts                # 佣金 / 印花税 / 过户费
+      calendar.ts            # 交易日（Asia/Shanghai，工作日兜底）
+      matching.ts            # 市价/限价成交判定与报价时效
+      risk.ts                # 下单前硬校验与价格估计
+      ledger.ts              # 事件应用与账本不变量
+      replay.ts              # 事件 → 状态
+      engine.ts              # 命令 → 事件（纯函数）
+      views.ts               # 状态 → 视图、预览、复盘统计
+    data/
+      market-data-port.ts    # 行情端口 + 四态结果
+      ftshare-market-data.ts # FTShare 适配（唯一知道接口名的地方）
+      unavailable-market-data.ts # 没有行情服务时的兜底端口
+    store/
+      port.ts                # AccountStore 端口
+      paths.ts               # $DSH_HOME 解析与目录
+      event-store.ts         # JSONL 追加、fsync、读取、坏行隔离、备份
+      repo.ts                # 载入 → 重放 → 状态；写入串行化；对账
+    service/
+      paper-service.ts       # 编排：预览/下单/撤单/tick/查询/重置
+      rpc.ts                 # endpoint 表与 payload 校验
+      route.ts               # connection.fetch 路由注册
+      errors.ts              # PaperError（错误码 + HTTP 状态）
+    agent/
+      tools.ts               # 8 个 paper_* 工具定义
+      format.ts              # 结果转模型可读摘要
+    client/
+      index.js               # ModuleLoader 入口 + 面板 + 页签 + 样式（单文件）
+  scripts/
+    build-client.mjs         # 复制浏览器半到 lib/client.js
+    scenario.mjs             # 端到端脚本：下单 → 成交 → 复盘
+  tests/                     # 14 个用例，见 §15
+```
+
+### 5.2 模块职责与边界
+
+| 模块 | 职责 | 输入 → 输出 | 禁止 | 主要测试 |
+| --- | --- | --- | --- | --- |
+| `core/money` | 金额用整数分；价格按 0.01 取整 | 数字 → 整数/价格 | 浮点累计、IO | 舍入边界 |
+| `core/fees` | 佣金、印花税、过户费 | 金额、方向、配置 → 费用明细 | 读写账户 | 最低佣金、卖出税 |
+| `core/calendar` | 交易日、T+1 解锁 | 时间戳 → 交易日 | 网络调用 | 周末 |
+| `core/matching` | 市价/限价是否成交、成交价、报价时效 | 订单、报价、时间 → 成交判定 | 读账本、读文件 | 滑点、限价保护 |
+| `core/risk` | 现金、可卖、手数、金额上限、blocked | 状态 + 订单 → 通过/拒绝码 | 网络、日志 | 各类拒绝路径 |
+| `core/ledger` | 事件类型与不变量 | 状态、事件 → 校验结果 | 持久化 | 现金/数量不变量 |
+| `core/replay` | 事件序列 → 状态 | 事件数组 → 状态 | IO、时间 | 幂等、坏序 |
+| `core/engine` | 应用命令，产出事件 | 状态 + 命令 → `{events, state}` | IO、随机数 | 全场景 |
+| `core/views` | 状态 → 账户/订单/预览/复盘视图 | 状态 → 视图 | 读写文件 | 预览、回撤 |
+| `store/port` | 持久化端口的唯一声明 | — | 业务规则 | — |
+| `store/repo` | 载入、重放、串行追加、对账、价格缓存、备份 | 事件 / 账户 ID → 状态 | 业务规则、创建结算事件 | 坏尾行、并发 |
+| `data/port` | 行情端口的唯一声明与四态结果 | — | 账本 | — |
+| `data/ftshare` | FTShare 接口映射、代码规范化、四态归一 | 代码列表 → 报价/日 K | 账本 | mock 端口 |
+| `service` | 编排、校验、串行、错误映射、重置命令 | RPC/工具入参 → 视图 | 直接算撮合、直接读写文件 | 集成 |
+| `service/rpc` | endpoint 白名单、payload 校验 | HTTP → service | 业务逻辑 | 校验失败 |
+| `agent/tools` | 工具 schema、摘要、错误转文字 | 模型入参 → service | 直接写文件 | 摘要格式 |
+| `client` | 面板、页签、RPC 调用、纯 SVG 图 | RPC → UI | 直接算账、直接取行情 | 入口与样式 |
+
+### 5.3 关键接口
+
+```ts
+// data/market-data-port.ts —— 行情只暴露这两件事，失败也走返回值
+interface MarketDataPort {
+  quotes(symbols: string[]): Promise<QuoteResult>   // { state, quotes, notice? }
+  dailyBars(symbol: string, limit: number): Promise<BarsResult>
+}
+
+// store/port.ts —— service 只见端口，不见 JSONL
+interface AccountStore {
+  current(): Promise<AccountState>
+  append(events: readonly LedgerEvent[]): Promise<AccountState>
+  markPrices(quotes: readonly Quote[]): Promise<AccountState> // 非账本事件
+  backup(label: string): Promise<boolean>                    // 重置前备份
+}
+
+// service/paper-service.ts —— 两个传输层共用这一组方法
+interface PaperService {
+  account(): Promise<AccountView>
+  preview(draft: OrderDraft): Promise<PreviewView>
+  place(draft: OrderDraft, requestId?: string): Promise<OrderView>
+  cancel(orderId: string): Promise<OrderView>
+  tick(): Promise<TickView>
+  orders(): Promise<OrderView[]>
+  trades(): Promise<FillView[]>
+  review(period?: '7d' | '30d' | 'all'): Promise<ReviewView>
+  quote(symbols: string[]): Promise<QuoteResult>
+  bars(symbol: string, limit?: number): Promise<BarsResult>
+  settingsView(): Promise<PaperSettings>
+  reset(confirm: boolean): Promise<AccountView>
+}
+```
+
+不变量：`core` 不知道端口；`service` 不知道 JSONL；`route` / `agent` 不知道业务规则；`client` 不知道文件与行情接口。
+
+## 6 领域模型与事件账本
+
+### 6.1 状态
+
+```ts
+interface AccountState {
+  accountId: string
+  version: number
+  initialCashCents: number      // 分
+  cashCents: number             // 分
+  settings: PaperSettings       // 开户/重置时写入事件
+  positions: Record<string, Position>
+  orders: Record<string, Order>
+  fills: FillRecord[]
+  tradeDate: string             // Asia/Shanghai
+  blocked: boolean              // 对账失败后置真
+  lastSeq: number
+  createdAt: string
+  dayEquity: DayPoint[]         // 每个交易日一条收盘快照
+}
+```
+
+`Position.available` 是「今日可卖」：买入当日为 0，`day.closed` 事件把持仓全部解锁；`enableT1=false` 时买入即可卖。
+
+### 6.2 事件
+
+追加到 `events.jsonl`，一行一个 JSON。所有事件带 `seq / id / ts / type / payload`。
+
+| 事件 | 何时写 | 关键字段 |
+| --- | --- | --- |
+| `account.opened` | 首次初始化 | 初始资金、配置快照、交易日 |
+| `account.reset` | 用户确认重置 | 配置、初始资金、交易日、原因 |
+| `order.submitted` | 提交通过风控 | 订单、报价快照 |
+| `order.rejected` | 风控或校验拒绝 | 订单、拒绝码 |
+| `order.canceled` | 撤单、过期、资金/持仓不足 | 订单 ID、原因、时间 |
+| `order.filled` | 撮合成功 | 成交价、数量、费用明细 |
+| `day.closed` | 首次跨交易日 tick | 日期、权益、现金、下一交易日 |
+| `ledger.violation` | 启动或写入对账失败 | 失败项；账户随即 `blocked` |
+
+未落地的事件（`account.settings`、`risk.blocked`）在 §14.3 里说明，当前不写。
+
+**幂等**：`requestId` 随 `order.submitted` 落账；下单前按 `requestId` 查已有订单，重复请求返回同一订单。
+**确定性**：成交价、报价时间、交易日写进事件；重放不依赖当前行情。
+**失败关闭**：不变量失败 → 写 `ledger.violation`，`blocked = true`，下单/撤单直接拒绝。
+
+### 6.3 恢复与对账
+
+1. 读 `events.jsonl`，末尾坏行（进程被杀）丢弃并记录 warning。
+2. 校验 `seq` 严格递增，倒序即失败关闭。
+3. 重放并校验：现金恒等式、持仓数量、可卖 ≤ 持仓、已成交订单必须有成交记录。
+4. 失败：追加 `ledger.violation`，置 `blocked`；界面红条提示，人工检查后可重置。
+5. 每次 `append` 后同样跑校验；校验通过才把新状态留在内存。
+
+![图 2 · 事件账本与恢复](figures/fig-2.png)
+
+## 7 撮合、费用与 T+1
+
+| 项 | 规则 |
+| --- | --- |
+| 报价 | `bid / ask / last / prevClose / ts`；缺 bid/ask 用 last 兜底 |
+| 滑点 | 买入 `ask × (1 + bps)`，卖出 `bid × (1 - bps)`，默认 5 bps |
+| 市价单 | 立即全量成交；报价缺失或超过 TTL（默认 30 秒）拒绝 |
+| 限价买 | `ask ≤ limit` 成交，成交价 `min(limit, ask × (1 + bps))` |
+| 限价卖 | `bid ≥ limit` 成交，成交价 `max(limit, bid × (1 - bps))` |
+| 部分成交 | v0.1 不做；一次全量 |
+| 有效期 | 当日有效；下一交易日首次 tick 过期（`order.canceled` + `reason=expired`） |
+| 手数 | 买入 100 的整数倍；卖出不超过可卖，可零股 |
+| 费用 | 佣金 `max(金额 × 0.025%, 5 元)`；印花税卖出 0.05%；过户费双向 0.001% |
+| T+1 | 买入当日 `available = 0`；下一交易日 `day.closed` 解锁 |
+| 涨跌停 | 未做；`risk` 已留 `maxOrderNotionalCents` 单笔上限 |
+
+`tick` 的顺序：跨日 → 写 `day.closed` 并过期挂单 → 刷新持仓最新价 → 逐笔判断限价单 → 资金/持仓不足则撤单并给 notice。
+
+## 8 数据层：FTShare 协议
+
+FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直接发 MCP，统一走宿主 `ctx.ftshareData.call(interfaceName, args)`。
+
+| 项 | 值 |
+| --- | --- |
+| 网关 | `https://market.ft.tech/gateway/mcp` |
+| 鉴权 | 宿主 FTShare 服务解析 API Key；本插件不读、不展示 |
+| 调用 | `callTool({ name, arguments })`，宿主归一成 `{ ok, state, rows, notice? }` |
+| 归一 | `available / empty / denied / failed` 四态；`denied ≠ 没有数据` |
+
+默认候选接口（`data/ftshare-market-data.ts`，按顺序探测，`listTools` 缓存可用集合）：
+
+| 用途 | 接口 | 关键入参 |
+| --- | --- | --- |
+| 实时报价 | `ft_v4_stock_realtime_day_kline` | `symbols[]` |
+| 报价/日 K 兜底 | `ft_v1_stock_candlesticks` | `symbol`, `interval_unit=day|Day`, `limit`, `until_ts_millis` |
+| 批量日 K | `ft_v2_stock_candlesticks_batch` | `symbols[]`, `interval_unit`, `limit` |
+
+- 代码统一 `600519.SH` / `000001.SZ`；适配器补后缀，也接受已带后缀的写法。
+- 字段按候选名归一（`close/last/latest/price/收盘/最新价` 等）；分组 `items` 自动摊平。
+- `quote.ts` 是**取数时间**不是行情时间：模拟盘允许收盘后用最后收盘价，不把旧数据判成过期。
+- 交易日历接口尚未接入；`core/calendar` 用工作日兜底，节假日会多算一个交易日。
+- 行情不可用：禁止开新仓；挂单保持；界面显示四态原因。`UnavailableMarketData` 让「没装行情服务」与「接口失败」同形。
+
+## 9 服务与 RPC
+
+**路由**：`POST /api/ft-paper-trading`，envelope `{ endpoint, payload }` → `{ ok, value | error }`。
+**限制**：只接受 POST；请求体 256 KiB 上限；非对象 body 直接 400。
+**并发**：同一账户的写命令（append / markPrices）进单一 Promise 队列串行；读可并发。
+**错误码**：`ACCOUNT_BLOCKED`、`INVALID_ARGUMENT`、`INVALID_SYMBOL`、`INVALID_QTY`、`INVALID_LOT`、`INSUFFICIENT_CASH`、`INSUFFICIENT_POSITION`、`T1_LOCKED`、`MAX_NOTIONAL`、`ORDER_NOT_FOUND`、`ORDER_NOT_PENDING`、`QUOTE_UNAVAILABLE`、`QUOTE_STALE`。
+
+| endpoint | 作用 | 状态 |
+| --- | --- | --- |
+| `health` | 路由存活探针 | ● |
+| `account/get` / `account/init` | 查账户（首次自动开户） | ● |
+| `account/reset` | 重置（必须 `confirm=true`） | ● |
+| `market/quote` / `market/bars` | 行情与日 K | ● |
+| `order/preview` / `order/place` / `order/cancel` | 交易 | ● |
+| `tick` | 刷新行情并撮合挂单 | ● |
+| `list/orders` / `list/trades` | 列表 | ● |
+| `review/get` | 复盘 | ● |
+| `settings/get` | 读设置 | ● |
+| `settings/update` | 写设置 | ○ v0.2 |
+
+## 10 Agent 工具与工具卡
+
+### 10.1 工具（8 个）
+
+| 工具 | 入参 | 返回 | 卡片 |
+| --- | --- | --- | --- |
+| `paper_account` | `{ reset?, confirm? }` | 账户摘要 | 待做 |
+| `paper_quote` | `{ symbols }` | 报价表 | 无 |
+| `paper_preview` | `{ symbol, side, qty, type, limitPrice?, price? }` | 金额、费用、占用资金、可卖 | 待做 |
+| `paper_order` | `{ symbol, side, qty, type, limitPrice?, price?, requestId? }` | 订单状态 | 待做 |
+| `paper_cancel` | `{ orderId }` | 订单状态 | 待做 |
+| `paper_status` | 无 | 持仓 + 挂单 + 最近成交 | 待做 |
+| `paper_tick` | 无 | 成交/过期结果 | 无 |
+| `paper_review` | `{ period? }` | 曲线与统计 | 待做 |
+
+规则：所有工具只调 `PaperService`；`output.render` 产出中文摘要；`presentationMeta` 尚未添加（工具卡的前置条件）。
+
+工具当前注册在全局行，标准模式也能看到 `paper_*`。若要把它们收进金融模式，按 §14.8 的做法拆 `/agent` 子路径，不要直接搬走整行（浏览器半会丢）。
+
+### 10.2 工具卡（v0.2）
+
+| 卡 | key | 内容 | 动作 |
+| --- | --- | --- | --- |
+| 预览卡 | `paper_preview` | 代码、方向、数量、限价、金额、费用、现金影响 | 「确认下单」→ `order/place` |
+| 委托卡 | `paper_order` / `paper_cancel` | 状态、成交价、费用、时间 | 挂单「撤单」 |
+| 账户卡 | `paper_status` | 总资产、现金、持仓摘要、挂单数 | 「打开模拟盘」→ 切到 `main` |
+| 复盘卡 | `paper_review` | 权益曲线、回撤、统计 | 「查看复盘」 |
+
+卡片只能渲染与转发 RPC，不能复制业务规则。注册方式见 §14.2。
+
+## 11 客户端
+
+### 11.1 入口
+
+当前用左侧栏图标 + 主面板，不用右侧栏 tab：
+
+| 项 | 做法 |
+| --- | --- |
+| 注册 | `sidebar.panellist` 放图标（`id: ft-paper-trading`，`order: 30`），`main` 放面板体 |
+| 打开 | 用户点左侧栏「模拟盘」图标 |
+| 作用域 | 面板是全局视图；账户数据在宿主，与会话无关 |
+| 隐藏 | 切走面板即卸载，轮询随组件清理停止 |
+
+右侧栏 tab 方案（`sidebarRightTabs` + `sidebar.right.pane.tab`）保留为候选：它是会话级的，没有会话时打不开，v0.1 不采用。
+
+### 11.2 页面
+
+| 页签 | 内容 |
+| --- | --- |
+| 交易 | 代码、查行情、方向/类型/数量/限价、参考价、预览面板、买入/卖出 |
+| 持仓 | 代码、名称、数量、可卖、成本、现价、浮盈亏；行内「卖出」回填交易页 |
+| 订单 | 挂单表（可撤单）、历史表 |
+| 复盘 | 7/30/全部区间、成交统计、最大回撤、权益曲线、成交记录 |
+
+账户头：总资产、可用现金、浮动盈亏、今日盈亏、刷新、重置（`window.confirm` 二次确认）。
+
+**刷新**：页面挂载即拉取 `account/get`、`list/orders`、`list/trades`、`review/get`；每 5 秒在 `document.visibilityState === 'visible'` 时调 `tick` 并静默重载；提交、撤单、手动刷新立即重载。
+**主题**：只用宿主 CSS token；交易橙读共享 `--ft-accent-warm*`，`--pt-accent*` 只是本地别名。
+**图表**：`EquityChart` 是纯函数式 SVG（等宽视口、min/max 归一），没有图表库。
+
+### 11.3 UI 基线（B 紧凑版）
+
+已按 [`docs/specs/ui/design.md`](../ui/design.md) 接入宿主 UI 基线：
+
+| 项 | 落地 |
+| --- | --- |
+| 颜色 | 表面/文字/边框/涨跌走 `--dsw-alias-*`；主色读共享品牌层 `--ft-accent-warm*`（亮 `#cf5623` / 暗 `#ff8352`），不回退到 `state-business-primary` |
+| 圆角 | `--dsw-radius-xs/sm`，不写 4/6px |
+| 字号 | 正文 `--dsh-content-font-size-secondary`；标题 16、说明 12、eyebrow 11 |
+| 明暗 | follow：不写主题选择器；品牌层按调色板取值，fallback 用 `light-dark()` |
+| 焦点 | 按钮、输入、页签、分段的 `:focus-visible` 统一 2px `--pt-accent` 环 |
+| 密度 | 16/18 padding、统计指标带、30px 表格行、120px 图表、下单/预览双卡 |
+| 响应 | 容器查询 900/760/520px，跟随面板宽度而非窗口 |
+
+验收：`DSH_HARNESS_ROOT=<dsh checkout> node scripts/ui-audit.mjs`。
+视觉对照：[UI 预览（A 舒适 / B 紧凑）](ui-preview.html)。结论取 B。
+
+## 12 设置
+
+v0.1 只读：`settings/get` 返回开户/重置时写进账本的配置；没有设置页，也没有写接口。
+
+| 字段 | 默认 |
+| --- | --- |
+| `initialCashCents` | 10,000,000（10 万元） |
+| `commissionRate` | 0.00025 |
+| `minCommissionCents` | 500（5 元） |
+| `stampDutyRate` | 0.0005 |
+| `transferFeeRate` | 0.00001 |
+| `slippageBps` | 5 |
+| `enableT1` | true |
+| `quoteTtlSec` | 30 |
+| `maxOrderNotionalCents` | 0（关闭） |
+
+写设置的做法见 §14.3：新增 `account.settings` 事件，随账本重放；`contract.ts` 的 `DEFAULT_SETTINGS` 只给新账户默认值。
+FTShare API Key 由全局设置服务解析，本插件不读、不展示、不修改。
+
+## 13 存储
+
+```
+$DSH_HOME/paper-trading/
+  default/
+    events.jsonl              # 追加写，一行一事件，0600
+    backups/
+      events-<ts>.jsonl       # 每次重置前复制一份
+```
+
+- `DSH_HOME` 优先，`~/.dsh` 兜底；目录 700、文件 600。
+- 每次 append 后 `fsync`；写失败直接报错，不吞。
+- 坏尾行读取时丢弃并 warn；`seq` 倒序/不连续触发 `ledger.violation`。
+- `meta.json`、备份保留最近 5 份、按年轮转都还没做（§17）。
+
+## 14 扩展点（按改动落点）
+
+### 14.1 新页签 / 新图
+
+都在 `src/client/index.js` 的 `Dashboard` 里加一个页签 + 一个渲染函数；数据走已有 RPC：
+
+- 日 K：`rpc('market/bars', { symbol, limit })`，返回 `{ state, bars, notice }`；图表按 `EquityChart` 的纯 SVG 写法，数据 → path 的纯函数单独抽出来便于测试。
+- 复盘已有，加字段只动 `core/views.ts` 的 `toReview` 与客户端展示。
+
+单文件客户端是 v0.1 的取舍（与投研舱一致）：文件超过约 1000 行或需要多文件复用再引打包器（tsdown/esbuild），不要手写拼接。客户端改完必须跑 `pnpm build`，`lib/client.js` 随提交走。
+
+### 14.2 工具卡
+
+1. 客户端注册 `ctx.slots.inject('tool.call.toolview', ...)`，`key` 用工具名。
+2. 工具补 `output.presentationMeta(args, value)`，返回 `{ kind: 'paper.order', orderId }` 之类的展示元数据。
+3. 卡片动作只调 RPC（`order/place`、`order/cancel`、切 `main` 面板），不复制业务规则。
+
+### 14.3 设置写入
+
+1. `contract.ts` 加 `account.settings` 事件与视图字段（如需）。
+2. `core/types.ts` 加事件类型，`core/ledger.ts` 的 `applyEvent` 处理它。
+3. `core/engine.ts` 加纯函数命令（如 `updateSettings`）返回事件；`service` 暴露方法并走 `repo.append`。
+4. `rpc.ts` 加 `settings/update` 与 payload 校验。
+5. 客户端加设置页签或设置卡；保存后重新拉 `account/get`。
+
+### 14.4 新行情源
+
+实现 `MarketDataPort`（两类方法，四态结果），在 `src/index.ts` 替换 `FtshareMarketData`。代码规范化、字段归一、超时都在适配器里，`service` 不动。缺数据时返回 `failed` 而不是抛错。
+
+### 14.5 新存储 / 多账户
+
+实现 `AccountStore`（`current / append / markPrices / backup`）。多账户时每个 `accountId` 一个 repo + 一个 service，路由按 `accountId` 选择；注意同一账户只能有一个写者（repo 的 Promise 队列保证进程内串行，跨进程没有锁）。
+
+### 14.6 撮合 / 风控规则
+
+先改 `core/matching.ts` 或 `core/risk.ts` 的纯函数，补 `tests/core.test.mjs`，再让 `engine` 产出对应事件。成交价必须写进事件，保证重放确定性。
+
+### 14.7 涨跌停
+
+`risk` 加价格上下限校验（用 `prevClose` + 板块规则），`matching` 加「涨跌停价不成交」判定；两者都不读文件、不联网，用现有报价字段即可。
+
+### 14.8 把工具收进金融模式（preset）
+
+当前 `paper_*` 是全局行。要做成「只在金融模式出现」：
+
+1. 全局行继续提供浏览器半与 RPC 路由，并把 service `ctx.provide('paperTrading', service)`。
+2. 新增 `./agent` 子路径导出，只注册工具，`inject: ['paperTrading']`。
+3. 在 `packages/dsh-fft-bundle/cordis.patch.yml` 的 `preset-ft-finance.plugins` 里加一行 `@ft/dsh-fft-paper-trading/agent`。
+4. 不要给 preset 行加裸包名，否则浏览器半会挂到 preset 的 detached 子树、在模块扫描里消失（`packages/dsh-fft-bundle/tests/patch.test.mjs` 挡住）。
+
+## 15 测试策略
+
+当前 14 个用例（`pnpm test`，构建后跑 `node --test`）：
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `core.test.mjs` | 费用（最低佣金/印花税）、撮合（滑点/限价）、风控（手数/现金/T+1）、引擎成交与重放、限价挂单与 tick 成交 |
+| `service.test.mjs` | 买入 → 隔日解锁 → 卖出 → 复盘 → 重置（含备份）、幂等、无行情时的降级 |
+| `rpc.test.mjs` | envelope、preview/place、未知 endpoint |
+| `store.test.mjs` | JSONL 追加、坏尾行隔离 |
+| `adapter.test.mjs` | 代码规范化、分组摊平、日 K 排序 |
+| `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点 |
+| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 8 个工具仍挂载，账户可读、行情四态失败 |
+
+尚未覆盖：`blocked` 后的撤单/下单、重复 `seq`、路由 405/413、工具卡（待做）。
+
+## 16 演进路线
+
+| 版本 | 内容 |
+| --- | --- |
+| v0.1（已落地） | 左侧栏面板（交易/持仓/订单/复盘）+ 8 个工具 + 事件账本 + 权益曲线 |
+| v0.2 | 工具卡、K 线 + 交易标记、设置写入、报价缓存、交易日历接口 |
+| v0.3 | 涨跌停、部分成交、止损单、多账户、导入导出、通知 |
+
+## 17 风险与待验证
+
+| 风险 | 影响 | 处理 |
+| --- | --- | --- |
+| FTShare 快照字段可能不含 bid/ask | 成交价只能用 last 兜底 | 适配器归一，缺买卖价时用 last |
+| 每次 MCP 调用新建会话 | 首包延迟偏高 | 报价缓存（v0.2）；tick 合并请求 |
+| `quote.ts` 是取数时间 | 收盘后仍按最后价成交 | 语义写进适配器注释；不用它判定行情陈旧 |
+| 日历只按工作日 | 节假日 T+1 多解锁一天 | 接 `ft_v1_time_trading_calendar`（v0.2） |
+| 单账户、单写者 | 多窗口/多进程写同一文件没有锁 | 进程内队列串行；跨进程另议 |
+| 公司行为不处理 | 长期成本失真 | README 写明；v0.3 另议 |
+| 客户端单文件 | 页面增多后难维护 | 先按页签拆函数；过 1000 行再引打包器 |
+| 工具在全局模式可见 | 标准模式出现模拟盘工具 | 按 §14.8 收进 preset |
+
+## 18 关键决策
+
+| # | 决策 | 理由 |
+| --- | --- | --- |
+| D1 | 事件账本用 JSONL | 数据量小、可 diff、确定性重放 |
+| D2 | tick 按需，不常驻撮合 | 少一个后台任务 |
+| D3 | 不做部分成交与止损单 | 规则简单可验证 |
+| D4 | 单账户、单币种 | 范围控制 |
+| D5 | 自绘 SVG 图表 | 避免引图表库与跨插件耦合 |
+| D6 | 独立子包 | 边界清楚，可独立发版 |
+| D7 | 浏览器只走自己的 RPC 路由 | 两平面隔离 |
+| D8 | 设置属于模拟盘 | 不挤进全局设置卡 |
+| D9 | 数据只走 `ctx.ftshareData` | 凭据与四态归一一条路径 |
+| D10 | 术语定 `paper trading`：工具前缀 `paper_`、包名、路由、数据目录四处同名 | 业界标准词，特指「真实行情 + 虚拟资金」；`sim` 会把回测/仿真撮合也算进来 |
+| D11 | v0.1 用左侧栏面板，不用右侧栏 tab | tab 是会话级，没有会话打不开；面板全局可用 |
+| D12 | 行情端口可缺省（`UnavailableMarketData`） | 行情服务是可选依赖，账本与面板不能因它缺失而消失 |
+| D13 | 存储与行情都以端口注入 service | 换后端/换数据源不动业务；测试用假端口即可 |
+| D14 | 重置也走 `append` 与对账 | 破坏性操作同样受不变量保护；备份先于写入 |
+
+## 附录 A：错误码与状态机
+
+订单状态：`pending → filled | canceled | rejected | expired`；`pending` 只能被 `tick`、撤单或过期改变。
+
+```
+提交 ──风控拒绝──▶ rejected
+  │
+  ├─市价─▶ filled
+  └─限价─▶ pending ──tick 命中──▶ filled
+                 └──撤单/过期──▶ canceled / expired
+```
+
+![图 3 · 报单生命周期](figures/fig-3.png)
+
+## 附录 B：与宿主既有能力的复用
+
+| 能力 | 复用方式 |
+| --- | --- |
+| 行情与日 K | `ctx.ftshareData.call()`（MCP StreamableHTTP） |
+| 面板位置 | 原生 `sidebar.panellist` + `main` 槽位 |
+| 工具卡（待做） | `tool.call.toolview` 槽位 |
+| 主题 | 宿主 CSS token + `--ft-*` 品牌层 |
+| 数据目录 | `$DSH_HOME`（`DSH_HOME` 优先，`~/.dsh` 兜底） |
