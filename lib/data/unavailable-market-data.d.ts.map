@@ -1,0 +1,1 @@
+{"version":3,"file":"unavailable-market-data.d.ts","sourceRoot":"","sources":["../../src/data/unavailable-market-data.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,UAAU,EAAE,cAAc,EAAE,WAAW,EAAE,MAAM,uBAAuB,CAAA;AAIpF;;;;;;;GAOG;AACH,qBAAa,qBAAsB,YAAW,cAAc;IACpD,MAAM,IAAI,OAAO,CAAC,WAAW,CAAC;IAI9B,SAAS,IAAI,OAAO,CAAC,UAAU,CAAC;CAGvC"}

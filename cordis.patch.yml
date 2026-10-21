@@ -1,0 +1,8 @@
+# dsh-fft-paper-trading bundle patch
+#
+# One business row: the bare package name carries both the host half (RPC route,
+# tools) and the browser half (sidebar tab). The host entry attaches its
+# services lazily, so the browser module scan can always see this package.
+- insert:
+    - id: ft-paper-trading
+      name: '@ft/dsh-fft-paper-trading'
