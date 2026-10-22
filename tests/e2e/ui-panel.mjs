@@ -154,6 +154,7 @@ try {
   assert('stock ticket keeps the aligned form grid', stock.ticketFields?.length === 7, JSON.stringify(stock.ticketFields))
   assert('an untouched ticket does not preview a negative balance', typeof stock.previewText === 'string' && !stock.previewText.includes('成交后现金'), JSON.stringify(stock.previewText))
   assert('a blank quantity reads as fill-in, not invalid', stock.submitTitle === '填写数量', JSON.stringify(stock.submitTitle))
+  assert('an unpreviewed ticket hides the unknown max-buy figure', typeof stock.meta === 'string' && stock.meta.includes('可用') && !stock.meta.includes('最多可买'), JSON.stringify(stock.meta))
   assert('stock K-line rail renders', stock.kline === true)
   assert('stock book renders', typeof stock.book === 'string' && stock.book.includes('持仓'))
   assert('short symbol keeps the panel mounted', stock.shortSymbolAlive === true, stock.shortSymbolHint ?? '')
