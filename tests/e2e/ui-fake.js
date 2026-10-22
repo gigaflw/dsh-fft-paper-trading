@@ -467,7 +467,7 @@
     if (name === 'orders-truncation') {
       window.__fake.on('list/orders', () => Array.from({ length: 31 }, (_, index) => ({
         id: `hist-${index}`, requestId: `r-hist-${index}`, symbol: '600519.XSHG', side: 'buy', type: 'limit',
-        qty: 100, limitPrice: 10, status: 'filled', fillPrice: 10, note: '历史备注', createdAt: ts(), updatedAt: ts(),
+        qty: 100, limitPrice: 10, status: 'filled', fillPrice: 10, note: '历史备注'.repeat(20), createdAt: ts(), updatedAt: ts(),
       })))
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
@@ -478,6 +478,7 @@
         return node ? node.innerText.trim() : null
       }, 4000)
       result.hasNote = (document.querySelector('.pt-main')?.innerText ?? '').includes('历史备注')
+      result.noteWidth = document.querySelector('.pt-main table .pt-note-cell')?.getBoundingClientRect().width ?? null
       window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
       return result
     }

@@ -213,6 +213,7 @@ try {
   const ordersTruncation = await scenario('orders-truncation')
   assert('a long order history says it is truncated', typeof ordersTruncation.note === 'string' && ordersTruncation.note.includes('共 31 条'), JSON.stringify(ordersTruncation))
   assert('a stock order note is visible in history', ordersTruncation.hasNote === true, JSON.stringify(ordersTruncation))
+  assert('a long order note is ellipsized', typeof ordersTruncation.noteWidth === 'number' && ordersTruncation.noteWidth <= 190, JSON.stringify(ordersTruncation.noteWidth))
   const stockReasons = await scenario('stock-reasons')
   assert('stock keeps its 可卖不足 wording', typeof stockReasons.text === 'string' && stockReasons.text.includes('可卖不足') && !stockReasons.text.includes('可平不足'), JSON.stringify(stockReasons))
   const resetAccount = await scenario('reset-account')
