@@ -178,6 +178,8 @@ try {
   assert('review marks losses with the down tone', Array.isArray(reviewData.negative) && reviewData.negative.some(text => text.includes('-1,234.56')), JSON.stringify(reviewData.negative))
   const marketRetry = await scenario('market-retry')
   assert('market failure is visible and 刷新 retries it', typeof marketRetry.error === 'string' && marketRetry.rows === 2 && marketRetry.errorAfter === null, JSON.stringify(marketRetry))
+  const marketBoard = await scenario('market-board')
+  assert('switching the board reloads page 1 for it', marketBoard.call?.board === 'star' && marketBoard.call?.page === 1 && typeof marketBoard.text === 'string', JSON.stringify(marketBoard))
   const marketAdopt = await scenario('market-adopt')
   assert('clicking a market row fills the ticket', marketAdopt.tab === '交易' && marketAdopt.symbol === '600519', JSON.stringify(marketAdopt))
   const marketWatch = await scenario('market-watch')
