@@ -48,6 +48,7 @@ export function renderOrder(order: OrderView): string {
   if (order.type === 'limit' && order.limitPrice !== undefined) parts.push(`限价 ${order.limitPrice.toFixed(2)}`)
   if (order.fillPrice !== undefined) parts.push(`成交价 ${order.fillPrice.toFixed(2)}`)
   if (order.reason !== undefined) parts.push(`原因 ${order.reason}`)
+  if (order.note !== undefined) parts.push(`备注 ${order.note}`)
   return parts.join(' · ')
 }
 
