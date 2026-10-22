@@ -1,4 +1,4 @@
-import type { OrderDraft, RpcResult, Side } from '../contract.js'
+import type { BasketOrderInput, OrderDraft, RpcResult, Side } from '../contract.js'
 import type { PaperService } from './paper-service.js'
 import { PaperError } from './errors.js'
 
@@ -37,6 +37,47 @@ function draft(value: unknown): OrderDraft {
     limitPrice: typeof input.limitPrice === 'number' ? input.limitPrice : undefined,
     price: typeof input.price === 'number' ? input.price : undefined,
   }
+}
+
+/** 32 KiB: a 20-row CSV stays tiny, but a pasted file must not slip the body cap. */
+const BASKET_CSV_MAX_BYTES = 32 * 1024
+const BASKET_MAX_ROWS = 20
+const BASKET_BATCH_ID_MAX = 100
+
+function basketCsv(value: unknown): string {
+  const csv = text(value, 'csv')
+  if (new TextEncoder().encode(csv).length > BASKET_CSV_MAX_BYTES) {
+    throw new PaperError('INVALID_ARGUMENT', 'csv 不能超过 32 KiB')
+  }
+  return csv
+}
+
+function basketBudget(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new PaperError('INVALID_ARGUMENT', 'budgetCents 必须是正整数（分）')
+  }
+  return value
+}
+
+function basketRows(value: unknown): BasketOrderInput[] {
+  if (!Array.isArray(value)) throw new PaperError('INVALID_ARGUMENT', 'rows 必须是数组')
+  if (value.length < 1 || value.length > BASKET_MAX_ROWS) {
+    throw new PaperError('INVALID_ARGUMENT', `rows 需要 1 到 ${BASKET_MAX_ROWS} 行`)
+  }
+  return value.map(item => {
+    const input = record(item)
+    return { symbol: text(input.symbol, 'symbol'), qty: num(input.qty, 'qty') }
+  })
+}
+
+function basketBatchId(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string') throw new PaperError('INVALID_ARGUMENT', 'batchId 必须是字符串')
+  const id = value.trim()
+  if (id === '') return undefined
+  if (id.length > BASKET_BATCH_ID_MAX) throw new PaperError('INVALID_ARGUMENT', `batchId 不能超过 ${BASKET_BATCH_ID_MAX} 字符`)
+  return id
 }
 
 function period(value: unknown): '7d' | '30d' | 'all' {
@@ -107,6 +148,14 @@ export function createPaperRpcHandler(service: PaperService): PaperRpcHandler {
             ? input.symbols.filter((item): item is string => typeof item === 'string')
             : []
           return ok({ symbols: await service.setWatchlist(symbols) })
+        }
+        case 'basket/preview': {
+          const input = record(payload)
+          return ok(await service.basketPreview(basketCsv(input.csv), basketBudget(input.budgetCents)))
+        }
+        case 'basket/place': {
+          const input = record(payload)
+          return ok(await service.basketPlace(basketRows(input.rows), basketBatchId(input.batchId)))
         }
         case 'order/preview':
           return ok(await service.preview(draft(payload)))
