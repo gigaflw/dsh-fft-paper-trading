@@ -270,6 +270,8 @@ try {
   assert('a limit outside the stock band is disabled', stockLimitBand.title === '价格超出涨跌停', JSON.stringify(stockLimitBand))
   const stockNoQuote = await scenario('stock-no-quote')
   assert('a market order without a quote is blocked with a reason', typeof stockNoQuote.title === 'string' && typeof stockNoQuote.preview === 'string' && stockNoQuote.preview.includes('没有可用行情'), JSON.stringify(stockNoQuote))
+  const stockSuspended = await scenario('stock-suspended')
+  assert('a suspended stock is disabled with a reason', stockSuspended.title === '停牌', JSON.stringify(stockSuspended))
   const reviewRace2 = await scenario('review-race2')
   assert('a slow stock review period cannot overwrite the newer one (isolated)', Array.isArray(reviewRace2.stats) && reviewRace2.stats.some(text => text.includes('成交笔数') && text.trim().endsWith('30')), JSON.stringify(reviewRace2))
   const lockedAccount = await scenario('locked-account')
