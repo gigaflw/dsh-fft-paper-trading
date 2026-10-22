@@ -1366,6 +1366,22 @@
       result.ids = window.__futuresPlaceIds.slice()
       return result
     }
+    if (name === 'account-retry') {
+      window.__fake.on('account/get', () => ({ __error: { code: 'INTERNAL', message: '账本读取失败' } }))
+      window.__remount('fresh')
+      result.error = await e2e.wait(() => {
+        const text = document.querySelector('.pt-error')?.innerText ?? null
+        return text !== null && text.includes('账本读取失败') ? text : null
+      }, 4000)
+      result.retry = e2e.byText('重试').length
+      window.__fake.on('account/get', () => window.__baseStockAccount)
+      e2e.click(e2e.byText('重试')[0])
+      result.loaded = await e2e.wait(() => {
+        const text = document.querySelector('.pt-root')?.innerText ?? ''
+        return text.includes('运行中') && text.includes('总资产') ? text : null
+      }, 4000)
+      return result
+    }
     if (name === 'slot-identity') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
@@ -1694,7 +1710,8 @@
         : slotMode === 'identity'
           ? (name, props) => React.createElement(IdentitySlot, props)
           : () => null
-      window.__root.render(React.createElement(main.component, { renderSlot }))
+      const key = slotMode === 'fresh' ? `fresh-${Date.now()}-${Math.random()}` : undefined
+      window.__root.render(React.createElement(main.component, { key, renderSlot }))
     }
     window.__registrations = registrations
   }
