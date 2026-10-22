@@ -628,7 +628,7 @@
       await e2e.wait(() => document.querySelector('.pt-chart-wrap'))
       // The panel loaded review data on mount (empty); a period switch forces
       // a refetch against the overrides.
-      const period = e2e.byText('7天')[0]
+      const period = e2e.byText('7 天')[0]
       if (period) e2e.click(period)
       await e2e.wait(() => document.querySelector('.pt-chart-wrap svg'))
       result.stats = [...document.querySelectorAll('.pt-stat')].map(item => item.innerText)
@@ -1675,6 +1675,7 @@
       return result
     }
     if (name === 'futures-reasons') {
+      await new Promise(done => setTimeout(done, 700))
       window.__fake.on('futures/orders', () => [
         {
           id: 'f-reason', requestId: 'r-f-reason', symbol: 'RB2611.SHFE', name: '螺纹钢2611',
@@ -1687,6 +1688,9 @@
           status: 'canceled', reason: 'insufficient_position', createdAt: ts(), updatedAt: ts(),
         },
       ])
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      await new Promise(done => setTimeout(done, 600))
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
       result.reason = await e2e.wait(() => {
