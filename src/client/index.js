@@ -459,7 +459,7 @@ window.__ModuleLoader__.load({
       }, [loadAll])
 
       const reset = useCallback(async () => {
-        if (!window.confirm('重置模拟盘账户？持仓与挂单会清空。')) return
+        if (!window.confirm('重置模拟交易账户？持仓与挂单会清空。')) return
         setBusy(true)
         try {
           setAccount(await rpc('account/reset', { confirm: true }))
@@ -480,7 +480,7 @@ window.__ModuleLoader__.load({
 
       if (account === null) {
         return h('div', { className: 'pt-root' }, h('style', null, CSS),
-          h('div', { className: 'pt-inner' }, error ? h('div', { className: 'pt-error' }, error) : h('div', { className: 'pt-empty' }, '加载模拟盘…')))
+          h('div', { className: 'pt-inner' }, error ? h('div', { className: 'pt-error' }, error) : h('div', { className: 'pt-empty' }, '加载模拟交易…')))
       }
 
       return h('div', { className: 'pt-root' },
@@ -488,7 +488,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'pt-inner' },
           h('div', { className: 'pt-head' },
             h('div', null,
-              h('h3', { className: 'pt-title' }, '模拟盘'),
+              h('h3', { className: 'pt-title' }, '模拟交易'),
               h('div', { className: 'pt-sub' },
                 `${account.tradeDate} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
                 session && !session.canMatch ? h('span', { className: 'pt-note' }, '（仅可预埋限价单）') : null,
@@ -818,7 +818,7 @@ window.__ModuleLoader__.load({
         name: 'sidebar.panellist',
         id: PANEL_ID,
         order: 30,
-        label: '模拟盘',
+        label: '模拟交易',
       }, PaperGlyph))
       ctx.slots.inject('main', () => ctx.slots.register({
         name: 'main',
