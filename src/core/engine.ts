@@ -7,6 +7,7 @@ import { computeFees } from './fees.js'
 import { decideFill } from './matching.js'
 import { checkOrder } from './risk.js'
 import { applyEvent } from './ledger.js'
+import { normalizeSettings } from './settings.js'
 
 export interface EngineResult {
   events: LedgerEvent[]
@@ -38,9 +39,10 @@ export function openAccount(
 ): EngineResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
+  const normalized = normalizeSettings(settings)
   append(working, events, {
     type: 'account.opened',
-    payload: { accountId, settings, initialCashCents: settings.initialCashCents, tradeDate, ledgerVersion: PAPER_LEDGER_VERSION },
+    payload: { accountId, settings: normalized, initialCashCents: normalized.initialCashCents, tradeDate, ledgerVersion: PAPER_LEDGER_VERSION },
   }, ts)
   return { events, state: working }
 }
@@ -54,17 +56,27 @@ export function resetAccount(
 ): EngineResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
+  const normalized = normalizeSettings(settings)
   append(working, events, {
     type: 'account.reset',
-    payload: { settings, initialCashCents: settings.initialCashCents, tradeDate, reason },
+    payload: { settings: normalized, initialCashCents: normalized.initialCashCents, tradeDate, reason },
   }, ts)
   return { events, state: working }
 }
 
 function fillQty(order: Order, barVolume: number | undefined, settings: PaperSettings): number {
   const remaining = order.remainingQty
-  if (settings.fillModel === 'unlimited' || barVolume === undefined || barVolume <= 0) return remaining
+  if (!Number.isFinite(remaining) || remaining <= 0) return 0
+  if (settings.fillModel === 'unlimited') return remaining
+  // No usable bar volume: the documented fallback is an unlimited fill.
+  if (barVolume === undefined || !Number.isFinite(barVolume) || barVolume <= 0) return remaining
+  // A non-finite participation rate is a corrupted setting. Treat it as "no
+  // cap" rather than 0: 0 would freeze every order forever, while unlimited
+  // matches the no-volume fallback above. `normalizeSettings` makes this
+  // branch unreachable for replayed ledgers; hand-built states still hit it.
+  if (!Number.isFinite(settings.maxParticipationRate) || settings.maxParticipationRate <= 0) return remaining
   const capped = Math.floor(barVolume * settings.maxParticipationRate)
+  if (!Number.isFinite(capped) || capped <= 0) return 0
   const lots = Math.floor(capped / 100) * 100
   if (order.side === 'buy') return Math.max(0, Math.min(remaining, lots))
   return Math.max(0, Math.min(remaining, capped))

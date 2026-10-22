@@ -5,6 +5,7 @@ import type {
   CashFlowEntry,
   DayReport,
   FillView,
+  LedgerExport,
   MarketStatus,
   OrderDraft,
   OrderView,
@@ -16,11 +17,13 @@ import type {
   TickView,
 } from '../contract.js'
 import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
-import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, releaseQueued, resetAccount, submit, tick as engineTick } from '../core/engine.js'
+import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, type EngineResult } from '../core/engine.js'
 import { addDays, todayTradeDate, tradeDateOf } from '../core/calendar.js'
 import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt } from '../core/session.js'
+import { normalizeSettings } from '../core/settings.js'
+import { prevCloseFromBars } from '../core/price-limit.js'
 import { toAccountView, toFillView, toOrderView, toReview, previewOrder } from '../core/views.js'
-import type { AccountState, Order } from '../core/types.js'
+import type { AccountState, LedgerEvent, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js'
 import type { AccountStore } from '../store/port.js'
@@ -38,6 +41,14 @@ export interface PaperServiceOptions {
   logger?: { warn(message: string): void }
 }
 
+interface PlaceOutcome {
+  orderId?: string
+  duplicateId?: string
+  blocked?: boolean
+}
+
+type CancelOutcome = { missing?: boolean; notPending?: boolean; blocked?: boolean }
+
 /** Orchestrates the ledger, the data port, the calendar and the clock. No IO of its own. */
 export class PaperService {
   private readonly settings: PaperSettings
@@ -45,7 +56,7 @@ export class PaperService {
   private readonly now: () => Date
 
   constructor(private readonly options: PaperServiceOptions) {
-    this.settings = options.settings ?? DEFAULT_SETTINGS
+    this.settings = normalizeSettings(options.settings ?? DEFAULT_SETTINGS)
     this.accountId = options.accountId ?? DEFAULT_ACCOUNT_ID
     this.now = options.now ?? (() => new Date())
   }
@@ -55,23 +66,30 @@ export class PaperService {
   }
 
   async account(): Promise<AccountView> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
-    return toAccountView(state)
+    return toAccountView(await this.sync())
   }
 
+  /** Open the account on first use, through the store transaction. */
   private async ensureAccount(): Promise<AccountState> {
-    let state = await this.options.repo.current()
-    if (state.tradeDate === '') {
+    const outcome = await this.options.repo.transact(async state => {
+      if (state.tradeDate !== '') return { events: [], value: undefined }
       const now = this.now()
-      const today = todayTradeDate(now)
-      const tradeDate = (await this.options.calendar.isTradingDay(today))
-        ? today
-        : await this.options.calendar.nextTradingDay(today)
-      const { events } = openAccount(state, this.settings, tradeDate, now.toISOString(), this.accountId)
-      state = await this.options.repo.append(events)
-    }
-    return state
+      const tradeDate = await this.tradeDateForNow()
+      const result = openAccount(state, this.settings, tradeDate, now.toISOString(), this.accountId)
+      return { events: result.events, value: undefined }
+    })
+    return outcome.state
+  }
+
+  /** Open if needed, then advance the clock; every public read uses this. */
+  private async sync(): Promise<AccountState> {
+    await this.ensureAccount()
+    return this.advanceTo()
+  }
+
+  private async tradeDateForNow(): Promise<string> {
+    const today = todayTradeDate(this.now())
+    return (await this.options.calendar.isTradingDay(today)) ? today : this.options.calendar.nextTradingDay(today)
   }
 
   /** Symbols whose price the account cares about: open orders and held positions. */
@@ -152,12 +170,17 @@ export class PaperService {
     return state.dayEquity.some(point => point.date === date)
   }
 
-  private async runClose(state: AccountState, date: string, next: string, nowIso: string): Promise<AccountState> {
-    if (this.hasClosed(state, date)) return state
+  /**
+   * Build the close events for one trade date. Data is fetched here; the
+   * enclosing store transaction owns the append, so a concurrent read cannot
+   * build the same snapshot twice.
+   */
+  private async buildClose(state: AccountState, date: string, next: string, nowIso: string): Promise<EngineResult> {
+    if (this.hasClosed(state, date)) return { events: [], state }
     const at = isoAtShanghai(date, 15 * 60)
     const live = await this.fetchQuotes(this.symbolsInPlay(state))
     const boundary = await this.boundaryQuotes(state, date, 'close', live.quotes)
-    const result = closeDay(state, {
+    return closeDay(state, {
       date,
       nextTradeDate: next,
       ts: at,
@@ -165,81 +188,107 @@ export class PaperService {
       quotes: boundary.quotes,
       closeSource: boundary.source,
     })
-    if (result.events.length > 0) await this.options.repo.append(result.events)
-    return result.state
   }
 
-  private async runPreOpen(state: AccountState, date: string, nowIso: string): Promise<AccountState> {
-    if (state.tradeDate === date) return state
-    const at = isoAtShanghai(date, 9 * 60 + 15)
-    const result = preOpenDay(state, date, at)
-    if (result.events.length > 0) await this.options.repo.append(result.events)
-    return result.state
+  private buildPreOpen(state: AccountState, date: string): EngineResult {
+    if (state.tradeDate === date) return { events: [], state }
+    return preOpenDay(state, date, isoAtShanghai(date, 9 * 60 + 15))
   }
 
-  private async runOpen(state: AccountState, date: string, nowIso: string): Promise<AccountState> {
-    if (state.lastOpenedDate === date) return state
+  private async buildOpen(state: AccountState, date: string, nowIso: string): Promise<EngineResult> {
+    if (state.lastOpenedDate === date) return { events: [], state }
     const at = isoAtShanghai(date, 9 * 60 + 30)
     const live = await this.fetchQuotes(this.symbolsInPlay(state))
     const boundary = await this.boundaryQuotes(state, date, 'open', live.quotes)
-    const result = openDay(state, { date, ts: at, recordedAt: nowIso, quotes: boundary.quotes })
-    if (result.events.length > 0) await this.options.repo.append(result.events)
-    return result.state
+    return openDay(state, { date, ts: at, recordedAt: nowIso, quotes: boundary.quotes })
   }
 
   /**
    * Idempotent clock advance: close every due trade date and open the next one.
-   * Missed sessions produce snapshots only, never fills.
+   *
+   * The whole advance runs as one store transaction. Concurrent readers queue
+   * behind it, so the day-boundary events are generated exactly once and the
+   * `seq` values stay contiguous. Missed sessions produce snapshots only, never
+   * fills.
    */
-  private async advanceTo(state: AccountState): Promise<AccountState> {
-    if (state.tradeDate === '') return state
-    const now = this.now()
-    const nowIso = now.toISOString()
-    const today = todayTradeDate(now)
-    let current = state
-    for (let guard = 0; guard < 400; guard += 1) {
-      if (current.tradeDate < today) {
-        const next = await this.options.calendar.nextTradingDay(current.tradeDate)
-        if (nowIso >= isoAtShanghai(current.tradeDate, 15 * 60)) {
-          current = await this.runClose(current, current.tradeDate, next, nowIso)
-        }
-        if (nowIso >= isoAtShanghai(next, 9 * 60 + 15)) {
-          current = await this.runPreOpen(current, next, nowIso)
-        }
-        if (nowIso < isoAtShanghai(next, 9 * 60 + 30)) break
-        current = await this.runOpen(current, next, nowIso)
-        continue
+  private async advanceTo(): Promise<AccountState> {
+    const outcome = await this.options.repo.transact(async state => {
+      if (state.tradeDate === '' || state.blocked) return { events: [], value: undefined }
+      const now = this.now()
+      const nowIso = now.toISOString()
+      const today = todayTradeDate(now)
+      let current = state
+      const events: LedgerEvent[] = []
+      const apply = (result: EngineResult): void => {
+        events.push(...result.events)
+        current = result.state
       }
-      if (current.tradeDate === today) {
-        if (await this.options.calendar.isTradingDay(today)) {
-          if (nowIso >= isoAtShanghai(today, 9 * 60 + 30) && current.lastOpenedDate !== today) {
-            current = await this.runOpen(current, today, nowIso)
+      for (let guard = 0; guard < 400; guard += 1) {
+        if (current.tradeDate < today) {
+          const next = await this.options.calendar.nextTradingDay(current.tradeDate)
+          if (nowIso >= isoAtShanghai(current.tradeDate, 15 * 60)) {
+            if (!this.hasClosed(current, current.tradeDate)) apply(await this.buildClose(current, current.tradeDate, next, nowIso))
           }
-          if (nowIso >= isoAtShanghai(today, 15 * 60) && !this.hasClosed(current, today)) {
-            const next = await this.options.calendar.nextTradingDay(today)
-            current = await this.runClose(current, today, next, nowIso)
+          if (nowIso >= isoAtShanghai(next, 9 * 60 + 15)) apply(this.buildPreOpen(current, next))
+          if (nowIso < isoAtShanghai(next, 9 * 60 + 30)) break
+          apply(await this.buildOpen(current, next, nowIso))
+          continue
+        }
+        if (current.tradeDate === today) {
+          if (await this.options.calendar.isTradingDay(today)) {
+            if (nowIso >= isoAtShanghai(today, 9 * 60 + 30) && current.lastOpenedDate !== today) {
+              apply(await this.buildOpen(current, today, nowIso))
+            }
+            if (nowIso >= isoAtShanghai(today, 15 * 60) && !this.hasClosed(current, today)) {
+              const next = await this.options.calendar.nextTradingDay(today)
+              apply(await this.buildClose(current, today, next, nowIso))
+            }
           }
         }
+        break
       }
-      break
-    }
-    return current
+      return { events, value: undefined }
+    })
+    return outcome.state
   }
 
+  /**
+   * Quote for a draft, with `prevClose` recovered from the daily bars.
+   *
+   * FTShare's single-symbol quote has no `prevClose`, so without this the price
+   * limit is unknown and an order far outside the band would pass risk.
+   */
   private async quoteFor(draft: OrderDraft): Promise<Quote | null> {
     const result = await this.fetchQuotes([draft.symbol])
-    if (result.quotes.length > 0) return result.quotes[0]
+    const live = result.quotes[0]
+    if (live !== undefined) return this.withPrevClose(live)
     if (draft.price !== undefined && draft.price > 0) {
       const fetchedAt = this.ts()
-      return {
+      return this.withPrevClose({
         symbol: draft.symbol,
         last: draft.price,
         marketTs: fetchedAt,
         fetchedAt,
         source: 'manual',
-      }
+      })
     }
     return null
+  }
+
+  private async withPrevClose(quote: Quote): Promise<Quote> {
+    if (quote.prevClose !== undefined && Number.isFinite(quote.prevClose) && quote.prevClose > 0) return quote
+    const prevClose = await this.prevCloseFor(quote.symbol)
+    return prevClose === undefined ? quote : { ...quote, prevClose }
+  }
+
+  private async prevCloseFor(symbol: string): Promise<number | undefined> {
+    try {
+      const bars = await this.options.data.dailyBars(symbol, 8)
+      if (bars.state !== 'ok' || bars.bars.length === 0) return undefined
+      return prevCloseFromBars(bars.bars, todayTradeDate(this.now()))
+    } catch {
+      return undefined
+    }
   }
 
   private async volumeFor(symbols: readonly string[], date: string): Promise<Record<string, number>> {
@@ -270,16 +319,15 @@ export class PaperService {
   }
 
   async preview(draft: OrderDraft): Promise<PreviewView> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     const quote = await this.quoteFor(draft)
     return previewOrder(state, draft, quote, state.settings, this.marketStatusAt(state, this.ts()))
   }
 
   async place(draft: OrderDraft, requestId: string = randomUUID()): Promise<OrderView> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
-    const phase = sessionPhaseAt(this.ts())
+    const state = await this.sync()
+    const now = this.ts()
+    const phase = sessionPhaseAt(now)
     const matchable = canMatch(phase)
     if (!canSubmit(phase, draft.type)) {
       throw new PaperError(
@@ -288,45 +336,54 @@ export class PaperService {
         409,
       )
     }
-    const duplicate = Object.values(state.orders).find(order => order.requestId === requestId)
-    if (duplicate !== undefined) return toOrderView(duplicate)
     const quote = await this.quoteFor(draft)
-    const tradeDate = await this.orderDateFor(state, this.ts(), phase)
+    const tradeDate = await this.orderDateFor(state, now, phase)
     const volumes = matchable ? await this.volumeFor([draft.symbol], tradeDate) : {}
-    const barTs = quote?.marketTs ?? undefined
-    const result = submit(state, { ...draft, name: quote?.name, tradeDate }, quote, requestId, this.ts(), {
-      matchable,
-      phase,
-      barVolume: volumes[draft.symbol],
-      barTs: barTs ?? undefined,
+    const outcome = await this.options.repo.transact<PlaceOutcome>(current => {
+      const duplicate = Object.values(current.orders).find(order => order.requestId === requestId)
+      if (duplicate !== undefined) return { events: [], value: { duplicateId: duplicate.id } }
+      if (current.blocked) return { events: [], value: { blocked: true } }
+      const result = submit(current, { ...draft, name: quote?.name, tradeDate }, quote, requestId, now, {
+        matchable,
+        phase,
+        barVolume: volumes[draft.symbol],
+        barTs: quote?.marketTs ?? undefined,
+      })
+      return { events: result.events, value: { orderId: result.order?.id } }
     })
-    state = await this.options.repo.append(result.events)
-    if (state.blocked) throw new PaperError('ACCOUNT_BLOCKED', '账户已锁定，请重置后继续', 409)
-    const order = result.order === undefined ? undefined : state.orders[result.order.id]
+    if (outcome.value.duplicateId !== undefined) {
+      const duplicate = outcome.state.orders[outcome.value.duplicateId]
+      if (duplicate === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
+      return toOrderView(duplicate)
+    }
+    if (outcome.value.blocked === true || outcome.state.blocked) {
+      throw new PaperError('ACCOUNT_BLOCKED', '账户已锁定，请重置后继续', 409)
+    }
+    const order = outcome.value.orderId === undefined ? undefined : outcome.state.orders[outcome.value.orderId]
     if (order === undefined) throw new PaperError('INTERNAL', '订单未写入账本')
     return toOrderView(order)
   }
 
   async cancel(orderId: string): Promise<OrderView> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     if (state.blocked) throw new PaperError('ACCOUNT_BLOCKED', '账户已锁定，请重置后继续', 409)
-    if (state.orders[orderId] === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
-    const result = cancelOrder(state, orderId, this.ts())
-    if (result.events.length === 0) {
-      const existing = state.orders[orderId]
-      if (existing !== undefined && existing.status !== 'pending' && existing.status !== 'queued' && existing.status !== 'partially_filled') {
-        throw new PaperError('ORDER_NOT_PENDING', '订单不是挂单状态', 409)
-      }
-      throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
-    }
-    const next = await this.options.repo.append(result.events)
-    return toOrderView(next.orders[orderId] as Order)
+    const outcome = await this.options.repo.transact<CancelOutcome>(current => {
+      if (current.blocked) return { events: [], value: { blocked: true } }
+      if (current.orders[orderId] === undefined) return { events: [], value: { missing: true } }
+      const result = cancelOrder(current, orderId, this.ts())
+      if (result.events.length === 0) return { events: [], value: { notPending: true } }
+      return { events: result.events, value: {} }
+    })
+    if (outcome.value.blocked === true) throw new PaperError('ACCOUNT_BLOCKED', '账户已锁定，请重置后继续', 409)
+    if (outcome.value.missing === true) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
+    if (outcome.value.notPending === true) throw new PaperError('ORDER_NOT_PENDING', '订单不是挂单状态', 409)
+    const order = outcome.state.orders[orderId]
+    if (order === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
+    return toOrderView(order)
   }
 
   async tick(): Promise<TickView> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     const now = this.ts()
     const phase = sessionPhaseAt(now)
     const symbols = this.symbolsInPlay(state)
@@ -335,38 +392,42 @@ export class PaperService {
       await this.options.repo.markPrices(quotes.quotes)
       return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: quotes.quotes, notices: quotes.notice === undefined ? [] : [quotes.notice] }
     }
-    const released = releaseQueued(state, now, state.tradeDate)
-    if (released.events.length > 0) state = await this.options.repo.append(released.events)
     const volumes = await this.volumeFor(symbols, state.tradeDate)
-    const ticked = engineTick(state, quotes.quotes, now, volumes)
-    const next = await this.options.repo.append(ticked.events)
+    const outcome = await this.options.repo.transact(current => {
+      if (current.blocked) {
+        return { events: [], value: { filled: [] as Order[], expired: [] as Order[], notices: ['账户已锁定，已跳过撮合'] } }
+      }
+      const released = releaseQueued(current, now, current.tradeDate)
+      const ticked = engineTick(released.state, quotes.quotes, now, volumes)
+      return {
+        events: [...released.events, ...ticked.events],
+        value: { filled: ticked.filled, expired: ticked.expired, notices: ticked.notices },
+      }
+    })
     const marked = await this.options.repo.markPrices(quotes.quotes)
     return {
       tradeDate: marked.tradeDate,
-      filled: ticked.filled.map(order => toOrderView(next.orders[order.id] ?? order)),
-      expired: ticked.expired.map(order => toOrderView(next.orders[order.id] ?? order)),
+      filled: outcome.value.filled.map(order => toOrderView(marked.orders[order.id] ?? order)),
+      expired: outcome.value.expired.map(order => toOrderView(marked.orders[order.id] ?? order)),
       quotes: quotes.quotes,
-      notices: [...ticked.notices, ...(quotes.notice === undefined ? [] : [quotes.notice])],
+      notices: [...outcome.value.notices, ...(quotes.notice === undefined ? [] : [quotes.notice])],
     }
   }
 
   async orders(): Promise<OrderView[]> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     return Object.values(state.orders)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(toOrderView)
   }
 
   async trades(): Promise<FillView[]> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     return [...state.fills].reverse().map(toFillView)
   }
 
   async review(period: '7d' | '30d' | 'all' = '30d'): Promise<ReviewView> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     return toReview(state, period, todayTradeDate(this.now()))
   }
 
@@ -410,8 +471,7 @@ export class PaperService {
   }
 
   async settingsView(): Promise<PaperSettings> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     return state.settings
   }
 
@@ -441,14 +501,12 @@ export class PaperService {
   }
 
   async marketStatus(): Promise<MarketStatus> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     return this.marketStatusAt(state, this.ts())
   }
 
   async cashFlow(): Promise<CashFlowEntry[]> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     let balance = 0
     const rows: CashFlowEntry[] = []
     rows.push({ ts: state.createdAt, type: 'open', amount: state.initialCashCents / 100, balance: state.initialCashCents / 100 })
@@ -468,8 +526,7 @@ export class PaperService {
   }
 
   async dailyReport(date?: string): Promise<DayReport[]> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     const points = date === undefined ? state.dayEquity : state.dayEquity.filter(point => point.date === date)
     let previous = state.initialCashCents
     const reports: DayReport[] = []
@@ -502,8 +559,7 @@ export class PaperService {
   }
 
   async roundtrips(): Promise<RoundTrip[]> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     const lots = new Map<string, { qty: number; cost: number; openedAt?: string }>()
     const trips = new Map<string, RoundTrip>()
     for (const fill of state.fills) {
@@ -547,26 +603,45 @@ export class PaperService {
   }
 
   /**
-   * Wipe the account while keeping its current settings. The reset command goes
-   * through the same append path as every other command, so the ledger still
-   * verifies and the pre-reset file is copied aside first.
+   * Wipe the account by replacing the ledger with one genesis event.
+   *
+   * The old file is copied aside first, *before* replay is trusted: a ledger
+   * that currently blocks the account (duplicate seq, NaN fill) must still be
+   * resettable/exportable. Settings come from the persisted account merged over
+   * the current defaults, so a legacy account does not inherit its missing
+   * fields. The write is an atomic temp-file rename.
    */
   async reset(confirm: boolean): Promise<AccountView> {
     if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '重置需要 confirm=true', 400)
-    const state = await this.options.repo.current()
     const ts = this.ts()
     await this.options.repo.backup(ts)
-    const settings = state.tradeDate === '' ? this.settings : state.settings
-    const tradeDate = state.tradeDate || todayTradeDate(this.now())
-    const result = resetAccount(state, settings, tradeDate, ts, 'user')
-    const next = await this.options.repo.append(result.events)
+    const previous = await this.options.repo.current().catch(error => {
+      this.options.logger?.warn(`paper-trading: reset could not replay the old ledger: ${String(error)}`)
+      return undefined
+    })
+    const settings = normalizeSettings(previous !== undefined && previous.tradeDate !== '' ? previous.settings : this.settings)
+    const tradeDate = previous !== undefined && previous.tradeDate !== '' ? previous.tradeDate : await this.tradeDateForNow()
+    const genesis: LedgerEvent = {
+      seq: 1,
+      id: 'evt-1',
+      ts,
+      type: 'account.reset',
+      payload: { settings, initialCashCents: settings.initialCashCents, tradeDate, reason: 'user' },
+    }
+    const next = await this.options.repo.replace([genesis])
     return toAccountView(next)
+  }
+
+  /** Read-only export of the raw ledger, for a locked account's banner. */
+  async exportLedger(): Promise<LedgerExport> {
+    const ledger = await this.options.repo.readLedger()
+    if (ledger.content === null) return { path: ledger.path, exists: false, notice: '账本文件尚未创建' }
+    return { path: ledger.path, exists: true, content: ledger.content }
   }
 
   /** Exposed for tests/scenarios: current equity in cents after advancing the clock. */
   async equityCents(): Promise<number> {
-    let state = await this.ensureAccount()
-    state = await this.advanceTo(state)
+    const state = await this.sync()
     return equityCents(state)
   }
 }

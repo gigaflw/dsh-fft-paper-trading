@@ -1,6 +1,7 @@
 import type { PaperSettings } from '../contract.js'
 import { PAPER_LEDGER_VERSION } from '../contract.js'
 import type { AccountState, FillRecord, LedgerEvent, Order } from './types.js'
+import { normalizeSettings } from './settings.js'
 
 export function emptyState(accountId: string): AccountState {
   return {
@@ -38,7 +39,9 @@ export function emptyState(accountId: string): AccountState {
 function openState(state: AccountState, settings: PaperSettings, initialCashCents: number, tradeDate: string): void {
   state.initialCashCents = initialCashCents
   state.cashCents = initialCashCents
-  state.settings = settings
+  // Older ledgers predate `maxParticipationRate` / `fillModel`; never install a
+  // partial settings object, or the next fill multiplies by `undefined`.
+  state.settings = normalizeSettings(settings)
   state.positions = {}
   state.orders = {}
   state.fills = []
@@ -128,6 +131,9 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
       const { settings, initialCashCents, tradeDate } = event.payload
       openState(state, settings, initialCashCents, tradeDate)
       state.ledgerVersion = PAPER_LEDGER_VERSION
+      // A reset can be the genesis event of a compacted ledger; then it is the
+      // only source of an account creation time.
+      if (state.createdAt === '') state.createdAt = event.ts
       break
     }
     case 'order.submitted': {
@@ -214,6 +220,11 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
       state.blocked = true
       break
     }
+    case 'ledger.repaired': {
+      // Load-time repair (duplicate seq dropped) is auditable but changes no
+      // account value; `lastSeq` advances below like every other event.
+      break
+    }
   }
   state.lastSeq = Math.max(state.lastSeq, event.seq)
   return state
@@ -238,6 +249,14 @@ export function verify(state: AccountState): string[] {
   }
   if (expected !== state.cashCents) {
     issues.push(`现金与成交不一致: 期望 ${expected}，实际 ${state.cashCents}`)
+  }
+  for (const fill of state.fills) {
+    if (!Number.isInteger(fill.qty) || fill.qty <= 0) issues.push(`成交数量非法: ${String(fill.qty)}`)
+    if (!Number.isFinite(fill.price) || fill.price <= 0) issues.push(`成交价格非法: ${String(fill.price)}`)
+    if (!Number.isFinite(fill.amountCents)) issues.push(`成交金额非法: ${String(fill.amountCents)}`)
+    if (fill.fees === undefined || !Number.isFinite(fill.fees.totalCents)) {
+      issues.push(`成交费用非法: ${String(fill.fees?.totalCents)}`)
+    }
   }
   for (const order of Object.values(state.orders)) {
     const filledQty = order.filledQty ?? 0

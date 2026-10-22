@@ -58,6 +58,8 @@ export function createPaperRpcHandler(service: PaperService): PaperRpcHandler {
           const input = record(payload ?? {})
           return ok(await service.reset(input.confirm === true))
         }
+        case 'account/export':
+          return ok(await service.exportLedger())
         case 'settings/get':
           return ok(await service.settingsView())
         case 'market/quote': {

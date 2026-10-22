@@ -138,3 +138,4 @@ export type LedgerEvent =
   | { seq: number; id: string; ts: string; type: 'day.opened'; payload: DayOpened }
   | { seq: number; id: string; ts: string; type: 'day.closed'; payload: DayPoint }
   | { seq: number; id: string; ts: string; type: 'ledger.violation'; payload: { check: string; expected: string; actual: string } }
+  | { seq: number; id: string; ts: string; type: 'ledger.repaired'; payload: { dropped: number; issues?: string[] } }
