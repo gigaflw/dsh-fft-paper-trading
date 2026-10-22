@@ -61,6 +61,8 @@
 
   const handlers = {
     'account/get': () => stockAccount,
+    'account/export': () => ({ path: '/tmp/paper-trading/events.jsonl', exists: true, content: '{"type":"account.opened"}\n' }),
+    'account/reset': () => stockAccount,
     'list/orders': () => stockOrders,
     'list/trades': () => stockTrades,
     'review/get': () => ({ equityCurve: [], maxDrawdownPct: 0, tradeCount: 0, buyCount: 0, sellCount: 0, totalFees: 0, realizedPnl: 0, days: 0 }),
@@ -752,6 +754,31 @@
       e2e.click(e2e.byText('30 天')[0])
       await new Promise(done => setTimeout(done, 700))
       result.stats = [...document.querySelectorAll('.pt-stat')].map(item => item.innerText)
+      return result
+    }
+    if (name === 'locked-account') {
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await new Promise(done => setTimeout(done, 500))
+      window.__fake.on('account/get', () => ({
+        accountId: 'default', currency: 'CNY', initialCash: 1000000, cash: 1000000,
+        marketValue: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
+        tradeDate: '2026-10-22', blocked: true,
+        blockedReason: 'events.jsonl 第 3 行校验失败：未知事件类型',
+        ledgerPath: '/tmp/paper-trading/events.jsonl',
+        positions: [], settings: {},
+      }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.blocked = await e2e.wait(() => {
+        const text = document.querySelector('.pt-blocked')?.innerText ?? ''
+        return text.length > 0 ? text : null
+      }, 4000)
+      const submit = document.querySelector('.pt-ticket-submit')
+      result.submitDisabled = submit?.disabled ?? null
+      result.submitTitle = submit?.title ?? null
+      result.exportButton = e2e.byText('导出账本').length
+      result.copyButton = e2e.byText('复制路径').length
       return result
     }
     if (name === 'slot-fallback') {
