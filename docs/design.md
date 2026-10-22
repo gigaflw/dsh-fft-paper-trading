@@ -15,7 +15,7 @@
 
 **产品非目标（长期不做）**
 
-- 实盘、券商接入、融资融券、期货期权、港股美股。
+- 实盘、券商接入、融资融券、期权、港股美股（期货模拟盘已按 MVP 纳入，见 §20）。
 - 策略引擎、因子库、回测平台（本插件只做「模拟执行 + 复盘」，不抢投研舱的活）。
 - 多币种、分红送转、除权除息（公司行为只记录假设，不自动处理）。
 - 实时行情推送与盘口深度（按需拉取，不建推送通道）。
@@ -1009,6 +1009,76 @@ paper-trading main 注册
 - **挂单冻结资金（原 P2）**：现状是「可用现金不减、多笔委托可叠加，成交时才因资金不足静默撤单」。要修干净需要在订单上引入每笔委托的资金/持仓预留，并在 submit / 撤单 / 过期 / 重放上对称维护，再把「可用/冻结」暴露到 `AccountView` 与持仓表；这属于账本字段变更，不适合混进本轮修复批次。结论：**本轮不做**，列为下一批独立改造，届时同时补不变量与重放用例。
 - 多账户、分红送转、通知（v0.3）；
 - 时间加速/快进（永远不做）。
+
+## 20 期货 MVP 与一揽子（已实现）
+
+> 需求与取舍：[futures-spec.md](specs/futures-spec.md)、[futures-mvp.md](specs/futures-mvp.md)、[basket.md](specs/basket.md)。
+> 本节只写落地后的模块边界、账本语义与集成点，不重复需求。
+
+### 20.1 边界
+
+- **期货独立账户**：账本 `$DSH_HOME/paper-trading/futures/events.jsonl`，版本 `futures-v1`，与股票账本互不读取；账户头切换 `股票 | 期货`。
+- 只做商品期货（SHFE/INE/DCE/CZCE/GFEX）、日盘（09:00–11:30，含 10:15–10:30 小节休息；13:30–15:00）、T+0；无夜盘、无 CFFEX/NIB、无交割/移仓/组合保证金。
+- 一揽子只做买入、市价、连续竞价，CSV 两列（代码 + 权重），一次事务批量下单。
+
+### 20.2 模块
+
+```
+src/futures-contract.ts          # 跨平面类型/设置/RPC 形状（无运行时依赖）
+src/core/futures/                # 纯领域：session / money / fees / margin / engine / ledger / replay / views
+src/core/basket.ts               # CSV 解析 + 权重配股纯函数
+src/store/futures-repo.ts        # JSONL 事务账本（EventStore 已泛型化，股票共用）
+src/data/futures-market-data-port.ts
+src/data/futures-market-data.ts  # FTShare 适配器（三套后缀归一、按日缓存、≤20 分批）
+src/service/futures-service.ts   # 编排：账本/行情/日历/时钟；无 IO
+src/service/futures-rpc.ts       # futures/* 端点与 payload 校验
+src/agent/futures-tools.ts       # 8 个 futures_* 工具
+src/client/index.js              # 账户切换 + StockDashboard / FuturesDashboard + BasketTab
+```
+
+依赖方向沿用 §4：`core` 不 import 任何外层；`service` 只依赖 core 与端口；`client` 只走 RPC。
+
+### 20.3 账本与资金
+
+- 事件：`account.opened / account.reset / order.submitted / order.filled / order.rejected / order.canceled / position.forced_liquidation / day.opened / day.closed / ledger.violation / ledger.repaired`；重放逐字段一致，任一对账不变量失败即锁户。
+- **保证金按开仓价冻结**并从现金扣除；权益 = 现金 + 保证金 + 按最新价（收盘后按收盘价）的浮盈亏。现金只由成交、费用、保证金冻结/释放改变，不随行情波动，重放天然一致。
+- 多空持仓分行、不互冲；平今按持仓 `todayQty` 用 `offset_today_fee` 拆费，其余用 `trading_fee`；手续费/保证金率快照冻结在持仓上。
+- 结算单点 **15:30**：一次事务里按收盘价盯市 → 风险度 ≥ 100% 强平 → 距到期 ≤3 交易日禁开/到期强平 → 挂单过期 → 写 `day.closed` → 推进交易日。无收盘价时跳过按陈旧价的强平（警告），到期强平仍执行。
+- 限价单不预占保证金；撮合前复核，资金不足则撤单；收盘未成交过期。
+- 业务拒单（保证金不足/临近交割/无成交/涨跌停/缺参数）写 `order.rejected` 并返回 ok 包络；时段关闭、锁户、参数非法返回 error 包络。开仓失败关闭（行情/涨跌停/保证金率缺一不可），平仓允许手填参考价。
+
+### 20.4 行情适配
+
+- `FuturesMarketDataPort` 五组数据：contracts / quotes / limits / settle / closes；四态 `ok|stale|denied|failed`，失败整批不返回半份。
+- 三套后缀（行情 `.SHFE`、基础数据 `.SHF/.CZC`、涨跌停/结算 `.SHF/.ZCE/.CFX`）只在适配器归一；合约索引排除 NIB/CFFEX/缺乘数或 tick，按交易日缓存（内存 + `contracts.json`）。
+- 涨跌停优先 `ft_limit`；分钟回退时 `source='minutes'`，风控允许 ±1 tick 容差。`m_ratio`/`long_margin_rate`/`margin_info` 统一成小数。
+- 无 `ftshareData` 时装配 `UnavailableFuturesMarketData`，账本、持仓、历史、重置仍可用；首页明确「期货行情不可用」。
+
+### 20.5 集成
+
+- `src/index.ts` 装配 futures repo/service/scheduler/route/tools；RPC 按前缀分发：`futures/*` → futures handler，其余回落股票 handler，浏览器半只用一条 `/api/ft-paper-trading`。
+- `PaperScheduler` 同时驱动股票与期货 `tick`，面板关闭也照常结算；`ctx.inject(['ftshareData'])` 出现时同时替换股票与期货适配器，dispose 时各自复位。
+- 期货 8 个工具与 `paper_*` 平行、不复用：资金/手数/开平语义不混。
+
+### 20.6 客户端
+
+- 壳 `Dashboard` 只管账户切换；`StockDashboard` 原样保留（等高两列、单张下单卡、底部 book、K 线右栏），`FuturesDashboard` 独立状态、RPC 与 5s 轮询。
+- 期货：交易/持仓/订单/复盘四页签（无行情页、无 K 线）；搜索选合约，右栏合约要素卡；方向 `开多/开空/平多/平空`；预览显示保证金、手续费、风险度、最多可开、平仓可平、涨跌停；底部常驻「持仓/挂单」复用 `.pt-trade-book`。
+- 一揽子：交易页签之后的独立页签，CSV `file.text()` → 宿主解析/配股 → 预览表 9 列 + 合计/剩余现金 → 生成 `batchId` 一次提交；切走即清空。
+
+### 20.7 测试
+
+- 单元/服务/RPC/wiring：`pnpm test`（108 条，股票 42 条无回归）。
+- 离线端到端（真服务 + 真账本 + 假行情）：`tests/e2e/offline-basket.mjs`、`tests/e2e/futures-offline.mjs`。
+- 浏览器端到端（真 React DOM + 真 bundle + 假 RPC，不启 DSH）：`tests/e2e/ui-panel.mjs`，设置 `UI_SHOTS=<dir>` 可截图；方法见 [tests/e2e/README.md](../tests/e2e/README.md)。
+- 应用内验收：同步 profile → ⌘Q 重开后按 [futures-mvp.md](specs/futures-mvp.md) §4 走查。
+
+### 20.8 已知取舍
+
+- D9「当日 volume>0」缺数据源：volume 未知时按 `last>0` 视为有成交并给预览 warning；适配器未来补 `volume` 即自动收紧。
+- 日结算不把浮盈亏划入现金、不重写持仓成本；权益按收盘价重算。要更贴近实盘结算需单独一批改动账本语义。
+- 期货 `closes` 逐合约串行；持仓很多时结算会变慢，后续可换批量 K 线接口。
+- 一揽子不做卖出/再平衡/限价/盘后预埋/Agent 工具，逐步扩。
 
 ## 附录 A：错误码与状态机
 
