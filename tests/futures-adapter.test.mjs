@@ -368,7 +368,8 @@ test('limits: an exchange outage falls back to minutes; a full outage degrades',
   assert.equal(fallback.state, 'ok')
   assert.equal(fallback.value[0].source, 'minutes')
   assert.equal(fallback.value[0].upper, 3272)
-  assert.match(fallback.notice, /SHFE 涨跌停不可用/)
+  // Recovered through minutes: the panel must not still say SHFE is unavailable.
+  assert.equal(fallback.notice, undefined)
 
   const outageService = fake((tool) => (tool === 'ft_v1_futures_ft_limit' ? failed('上游失败') : denied('分钟无权限')))
   const outage = await new FtshareFuturesMarketData(outageService).limits(['RB2611.SHFE'])

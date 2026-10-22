@@ -152,7 +152,7 @@ test('browser bundle: the basket tab imports a CSV and places the previewed rows
   assert.match(source, /accept: '\.csv,text\/csv'/)
   assert.match(source, /file\.text\(\)/, 'files are read with the File API, no CSV dependency')
   assert.match(source, /crypto\.randomUUID/, 'the client generates the batch id for idempotent retries')
-  assert.match(source, /batchId, rows/, 'place receives the batch id and the previewed rows')
+  assert.match(source, /batchId: id, rows/, 'place receives the frozen preview batch id and the previewed rows')
   // Preview columns and the status vocabulary stay user-facing.
   for (const label of ['代码', '名称', '目标权重', '目标金额', '股数', '金额', '费用', '实际权重', '状态']) {
     assert.ok(source.includes(`'${label}'`), `missing basket column ${label}`)

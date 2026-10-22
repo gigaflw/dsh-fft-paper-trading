@@ -163,6 +163,7 @@ try {
   assert('basket confirm is enabled', basket.confirmDisabled === false)
   assert('basket result has two fills', typeof basket.result === 'string' && basket.result.split('|').filter(part => part.includes('\t成交\t')).length === 2, basket.result ?? '')
   assert('basket cash line renders', typeof basket.cashLine === 'string' && basket.cashLine.includes('成交后现金'), basket.cashLine ?? '')
+  assert('basket retry reuses the same batch id', Array.isArray(basket.batchIds) && basket.batchIds.length === 2 && basket.batchIds[0] === basket.batchIds[1], JSON.stringify(basket.batchIds))
   const basketCalls = await evaluate('window.__calls.filter(item => item.startsWith("basket/"))')
   assert('basket RPCs were called', basketCalls.includes('basket/preview') && basketCalls.includes('basket/place'), JSON.stringify(basketCalls))
   await shot('basket-result.png')

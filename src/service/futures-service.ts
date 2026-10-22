@@ -132,6 +132,8 @@ type CancelOutcome = { missing?: boolean; notPending?: boolean; blocked?: boolea
 interface SettleParams extends SettleInput {
   /** Ad-valorem fee, used only when the per-lot fee is missing or zero. */
   feeRate?: number
+  /** Close-today ad-valorem fee in the same unit as `feeRate`. */
+  closeTodayFeeRate?: number
 }
 
 interface SymbolData {
@@ -375,6 +377,7 @@ export class FuturesService {
         closeTodayFeePerLotCents: row.closeTodayFeePerLotCents,
         longMarginRate: row.longMarginRate,
         feeRate: row.feeRate,
+        closeTodayFeeRate: row.closeTodayFeeRate,
       })
     }
     return { state: result.state, settles, notice: result.notice }
@@ -459,16 +462,29 @@ export class FuturesService {
     // Some exchanges (e.g. RB on SHFE) publish `trading_fee = 0` plus an
     // ad-valorem `trading_fee_rate`. The per-lot fee is a snapshot, so convert
     // the rate with the current price; callers see a normal per-lot fee.
-    const rate = settleResult.settles.get(symbol)?.feeRate
-    if (settle !== undefined && quote !== undefined && contract !== undefined
-      && (settle.feePerLotCents === undefined || settle.feePerLotCents === 0)
-      && typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+    const params = settleResult.settles.get(symbol)
+    const toPerLot = (rate: number | undefined): number | undefined => {
+      if (quote === undefined || contract === undefined) return undefined
+      if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return undefined
       // The upstream unit is per-mille for the common case (0.1 = 0.1‰);
       // values already in fraction form (<= 0.01) are used as-is.
       const fraction = rate > 0.01 ? rate / 1000 : rate
-      const perLotCents = Math.max(1, Math.round(quote.last * contract.multiplier * 100 * fraction))
-      settle = { ...settle, feePerLotCents: perLotCents }
-      warnings.push(`该合约按成交额计费，按 ${(perLotCents / 100).toFixed(2)} 元/手估算`)
+      return Math.max(1, Math.round(quote.last * contract.multiplier * 100 * fraction))
+    }
+    const rate = params?.feeRate
+    if (settle !== undefined && (settle.feePerLotCents === undefined || settle.feePerLotCents === 0)) {
+      const perLotCents = toPerLot(rate)
+      if (perLotCents !== undefined) {
+        const closePerLot = toPerLot(params?.closeTodayFeeRate)
+        settle = {
+          ...settle,
+          feePerLotCents: perLotCents,
+          ...(closePerLot === undefined ? {} : { closeTodayFeePerLotCents: closePerLot }),
+        }
+        warnings.push(closePerLot === undefined
+          ? `该合约按成交额计费，按 ${(perLotCents / 100).toFixed(2)} 元/手估算`
+          : `该合约按成交额计费，开仓约 ${(perLotCents / 100).toFixed(2)} 元/手、平今约 ${(closePerLot / 100).toFixed(2)} 元/手`)
+      }
     }
     return {
       contract,
@@ -606,6 +622,10 @@ export class FuturesService {
     if (outcome.value.duplicateId !== undefined) {
       const duplicate = outcome.state.orders[outcome.value.duplicateId]
       if (duplicate === undefined) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在', 404)
+      if (duplicate.symbol !== draft.symbol || duplicate.side !== draft.side
+        || duplicate.offset !== draft.offset || duplicate.type !== draft.type || duplicate.qty !== draft.qty) {
+        throw new FuturesError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用', 409)
+      }
       return toOrderView(duplicate)
     }
     if (outcome.value.blocked === true || outcome.state.blocked) throw this.blocked(outcome.state)
@@ -642,18 +662,23 @@ export class FuturesService {
     if (state.blocked) {
       return { tradeDate: state.tradeDate, filled: [], expired, notices: [...notices, '账户已锁定，已跳过撮合'] }
     }
-    const quoteResult = await this.fetchQuoteMap(symbols)
+    const contracts = await this.ensureContracts(state.tradeDate)
+    const tradable = symbols.filter(symbol => {
+      const sessions = daySessionsFor(contracts.map.get(symbol))
+      return phaseAt(nowIso, state.tradeDate, sessions) === 'trading'
+    })
+    // Outside the day session (including right after the 15:30 settlement)
+    // keep the close marks; a stale minute tick must not overwrite them.
+    if (tradable.length === 0) {
+      return { tradeDate: state.tradeDate, filled: [], expired, notices }
+    }
+    const quoteResult = await this.fetchQuoteMap(tradable)
     if (quoteResult.state !== 'ok') {
       if (quoteResult.notice !== undefined) notices.push(quoteResult.notice)
       return { tradeDate: state.tradeDate, filled: [], expired, notices }
     }
     await this.options.repo.markPrices([...quoteResult.quotes].map(([symbol, quote]) => ({ symbol, last: quote.last })))
-    const contracts = await this.ensureContracts(state.tradeDate)
-    const ticks = [...quoteResult.quotes].map(([symbol, quote]) => {
-      const contract = contracts.map.get(symbol)
-      const sessions = daySessionsFor(contract)
-      return { symbol, last: quote.last, tradable: phaseAt(nowIso, state.tradeDate, sessions) === 'trading' }
-    }).filter(tick => tick.tradable)
+    const ticks = [...quoteResult.quotes].map(([symbol, quote]) => ({ symbol, last: quote.last, tradable: true }))
     if (ticks.length === 0) {
       return { tradeDate: state.tradeDate, filled: [], expired, notices }
     }

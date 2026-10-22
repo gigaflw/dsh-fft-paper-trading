@@ -89,6 +89,7 @@
       }
     },
     'basket/place': (payload) => {
+      window.__basketBatchIds.push(payload.batchId)
       const rows = payload.rows.map((row, index) => ({
         symbol: row.symbol,
         order: { id: `b-${index}`, requestId: `${payload.batchId}:${row.symbol}`, symbol: row.symbol, side: 'buy', type: 'market', qty: row.qty, status: 'filled', fillPrice: index === 0 ? 1450.5 : 11.3, createdAt: ts(), updatedAt: ts() },
@@ -132,6 +133,7 @@
   }
 
   window.__calls = []
+  window.__basketBatchIds = []
   window.__fake = {
     on(endpoint, fn) { handlers[endpoint] = fn },
     state: futuresState,
@@ -230,6 +232,13 @@
         const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('成交后现金'))
         return node ? node.innerText : null
       })
+      // A retry after a lost response must reuse the preview's batchId.
+      const retry = e2e.byText('确认下单')[0]
+      if (retry && !retry.disabled) {
+        e2e.click(retry)
+        await e2e.wait(() => window.__basketBatchIds.length >= 2)
+      }
+      result.batchIds = window.__basketBatchIds.slice()
       return result
     }
     if (name === 'debug-switch') {

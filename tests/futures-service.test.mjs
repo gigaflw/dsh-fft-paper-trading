@@ -395,6 +395,7 @@ test('fee fallback: ad-valorem trading_fee_rate becomes a per-lot fee snapshot',
       closeTodayFeePerLotCents: 0,
       longMarginRate: 0.09,
       feeRate: 0.1,
+      closeTodayFeeRate: 0.05,
     })
     const preview = await subject.service.preview(draft())
     // 3200 * 10 * 0.1‰ = 3.2 yuan = 320 cents.
@@ -402,6 +403,9 @@ test('fee fallback: ad-valorem trading_fee_rate becomes a per-lot fee snapshot',
     assert.ok(preview.warnings.some(text => text.includes('按成交额计费')), JSON.stringify(preview.warnings))
     const order = await subject.service.place(draft(), 'rate-fee')
     assert.equal(order.feesCents, 320)
+    // Same-day close is charged the ad-valorem close-today rate: 3200 * 10 * 0.05‰ = 160 cents.
+    const closePreview = await subject.service.preview(draft({ offset: 'close' }))
+    assert.equal(closePreview.feesCents, 160)
   } finally {
     await close(subject)
   }
