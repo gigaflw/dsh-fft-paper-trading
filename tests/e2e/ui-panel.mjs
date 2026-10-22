@@ -73,8 +73,9 @@ const server = http.createServer((req, res) => {
 })
 await new Promise(done => server.listen(pagePort, '127.0.0.1', done))
 
+const viewportWidth = Number(process.env.UI_WIDTH ?? 1440)
 const child = spawn(chrome, [
-  '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--window-size=1440,1100',
+  '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', `--window-size=${viewportWidth},1100`,
   `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`,
   `http://127.0.0.1:${pagePort}/`,
 ], { stdio: 'ignore' })
@@ -269,6 +270,8 @@ try {
   assert('empty K-line slot falls back to the built-in chart', slotFallback.chart === true && slotFallback.panelAlive === true, JSON.stringify(slotFallback))
   assert('empty K-line slot explains and offers a retry', typeof slotFallback.hint === 'string' && slotFallback.hint.includes('K 线视图未加载') && slotFallback.retryButton === true, JSON.stringify(slotFallback))
 
+  const layout = await evaluate('({ inner: window.innerWidth, doc: document.documentElement.scrollWidth, body: document.body.scrollWidth })')
+  assert('the page has no horizontal overflow', layout.doc <= layout.inner + 1, JSON.stringify(layout))
   const exceptions = consoleLines.filter(line => line.startsWith('EXCEPTION'))
   assert('no page exceptions', exceptions.length === 0, exceptions.join(' | '))
 } catch (error) {
