@@ -1,15 +1,17 @@
-import type { PaperSettings, Quote } from '../contract.js';
+import type { Quote } from '../contract.js';
 import type { Order } from './types.js';
 export interface FillDecision {
     fill: boolean;
     price?: number;
-    reason?: 'QUOTE_STALE' | 'NOT_CROSSED';
+    reason?: 'NO_QUOTE' | 'NOT_CROSSED';
 }
-export declare function quoteFresh(quote: Quote, settings: PaperSettings, nowMs: number): boolean;
 /**
- * Fill rule for the MVP: whole-quantity fills only.
- * Market orders pay the ask / receive the bid after slippage; limit orders
- * cross only when the opposite quote reaches the limit, and are capped by it.
+ * M2 fill rule: the whole remaining quantity trades at `quote.last` (rounded
+ * to 0.01), with no slippage and no volume cap.
+ *
+ * The only gate is a usable last price. Market orders always fill; a buy limit
+ * fills when `last <= limit`, a sell limit when `last >= limit`. Session
+ * gating happens before matching, in the service.
  */
-export declare function decideFill(order: Order, quote: Quote, settings: PaperSettings, nowMs: number): FillDecision;
+export declare function decideFill(order: Order, quote: Quote): FillDecision;
 //# sourceMappingURL=matching.d.ts.map

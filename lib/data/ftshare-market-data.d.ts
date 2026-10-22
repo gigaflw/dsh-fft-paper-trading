@@ -35,6 +35,7 @@ export declare class FtshareMarketData implements MarketDataPort {
     private readonly quoteTools;
     private readonly klineTools;
     private known;
+    private suspensionCache;
     constructor(service: FtshareDataLike, overrides?: Mapping);
     private available;
     private call;
@@ -42,6 +43,7 @@ export declare class FtshareMarketData implements MarketDataPort {
     private toQuote;
     private toListQuote;
     quotes(symbols: string[]): Promise<QuoteResult>;
+    private suspendedSymbols;
     dailyBars(symbol: string, limit: number): Promise<BarsResult>;
     minuteBars(symbol: string, date?: string): Promise<BarsResult>;
     search(query: string, limit: number): Promise<SymbolHit[]>;

@@ -72,6 +72,7 @@ export interface DayPoint {
     feesCents?: number;
     closePrices?: Record<string, number>;
     positions?: PositionSnapshot[];
+    gaps?: Record<string, number>;
     closeSource?: 'daily' | 'last' | 'missing';
     recordedAt?: string;
 }
@@ -100,6 +101,8 @@ export interface AccountState {
     lastSeq: number;
     createdAt: string;
     dayEquity: DayPoint[];
+    /** Gaps recorded at the latest open, carried into the close snapshot. */
+    gaps: Record<string, number>;
 }
 export type LedgerEvent = {
     seq: number;
@@ -184,6 +187,15 @@ export type LedgerEvent = {
     seq: number;
     id: string;
     ts: string;
+    type: 'day.pre_opened';
+    payload: {
+        date: string;
+        at: string;
+    };
+} | {
+    seq: number;
+    id: string;
+    ts: string;
     type: 'day.opened';
     payload: DayOpened;
 } | {
@@ -201,6 +213,15 @@ export type LedgerEvent = {
         check: string;
         expected: string;
         actual: string;
+    };
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'ledger.repaired';
+    payload: {
+        dropped: number;
+        issues?: string[];
     };
 };
 //# sourceMappingURL=types.d.ts.map

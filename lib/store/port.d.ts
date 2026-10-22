@@ -11,11 +11,38 @@ import type { AccountState, LedgerEvent } from '../core/types.js';
 export interface AccountStore {
     /** Replay the log once and return the current state. */
     current(): Promise<AccountState>;
-    /** Append a batch of events and fold them into the in-memory state. */
+    /**
+     * Build events from the freshest state and append them atomically.
+     *
+     * This is the only safe way to write a clock advance: `build` runs inside the
+     * store's write queue, so concurrent readers each see the state left by the
+     * previous transaction and cannot generate the same sequence twice.
+     */
+    transact<T>(build: (state: AccountState) => Transaction<T> | Promise<Transaction<T>>): Promise<TransactionOutcome<T>>;
+    /** Append a batch built elsewhere; the store still enforces seq continuity. */
     append(events: readonly LedgerEvent[]): Promise<AccountState>;
+    /** Atomically replace the whole ledger (compaction, reset) and the state. */
+    replace(events: readonly LedgerEvent[]): Promise<AccountState>;
     /** Refresh the quote cache used by views; never writes the ledger. */
     markPrices(quotes: readonly Quote[]): Promise<AccountState>;
-    /** Copy the event file aside before a destructive reset. */
+    /** Copy the event file aside before a destructive operation. */
     backup(label: string): Promise<boolean>;
+    /** Raw ledger text plus its absolute path, for `account/export`. */
+    readLedger(): Promise<LedgerFile>;
+}
+export interface Transaction<T> {
+    events: LedgerEvent[];
+    value: T;
+}
+export interface TransactionOutcome<T> {
+    state: AccountState;
+    value: T;
+    /** Events that actually reached the file; empty when the store refused. */
+    events: LedgerEvent[];
+}
+export interface LedgerFile {
+    path: string;
+    /** `null` when the ledger does not exist yet. */
+    content: string | null;
 }
 //# sourceMappingURL=port.d.ts.map

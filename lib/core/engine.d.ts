@@ -7,13 +7,12 @@ export interface EngineResult {
 }
 export declare function openAccount(state: AccountState, settings: PaperSettings, tradeDate: string, ts: string, accountId: string): EngineResult;
 export declare function resetAccount(state: AccountState, settings: PaperSettings, tradeDate: string, ts: string, reason: string): EngineResult;
+/** One fill takes the whole remaining quantity: M2 never partially fills. */
+export declare function fillQty(order: Order): number;
 export interface SubmitOptions {
     /** Whether the current phase allows continuous matching. */
     matchable: boolean;
     phase?: SessionPhase;
-    /** Minute-bar volume for a participation-capped fill. */
-    barVolume?: number;
-    barTs?: string;
 }
 /**
  * Submit one order. Risk runs before any event is written; a rejection is still
@@ -37,8 +36,10 @@ export interface TickResult extends EngineResult {
     expired: Order[];
     notices: string[];
 }
-/** Match resting orders against a fresh quote/bar. Day expiry is handled by closeDay. */
-export declare function tick(state: AccountState, quotes: Quote[], ts: string, barVolumes?: Record<string, number>): TickResult;
+/** Match resting orders against a fresh quote. Day expiry is handled by closeDay. */
+export declare function tick(state: AccountState, quotes: Quote[], ts: string): TickResult;
+/** Promote queued orders once continuous matching is available again (e.g. 13:00). */
+export declare function releaseQueued(state: AccountState, ts: string, tradeDate?: string): EngineResult;
 export interface DayCloseOptions {
     date: string;
     nextTradeDate: string;
@@ -49,6 +50,8 @@ export interface DayCloseOptions {
 }
 /** Close one trade date: snapshot, day-order expiry. T+1 stays for the next open. */
 export declare function closeDay(state: AccountState, options: DayCloseOptions): EngineResult;
+/** Switch to the new trade date at 09:15 without unlocking T+1. */
+export declare function preOpenDay(state: AccountState, date: string, ts: string): EngineResult;
 export interface DayOpenOptions {
     date: string;
     ts: string;

@@ -31,7 +31,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test tests/*.test.mjs"
+    "test": "pnpm run build && node --test tests/*.test.mjs",
+    "scenario": "node scripts/scenario.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
@@ -39,8 +40,13 @@
     "react": "^18.2.0"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@types/node": "^22.15.0",
     "typescript": "~5.8.2"
+  },
+  "engines": {
+    "node": ">=22.19.0"
   },
   "dsh": {
     "bundle": {

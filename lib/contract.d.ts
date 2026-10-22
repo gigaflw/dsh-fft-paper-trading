@@ -9,8 +9,11 @@
 export declare const PAPER_ROUTE: "/api/ft-paper-trading";
 /** Request body cap; the route rejects anything larger before parsing. */
 export declare const PAPER_MAX_BODY_BYTES: number;
-/** Ledger schema version. v2 adds day.opened and partial fills. */
-export declare const PAPER_LEDGER_VERSION = 2;
+/**
+ * Ledger schema version. v2 added day.opened; v3 pins the M2 fill model
+ * (slippage 0, unlimited fill at the last price) for every older ledger.
+ */
+export declare const PAPER_LEDGER_VERSION = 3;
 export type Side = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit';
 export type OrderStatus = 'queued' | 'pending' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired';
@@ -26,12 +29,15 @@ export interface PaperSettings {
     minCommissionCents: number;
     stampDutyRate: number;
     transferFeeRate: number;
+    /** Kept for ledger compatibility; M2 fills at `last` and never applies it. */
     slippageBps: number;
     enableT1: boolean;
+    /** Kept for ledger compatibility; M2 has no quote TTL gate. */
     quoteTtlSec: number;
     maxOrderNotionalCents: number;
-    /** Max share of a minute bar's volume one order may consume. */
+    /** Kept for ledger compatibility; M2 never caps a fill by bar volume. */
     maxParticipationRate: number;
+    /** Kept for ledger compatibility; M2 only ever fills in one unlimited chunk. */
     fillModel: FillModel;
 }
 export declare const DEFAULT_SETTINGS: PaperSettings;
@@ -219,6 +225,19 @@ export interface CashFlowEntry {
     amount: number;
     balance: number;
     ref?: string;
+}
+export interface WatchlistView {
+    symbols: string[];
+}
+/** `account/export`: the raw ledger file, so a locked account can be inspected. */
+export interface LedgerExport {
+    /** Absolute path of `events.jsonl`. */
+    path: string;
+    /** False when no ledger file exists yet. */
+    exists: boolean;
+    /** Raw JSONL text; omitted when `exists` is false. */
+    content?: string;
+    notice?: string;
 }
 export interface RoundTrip {
     symbol: string;
