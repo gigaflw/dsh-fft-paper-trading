@@ -1564,6 +1564,23 @@
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       return result
     }
+    if (name === 'futures-quote-stale') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('futures/quote', () => ({
+        state: 'stale', notice: '行情为缓存数据',
+        quotes: [{ ...futuresQuote, last: 3300, marketTs: ts() }],
+      }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.note = await e2e.wait(() => {
+        const text = document.querySelector('.pt-quote')?.innerText ?? ''
+        return text.includes('缓存') ? text : null
+      }, 4000)
+      window.__fake.on('futures/quote', () => ({ state: 'ok', quotes: [{ ...futuresQuote, last: window.__futuresLast ?? futuresQuote.last, marketTs: ts() }] }))
+      return result
+    }
     if (name === 'futures-search') {
       const search = e2e.byText('搜索')[0]
       if (!search) throw new Error('search button missing')
