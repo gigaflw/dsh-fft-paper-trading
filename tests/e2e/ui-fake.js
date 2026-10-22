@@ -1327,6 +1327,35 @@
       result.ids = window.__placeIds.slice()
       return result
     }
+    if (name === 'place-double') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 200))
+      e2e.click(e2e.byText('市价')[0])
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '100')
+      window.__placeCalls = 0
+      window.__fake.on('order/place', async (payload) => {
+        window.__placeCalls += 1
+        await new Promise(done => setTimeout(done, 200))
+        return {
+          id: 'o-double', requestId: payload.requestId, symbol: '600519.XSHG', side: 'buy', type: 'market',
+          qty: 100, status: 'filled', fillPrice: 1318.49, feesCents: 514, createdAt: ts(), updatedAt: ts(),
+        }
+      })
+      const submit = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && !button.disabled ? button : null
+      }, 5000)
+      e2e.click(submit)
+      e2e.click(submit)
+      result.receipt = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('成交') ? text : null
+      }, 5000)
+      result.calls = window.__placeCalls
+      return result
+    }
     if (name === 'futures-place-retry') {
       const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
       if (trade) e2e.click(trade)
