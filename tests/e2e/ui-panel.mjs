@@ -176,6 +176,8 @@ try {
   assert('the roundtrip table says it is aggregated per symbol', reviewData.turn === true, JSON.stringify(reviewData.turn))
   assert('the cash-flow genesis reads as initial cash, not 开户', reviewData.initial === true, JSON.stringify(reviewData.initial))
   assert('review marks losses with the down tone', Array.isArray(reviewData.negative) && reviewData.negative.some(text => text.includes('-1,234.56')), JSON.stringify(reviewData.negative))
+  const reviewPoll = await scenario('review-poll')
+  assert('the review tab refreshes its detail on the poll', reviewPoll.calls >= 1, JSON.stringify(reviewPoll))
   const marketRetry = await scenario('market-retry')
   assert('market failure is visible and 刷新 retries it', typeof marketRetry.error === 'string' && marketRetry.rows === 2 && marketRetry.errorAfter === null, JSON.stringify(marketRetry))
   const marketBoard = await scenario('market-board')

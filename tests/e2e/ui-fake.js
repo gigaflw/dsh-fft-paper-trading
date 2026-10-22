@@ -642,6 +642,19 @@
         .map(node => node.innerText).find(text => text.includes('仅显示最近 30 条')) ?? null
       return result
     }
+    if (name === 'review-poll') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
+      e2e.click(tab)
+      await new Promise(done => setTimeout(done, 400))
+      let calls = 0
+      window.__fake.on('review/daily', () => {
+        calls += 1
+        return [{ date: '2026-10-22', equity: 101000, dayPnl: 3000, fees: 7.1, closeSource: 'last' }]
+      })
+      await new Promise(done => setTimeout(done, 6500))
+      result.calls = calls
+      return result
+    }
     if (name === 'market-retry') {
       let attempts = 0
       const rows = [
