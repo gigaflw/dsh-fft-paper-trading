@@ -839,6 +839,26 @@
       }, 3000)
       return result
     }
+    if (name === 'basket-budget') {
+      const tab = e2e.byText('一揽子')[0]
+      e2e.click(tab)
+      const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
+      if (!fileInput) throw new Error('basket-budget: no file input')
+      const transfer = new DataTransfer()
+      transfer.items.add(new File(['代码,权重\n600519,50%\n000001,50%\n'], 'budget.csv', { type: 'text/csv' }))
+      fileInput.files = transfer.files
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+      await e2e.wait(() => e2e.text('.pt-trade').includes('budget.csv'))
+      const budget = [...document.querySelectorAll('.pt-trade input')].find(input => input.placeholder.includes('默认可用'))
+      e2e.setInput(budget, 'abc')
+      result.disabled = await e2e.wait(() => {
+        const button = e2e.byText('预览配股')[0]
+        return button && button.disabled ? button.title : null
+      }, 3000)
+      result.note = [...document.querySelectorAll('.pt-trade .pt-note')].some(node => node.innerText.includes('预算需为正数'))
+      e2e.setInput(budget, '')
+      return result
+    }
     if (name === 'basket-error') {
       const tab = e2e.byText('一揽子')[0]
       if (!tab) throw new Error('basket tab missing')
