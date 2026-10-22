@@ -148,6 +148,7 @@ try {
   const stock = await scenario('stock')
   assert('stock tabs include basket', Array.isArray(stock.tabs) && ['交易', '一揽子', '行情', '复盘'].every(label => stock.tabs.some(tab => tab.startsWith(label))), JSON.stringify(stock.tabs))
   assert('stock stats render', Array.isArray(stock.stats) && stock.stats.length === 4, JSON.stringify(stock.stats))
+  assert('zero PnL is neutral, not +0.00', !stock.stats.some(text => text.includes('+0.00')), JSON.stringify(stock.stats))
   assert('stock ticket keeps the aligned form grid', stock.ticketFields?.length === 7, JSON.stringify(stock.ticketFields))
   assert('stock K-line rail renders', stock.kline === true)
   assert('stock book renders', typeof stock.book === 'string' && stock.book.includes('持仓'))

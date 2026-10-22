@@ -42,8 +42,10 @@ window.__ModuleLoader__.load({
     const pct = value => isFiniteNumber(value) ? `${(value * 100).toFixed(2)}%` : '—'
     const signed = value => {
       if (!isFiniteNumber(value)) return '—'
-      return `${value >= 0 ? '+' : ''}${amountFormat.format(value)}`
+      // Zero is neither a gain nor a loss: no misleading "+0.00".
+      return `${value > 0 ? '+' : ''}${amountFormat.format(value)}`
     }
+    const tone = value => !isFiniteNumber(value) ? '' : value > 0 ? 'pt-up' : value < 0 ? 'pt-down' : ''
     const count = value => isFiniteNumber(value) ? String(Math.round(value)) : '—'
     const toDate = value => {
       if (value === undefined || value === null || value === '') return null
@@ -689,7 +691,7 @@ window.__ModuleLoader__.load({
                   h('td', null, count(position.available)),
                   h('td', null, money(position.avgCost)),
                   h('td', null, money(position.lastPrice)),
-                  h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
+                  h('td', { className: tone(position.unrealizedPnlCents ?? 0) }, cents(position.unrealizedPnlCents)),
                   h('td', null, h('button', {
                     className: 'pt-btn', onClick: () => onSell(position), disabled: !(position.available > 0),
                     title: position.available > 0 ? undefined : 'T+1：今日买入的股份明日可卖',
@@ -802,7 +804,7 @@ window.__ModuleLoader__.load({
                     h('td', null, bareSymbol(item.symbol)),
                     h('td', null, item.name ?? '—'),
                     h('td', null, money(item.last)),
-                    h('td', { className: change !== null && change < 0 ? 'pt-down' : 'pt-up' }, change === null ? '—' : pct(change)),
+                    h('td', { className: tone(change ?? 0) }, change === null ? '—' : pct(change)),
                     h('td', null, h('button', { className: 'pt-btn', onClick: event => { event.stopPropagation(); void toggleWatch(item.symbol) } }, isWatched(item.symbol) ? '★' : '☆')),
                   )
                 })),
@@ -825,7 +827,7 @@ window.__ModuleLoader__.load({
           h('td', null, count(position.available)),
           h('td', null, money(position.avgCost)),
           h('td', null, money(position.lastPrice)),
-          h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
+          h('td', { className: tone(position.unrealizedPnlCents ?? 0) }, cents(position.unrealizedPnlCents)),
           h('td', null, h('button', {
             className: 'pt-btn',
             onClick: () => onSell(position),
@@ -883,7 +885,7 @@ window.__ModuleLoader__.load({
         review ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           h('div', { className: 'pt-stats' },
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '成交笔数'), h('div', { className: 'pt-stat-value' }, count(review.tradeCount))),
-            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '已实现盈亏'), h('div', { className: `pt-stat-value ${review.realizedPnl >= 0 ? 'pt-up' : 'pt-down'}` }, signed(review.realizedPnl))),
+            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '已实现盈亏'), h('div', { className: `pt-stat-value ${tone(review.realizedPnl)}` }, signed(review.realizedPnl))),
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '费用合计'), h('div', { className: 'pt-stat-value' }, money(review.totalFees))),
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '最大回撤'), h('div', { className: 'pt-stat-value' }, pct(review.maxDrawdownPct))),
           ),
@@ -911,7 +913,7 @@ window.__ModuleLoader__.load({
               h('tbody', null, daily.slice(-14).reverse().map(row => h('tr', { key: row.date },
                 h('td', null, row.date),
                 h('td', null, money(row.equity)),
-                h('td', { className: row.dayPnl >= 0 ? 'pt-up' : 'pt-down' }, signed(row.dayPnl)),
+                h('td', { className: tone(row.dayPnl) }, signed(row.dayPnl)),
                 h('td', null, money(row.fees)),
                 h('td', null, row.closeSource === 'daily' ? '日K收盘' : row.closeSource === 'last' ? '最后报价' : '缺失'),
               ))),
@@ -925,7 +927,7 @@ window.__ModuleLoader__.load({
               h('tbody', null, cashFlow.slice(-30).reverse().map((row, index) => h('tr', { key: `${row.ts}-${index}` },
                 h('td', null, dateTime(row.ts)),
                 h('td', null, CASH_TYPE_TEXT[row.type] ?? row.type),
-                h('td', { className: row.amount >= 0 ? 'pt-up' : 'pt-down' }, signed(row.amount)),
+                h('td', { className: tone(row.amount) }, signed(row.amount)),
                 h('td', null, money(row.balance)),
               ))),
             ),
@@ -940,7 +942,7 @@ window.__ModuleLoader__.load({
                 h('td', null, count(trip.qty)),
                 h('td', null, money(trip.cost)),
                 h('td', null, money(trip.proceeds)),
-                h('td', { className: trip.pnl >= 0 ? 'pt-up' : 'pt-down' }, signed(trip.pnl)),
+                h('td', { className: tone(trip.pnl) }, signed(trip.pnl)),
                 h('td', null, count(trip.holdingDays)),
               ))),
             ),
@@ -1718,7 +1720,7 @@ window.__ModuleLoader__.load({
                   h('td', null, count(position.todayQty)),
                   h('td', null, money(position.avgPrice)),
                   h('td', null, money(position.lastPrice)),
-                  h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
+                  h('td', { className: tone(position.unrealizedPnlCents ?? 0) }, cents(position.unrealizedPnlCents)),
                   h('td', null, h('button', {
                     className: 'pt-btn', onClick: () => onClose(position), disabled: !(position.qty > 0),
                   }, '平仓')),
@@ -1782,7 +1784,7 @@ window.__ModuleLoader__.load({
           h('td', null, count(position.todayQty)),
           h('td', null, money(position.avgPrice)),
           h('td', null, money(position.lastPrice)),
-          h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
+          h('td', { className: tone(position.unrealizedPnlCents ?? 0) }, cents(position.unrealizedPnlCents)),
           h('td', null, cents(position.marginCents)),
           h('td', null, position.deListDate ?? '—'),
           h('td', null, h('button', { className: 'pt-btn', onClick: () => onClose(position) }, '平仓')),
@@ -1839,7 +1841,7 @@ window.__ModuleLoader__.load({
         review !== null ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           h('div', { className: 'pt-stats' },
             statCell('成交笔数', count(review.tradeCount)),
-            statCell('已实现盈亏', signed(review.realizedPnl), review.realizedPnl >= 0 ? 'pt-up' : 'pt-down'),
+            statCell('已实现盈亏', signed(review.realizedPnl), tone(review.realizedPnl)),
             statCell('费用合计', money(review.totalFees)),
             statCell('最大回撤', pct(review.maxDrawdownPct)),
           ),
@@ -1855,7 +1857,7 @@ window.__ModuleLoader__.load({
               h('tbody', null, review.byProduct.map(item => h('tr', { key: item.product },
                 h('td', null, item.product),
                 h('td', null, count(item.tradeCount)),
-                h('td', { className: item.realizedPnl >= 0 ? 'pt-up' : 'pt-down' }, signed(item.realizedPnl)),
+                h('td', { className: tone(item.realizedPnl) }, signed(item.realizedPnl)),
               ))),
             ),
           ),
@@ -2416,8 +2418,8 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-stats' },
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '总资产'), h('div', { className: 'pt-stat-value' }, money(account.equity))),
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '可用现金'), h('div', { className: 'pt-stat-value' }, money(account.cash))),
-            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '浮动盈亏'), h('div', { className: `pt-stat-value ${account.pnl >= 0 ? 'pt-up' : 'pt-down'}` }, signed(account.pnl))),
-            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '今日盈亏'), h('div', { className: `pt-stat-value ${account.todayPnl >= 0 ? 'pt-up' : 'pt-down'}` }, signed(account.todayPnl))),
+            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '浮动盈亏'), h('div', { className: `pt-stat-value ${tone(account.pnl)}` }, signed(account.pnl))),
+            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '今日盈亏'), h('div', { className: `pt-stat-value ${tone(account.todayPnl)}` }, signed(account.todayPnl))),
           ),
           error ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text) : null,
           notice ? h('div', { className: 'pt-note' }, notice) : null,
