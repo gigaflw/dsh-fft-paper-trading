@@ -341,6 +341,8 @@ try {
   assert('a retried order reuses the request id', Array.isArray(placeRetry.ids) && placeRetry.ids.length === 2 && placeRetry.ids[0] === placeRetry.ids[1], JSON.stringify(placeRetry))
   const placeDouble = await scenario('place-double')
   assert('a double submit places one order', placeDouble.calls === 1 && typeof placeDouble.receipt === 'string', JSON.stringify(placeDouble))
+  const stockQuoteStale = await scenario('stock-quote-stale')
+  assert('a stale stock quote shows its notice', typeof stockQuoteStale.note === 'string' && stockQuoteStale.note.includes('缓存'), JSON.stringify(stockQuoteStale))
   const accountRetry = await scenario('account-retry')
   assert('a failed account load can be retried', typeof accountRetry.error === 'string' && accountRetry.retry === 1 && typeof accountRetry.loaded === 'string', JSON.stringify(accountRetry))
   const futuresAccountRetry = await scenario('futures-account-retry')
