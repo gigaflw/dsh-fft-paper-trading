@@ -125,7 +125,7 @@ export function previewOrder(
   settings: PaperSettings,
   session?: MarketStatus,
 ): PreviewView {
-  const price = estimatePrice(draft, quote, settings) ?? 0
+  const price = estimatePrice(draft, quote) ?? 0
   const amount = amountCents(price, draft.qty)
   const fees = computeFees(amount, draft.side, settings)
   const priceLimit = priceLimitFor(draft.symbol, quote?.name, quote?.prevClose)
@@ -133,10 +133,22 @@ export function previewOrder(
   if (quote === null && draft.type === 'market' && draft.price === undefined) {
     warnings.push('没有可用行情，请填写参考价或改用限价单')
   }
-  if (priceLimit !== undefined && price > 0 && (price < priceLimit.lower || price > priceLimit.upper)) {
+  // A limit order is checked at its own limit; a market order at the price it
+  // would trade at (last, or the manual reference).
+  const checked = draft.type === 'limit' && draft.limitPrice !== undefined && draft.limitPrice > 0 ? draft.limitPrice : price
+  if (priceLimit !== undefined && checked > 0 && (checked < priceLimit.lower || checked > priceLimit.upper)) {
     warnings.push(`价格超出涨跌停范围 ${priceLimit.lower.toFixed(2)}–${priceLimit.upper.toFixed(2)}`)
   }
   if (session !== undefined && !session.canMatch) warnings.push('当前时段不能连续成交，委托将排队')
+  // A limit that the last price has not reached cannot fill now: say so, and
+  // note that the amount above is the order's worst case, not its fill.
+  if (draft.type === 'limit' && quote !== null && draft.limitPrice !== undefined && draft.limitPrice > 0
+    && Number.isFinite(quote.last) && quote.last > 0) {
+    const crossed = draft.side === 'buy' ? quote.last <= draft.limitPrice : quote.last >= draft.limitPrice
+    if (!crossed) {
+      warnings.push(`现价 ${quote.last.toFixed(2)} 未到限价 ${draft.limitPrice.toFixed(2)}，委托将挂单等待，金额按限价计`)
+    }
+  }
   if (draft.side === 'sell') {
     const available = state.positions[draft.symbol]?.available ?? 0
     if (available < draft.qty) warnings.push(`可卖不足：可卖 ${available} 股`)
@@ -160,7 +172,9 @@ export function previewOrder(
     cashAfterCents,
     availableQty: state.positions[draft.symbol]?.available ?? 0,
     maxBuyQty,
-    quote: quote ?? undefined,
+    // Rounding here keeps `preview.price === preview.quote.last` exact, which
+    // is the same last price the fill will use.
+    quote: quote === null ? undefined : { ...quote, last: roundPrice(quote.last) },
     priceLimit,
     session,
     warnings,

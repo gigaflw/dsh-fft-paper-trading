@@ -1,42 +1,27 @@
-import type { PaperSettings, Quote } from '../contract.js'
-import { roundPrice, slipped } from './money.js'
+import type { Quote } from '../contract.js'
+import { roundPrice } from './money.js'
 import type { Order } from './types.js'
 
 export interface FillDecision {
   fill: boolean
   price?: number
-  reason?: 'QUOTE_STALE' | 'NOT_CROSSED'
-}
-
-export function quoteFresh(quote: Quote, settings: PaperSettings, nowMs: number): boolean {
-  const marketTs = quote.marketTs ?? quote.ts
-  if (marketTs === undefined || marketTs === null) return false
-  const ts = Date.parse(marketTs)
-  if (Number.isNaN(ts)) return false
-  return nowMs - ts <= settings.quoteTtlSec * 1000
+  reason?: 'NO_QUOTE' | 'NOT_CROSSED'
 }
 
 /**
- * Fill rule for the MVP: whole-quantity fills only.
- * Market orders pay the ask / receive the bid after slippage; limit orders
- * cross only when the opposite quote reaches the limit, and are capped by it.
+ * M2 fill rule: the whole remaining quantity trades at `quote.last` (rounded
+ * to 0.01), with no slippage and no volume cap.
+ *
+ * The only gate is a usable last price. Market orders always fill; a buy limit
+ * fills when `last <= limit`, a sell limit when `last >= limit`. Session
+ * gating happens before matching, in the service.
  */
-export function decideFill(order: Order, quote: Quote, settings: PaperSettings, nowMs: number): FillDecision {
-  if (!quoteFresh(quote, settings, nowMs)) return { fill: false, reason: 'QUOTE_STALE' }
-  if (order.type === 'market') {
-    // FTShare has no bid/ask; last is the only executable reference.
-    const base = quote.last
-    if (!Number.isFinite(base) || base <= 0) return { fill: false, reason: 'QUOTE_STALE' }
-    return { fill: true, price: slipped(base, order.side, settings.slippageBps) }
-  }
+export function decideFill(order: Order, quote: Quote): FillDecision {
+  const last = quote.last
+  if (!Number.isFinite(last) || last <= 0) return { fill: false, reason: 'NO_QUOTE' }
+  if (order.type === 'market') return { fill: true, price: roundPrice(last) }
   const limit = order.limitPrice
   if (limit === undefined || !Number.isFinite(limit) || limit <= 0) return { fill: false, reason: 'NOT_CROSSED' }
-  if (order.side === 'buy') {
-    if (quote.last > limit) return { fill: false, reason: 'NOT_CROSSED' }
-    const price = Math.min(limit, slipped(quote.last, 'buy', settings.slippageBps))
-    return { fill: true, price: roundPrice(price) }
-  }
-  if (quote.last < limit) return { fill: false, reason: 'NOT_CROSSED' }
-  const price = Math.max(limit, slipped(quote.last, 'sell', settings.slippageBps))
-  return { fill: true, price: roundPrice(price) }
+  const crossed = order.side === 'buy' ? last <= limit : last >= limit
+  return crossed ? { fill: true, price: roundPrice(last) } : { fill: false, reason: 'NOT_CROSSED' }
 }

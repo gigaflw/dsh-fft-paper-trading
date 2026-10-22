@@ -27,10 +27,9 @@ function rate(value: unknown): number {
  *
  * Ledgers written before v0.2 have no `maxParticipationRate` / `fillModel`, and a
  * hand-edited file can carry `null` or a non-finite number. Replay must never
- * install a partial settings object: `fillQty` would multiply by `undefined`,
- * write a NaN fill, and the next load would lock the account. Every
- * `account.opened` / `account.reset` payload therefore goes through this merge,
- * which also makes the migration independent of `PAPER_LEDGER_VERSION`.
+ * install a partial settings object: a missing field would poison later
+ * arithmetic and lock the account on the next load. Every `account.opened` /
+ * `account.reset` payload therefore goes through this merge.
  */
 export function normalizeSettings(persisted: unknown): PaperSettings {
   const input = (typeof persisted === 'object' && persisted !== null ? persisted : {}) as Record<string, unknown>
@@ -50,4 +49,15 @@ export function normalizeSettings(persisted: unknown): PaperSettings {
     maxParticipationRate: rate(input.maxParticipationRate),
     fillModel,
   }
+}
+
+/**
+ * Normalised settings with the M2 fill model pinned.
+ *
+ * Older ledgers could persist slippage or `volume-share`, and there was never a
+ * settings UI to opt in. M2 fills at `last` in one chunk, so replay rewrites
+ * those knobs instead of advertising a model the engine no longer has.
+ */
+export function m2Settings(persisted: unknown): PaperSettings {
+  return { ...normalizeSettings(persisted), slippageBps: 0, fillModel: 'unlimited' }
 }

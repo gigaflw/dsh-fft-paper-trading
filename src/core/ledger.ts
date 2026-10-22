@@ -1,7 +1,7 @@
 import type { PaperSettings } from '../contract.js'
 import { PAPER_LEDGER_VERSION } from '../contract.js'
 import type { AccountState, FillRecord, LedgerEvent, Order } from './types.js'
-import { normalizeSettings } from './settings.js'
+import { m2Settings, normalizeSettings } from './settings.js'
 
 export function emptyState(accountId: string): AccountState {
   return {
@@ -21,7 +21,7 @@ export function emptyState(accountId: string): AccountState {
       quoteTtlSec: 30,
       maxOrderNotionalCents: 0,
       maxParticipationRate: 0.10,
-      fillModel: 'volume-share',
+      fillModel: 'unlimited',
     },
     positions: {},
     orders: {},
@@ -39,8 +39,8 @@ export function emptyState(accountId: string): AccountState {
 function openState(state: AccountState, settings: PaperSettings, initialCashCents: number, tradeDate: string): void {
   state.initialCashCents = initialCashCents
   state.cashCents = initialCashCents
-  // Older ledgers predate `maxParticipationRate` / `fillModel`; never install a
-  // partial settings object, or the next fill multiplies by `undefined`.
+  // Never install a partial settings object; `normalizeSettings` fills every
+  // missing field so the next fill cannot multiply by `undefined`.
   state.settings = normalizeSettings(settings)
   state.positions = {}
   state.orders = {}
@@ -121,15 +121,20 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
   switch (event.type) {
     case 'account.opened': {
       const { settings, initialCashCents, tradeDate, accountId, ledgerVersion } = event.payload
-      openState(state, settings, initialCashCents, tradeDate)
+      const version = ledgerVersion ?? 1
+      // Ledgers older than v3 predate M2; there was no settings UI, so replay
+      // pins slippage 0 / unlimited instead of trusting what was written then.
+      openState(state, version < PAPER_LEDGER_VERSION ? m2Settings(settings) : settings, initialCashCents, tradeDate)
       state.accountId = accountId
-      state.ledgerVersion = ledgerVersion ?? 1
+      state.ledgerVersion = version
       state.createdAt = event.ts
       break
     }
     case 'account.reset': {
       const { settings, initialCashCents, tradeDate } = event.payload
-      openState(state, settings, initialCashCents, tradeDate)
+      // `account.reset` carries no ledgerVersion; older ledgers compacted to a
+      // single reset genesis keep the same pinned M2 settings.
+      openState(state, m2Settings(settings), initialCashCents, tradeDate)
       state.ledgerVersion = PAPER_LEDGER_VERSION
       // A reset can be the genesis event of a compacted ledger; then it is the
       // only source of an account creation time.

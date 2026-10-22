@@ -10,8 +10,11 @@
 export const PAPER_ROUTE = '/api/ft-paper-trading' as const
 /** Request body cap; the route rejects anything larger before parsing. */
 export const PAPER_MAX_BODY_BYTES = 256 * 1024
-/** Ledger schema version. v2 adds day.opened and partial fills. */
-export const PAPER_LEDGER_VERSION = 2
+/**
+ * Ledger schema version. v2 added day.opened; v3 pins the M2 fill model
+ * (slippage 0, unlimited fill at the last price) for every older ledger.
+ */
+export const PAPER_LEDGER_VERSION = 3
 
 export type Side = 'buy' | 'sell'
 export type OrderType = 'market' | 'limit'
@@ -37,12 +40,15 @@ export interface PaperSettings {
   minCommissionCents: number
   stampDutyRate: number
   transferFeeRate: number
+  /** Kept for ledger compatibility; M2 fills at `last` and never applies it. */
   slippageBps: number
   enableT1: boolean
+  /** Kept for ledger compatibility; M2 has no quote TTL gate. */
   quoteTtlSec: number
   maxOrderNotionalCents: number
-  /** Max share of a minute bar's volume one order may consume. */
+  /** Kept for ledger compatibility; M2 never caps a fill by bar volume. */
   maxParticipationRate: number
+  /** Kept for ledger compatibility; M2 only ever fills in one unlimited chunk. */
   fillModel: FillModel
 }
 
@@ -52,12 +58,12 @@ export const DEFAULT_SETTINGS: PaperSettings = {
   minCommissionCents: 500,
   stampDutyRate: 0.0005,
   transferFeeRate: 0.00001,
-  slippageBps: 5,
+  slippageBps: 0,
   enableT1: true,
   quoteTtlSec: 30,
   maxOrderNotionalCents: 0,
   maxParticipationRate: 0.10,
-  fillModel: 'volume-share',
+  fillModel: 'unlimited',
 }
 
 export interface Quote {

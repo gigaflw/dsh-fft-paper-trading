@@ -1,5 +1,5 @@
 import type { ErrorCode, OrderDraft, PaperSettings, Quote } from '../contract.js'
-import { amountCents, slipped } from './money.js'
+import { amountCents, roundPrice } from './money.js'
 import { computeFees } from './fees.js'
 import { isWithinLimit, priceLimitFor } from './price-limit.js'
 import type { AccountState } from './types.js'
@@ -8,17 +8,27 @@ export type RiskResult =
   | { ok: true; price: number; amountCents: number }
   | { ok: false; code: ErrorCode; message: string }
 
-/** Estimate the fill price used by risk, preview and the submit path. */
-export function estimatePrice(draft: OrderDraft, quote: Quote | null, settings: PaperSettings): number | null {
-  if (draft.type === 'limit') {
-    return draft.limitPrice !== undefined && draft.limitPrice > 0 ? draft.limitPrice : null
+/**
+ * The price used by risk, preview and the submit path.
+ *
+ * M2 executes at the quote's last price, so a market order estimates at `last`.
+ * A limit order estimates at the price it would actually trade at: `last` once
+ * the limit is crossed, otherwise the limit itself — the most a buy can pay or
+ * the least a sell can receive while it rests. That keeps the cash check honest
+ * (a resting 10.00 bid is not charged the 11.29 last) and still makes the
+ * preview agree with the fill whenever the order can fill right now. Without a
+ * quote the limit, then the manual reference price, are the only sources.
+ */
+export function estimatePrice(draft: OrderDraft, quote: Quote | null): number | null {
+  const last = quote !== null && Number.isFinite(quote.last) && quote.last > 0 ? roundPrice(quote.last) : null
+  if (draft.type === 'market') {
+    if (last !== null) return last
+    return draft.price !== undefined && draft.price > 0 ? roundPrice(draft.price) : null
   }
-  if (quote !== null) {
-    const base = quote.last
-    if (Number.isFinite(base) && base > 0) return slipped(base, draft.side, settings.slippageBps)
-  }
-  if (draft.price !== undefined && draft.price > 0) return draft.price
-  return null
+  const limit = draft.limitPrice !== undefined && draft.limitPrice > 0 ? roundPrice(draft.limitPrice) : null
+  if (limit === null) return null
+  if (last === null) return limit
+  return draft.side === 'buy' ? Math.min(limit, last) : Math.max(limit, last)
 }
 
 /**
@@ -47,7 +57,7 @@ export function checkOrder(
   if (draft.side === 'buy' && draft.qty % 100 !== 0) {
     return { ok: false, code: 'INVALID_LOT', message: '买入数量必须是 100 股的整数倍' }
   }
-  const price = estimatePrice(draft, quote, settings)
+  const price = estimatePrice(draft, quote)
   if (price === null) return { ok: false, code: 'QUOTE_UNAVAILABLE', message: '没有可用行情，请刷新或填写价格' }
 
   if (quote?.status === 'suspended') return { ok: false, code: 'SUSPENDED', message: '标的当前停牌' }
