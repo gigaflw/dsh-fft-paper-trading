@@ -323,3 +323,29 @@ test('service: next boundary is today before the open and skips the weekend afte
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('service: next boundary skips a holiday instead of using today', async () => {
+  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `holiday-${process.pid}-${Date.now()}`)
+  const data = makeData()
+  const now = { current: at('2026-10-23', '00:04') }
+  const calendar = {
+    async tradingDays() { return ['2026-10-26'] },
+    async isTradingDay(date) { return date !== '2026-10-23' },
+    async nextTradingDay() { return '2026-10-26' },
+  }
+  const service = new PaperService({
+    repo: new AccountRepo({ home, accountId: 'default' }),
+    data,
+    calendar,
+    now: () => now.current,
+  })
+  try {
+    await service.account()
+    const status = await service.marketStatus()
+    assert.equal(status.phase, 'closed')
+    // 10-23 is a holiday: the open is the next trading day, not today's 09:15.
+    assert.equal(status.nextBoundary, at('2026-10-26', '09:15').toISOString())
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
