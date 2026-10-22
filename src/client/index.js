@@ -72,8 +72,12 @@ window.__ModuleLoader__.load({
     /** Display form is always the bare 6-digit code; the API accepts either. */
     const bareSymbol = value => String(value ?? '').trim().toUpperCase().split('.')[0]
     // A-share codes are digits; accepting letters turned a pasted SH600519 into
-    // the six-character SH6005. Keep only digits so the suffix/prefix vanish.
-    const symbolInput = value => String(value ?? '').replace(/[^0-9]/g, '').slice(0, 6)
+    // the six-character SH6005. Map full-width digits (Chinese IME) then keep
+    // only digits so prefixes/suffixes vanish.
+    const symbolInput = value => String(value ?? '')
+      .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
+      .replace(/[^0-9]/g, '')
+      .slice(0, 6)
     const symbolText = quote => [bareSymbol(quote?.symbol), quote?.name].filter(text => text).join(' ')
     /** Quote origin in human terms; the raw interface name is too technical. */
     const quoteSourceText = quote => {
