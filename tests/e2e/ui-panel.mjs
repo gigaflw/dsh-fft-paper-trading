@@ -168,6 +168,9 @@ try {
   const basketCalls = await evaluate('window.__calls.filter(item => item.startsWith("basket/"))')
   assert('basket RPCs were called', basketCalls.includes('basket/preview') && basketCalls.includes('basket/place'), JSON.stringify(basketCalls))
   await shot('basket-result.png')
+  const basketError = await scenario('basket-error')
+  assert('basket structural errors show the host reason', typeof basketError.error === 'string' && basketError.error.includes('最多 20 只'), JSON.stringify(basketError))
+  assert('basket error keeps the panel mounted', basketError.panelAlive === true)
 
   // 3. 期货
   const switched = await scenario('futures-switch')

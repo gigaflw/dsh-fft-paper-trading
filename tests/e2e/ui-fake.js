@@ -72,6 +72,12 @@
 
     // --- basket -------------------------------------------------------------
     'basket/preview': (payload) => {
+      const rowsInFile = String(payload.csv ?? '').split('\n').map(line => line.trim())
+        .filter(line => line !== '' && !line.startsWith('#'))
+      const header = rowsInFile.length > 0 && !/\d/.test(rowsInFile[0].split(',')[1] ?? '') ? 1 : 0
+      if (rowsInFile.length - header > 20) {
+        return { __error: { code: 'INVALID_ARGUMENT', message: `一揽子最多 20 只，本次 ${rowsInFile.length - header} 只` } }
+      }
       const budgetCents = typeof payload.budgetCents === 'number' ? payload.budgetCents : 100000000
       const rows = [
         { symbol: '600519', name: '贵州茅台', weight: 0.3, targetCents: Math.floor(budgetCents * 0.3), price: 1450.5, qty: 100, amountCents: 14505000, feesCents: 3626, actualWeight: 0.145, status: 'ok' },
@@ -148,6 +154,9 @@
       return new Response(JSON.stringify({ ok: false, error: { code: 'INVALID_ARGUMENT', message: 'fake: ' + endpoint } }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     const resolved = await handler(body.payload ?? {})
+    if (resolved && resolved.__error) {
+      return new Response(JSON.stringify({ ok: false, error: resolved.__error }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     return new Response(JSON.stringify({ ok: true, value: resolved }), { status: 200, headers: { 'content-type': 'application/json' } })
   }
 
@@ -260,6 +269,37 @@
       result.head = e2e.text('.pt-head')
       result.root = e2e.text('.pt-root').slice(0, 300)
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
+      return result
+    }
+    if (name === 'basket-error') {
+      const tab = e2e.byText('一揽子')[0]
+      if (!tab) throw new Error('basket tab missing')
+      e2e.click(tab)
+      const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
+      const lines = ['代码,权重']
+      for (let index = 0; index < 21; index += 1) lines.push(`60051${String(index).padStart(1, '0')},1%`)
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([lines.join('\n')], 'too-many.csv', { type: 'text/csv' }))
+      fileInput.files = transfer.files
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+      // The previous scenario left a 3-row preview; wait until the new file has
+      // replaced it, otherwise the button is still enabled by the old CSV.
+      // Let file.text() settle and React flush the new csv before clicking;
+      // otherwise the handler still closes over the previous (3-row) csv.
+      await new Promise(done => setTimeout(done, 600))
+      const previewButton = await e2e.wait(() => {
+        const button = e2e.byText('预览配股')[0]
+        return button && !button.disabled ? button : null
+      })
+      if (!previewButton) throw new Error('preview button never enabled')
+      e2e.click(previewButton)
+      result.error = await e2e.wait(() => {
+        const node = document.querySelector('.pt-error')
+        return node ? node.innerText.trim() : null
+      }, 5000)
+      result.calls = window.__calls.slice(-6)
+      result.card = e2e.text('.pt-trade')
+      result.panelAlive = Boolean(document.querySelector('.pt-root'))
       return result
     }
     if (name === 'slot-fallback') {
