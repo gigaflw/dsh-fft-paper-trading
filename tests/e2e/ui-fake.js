@@ -701,6 +701,7 @@
         const button = document.querySelector('.pt-ticket-submit')
         return button && button.disabled && button.title.includes('无行情') ? button.title : null
       }, 4000)
+      result.preview = e2e.text('.pt-preview-pane')
       return result
     }
     if (name === 'futures-no-quote') {
@@ -708,12 +709,22 @@
       if (tradeTab) e2e.click(tradeTab)
       await new Promise(done => setTimeout(done, 300))
       window.__fake.on('futures/quote', () => ({ state: 'failed', quotes: [], notice: '行情暂不可用' }))
-      window.__fake.on('futures/preview', () => ({ __error: { code: 'NO_QUOTE', message: '行情暂不可用' } }))
+      window.__fake.on('futures/preview', (payload) => ({
+        symbol: payload.symbol ?? 'CU2611.SHFE', side: 'long', offset: 'open', type: 'market', qty: 1,
+        price: 0, multiplier: 5, amountCents: 0, marginCents: 0, feesCents: 0, cashAfterCents: 100000000,
+        equityAfter: 100000000, riskRatioAfter: 0, maxOpenQty: 0, availableCloseQty: 0,
+        quote: null, session: { phase: 'trading', tradeDate: '2026-10-22', canSubmit: true, canMatch: true },
+        warnings: ['没有可用行情，暂不可开仓'],
+      }))
       const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
       if (refresh) e2e.click(refresh)
       result.title = await e2e.wait(() => {
         const button = document.querySelector('.pt-ticket-submit')
         return button && button.disabled && button.title.includes('等待行情') ? button.title : null
+      }, 4000)
+      result.preview = await e2e.wait(() => {
+        const text = document.querySelector('.pt-preview-pane')?.innerText ?? ''
+        return text.includes('没有可用行情') ? text : null
       }, 4000)
       return result
     }
