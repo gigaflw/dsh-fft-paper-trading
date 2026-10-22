@@ -68,6 +68,7 @@ test('session: phases, gates and boundaries', () => {
   assert.equal(sessionPhaseAt(at('2026-10-21', '14:57').toISOString()), 'auction_close')
   assert.equal(sessionPhaseAt(at('2026-10-21', '15:00').toISOString()), 'closed')
 
+  assert.equal(canSubmit('auction_close', 'limit'), false)
   assert.equal(canMatch('continuous_am'), true)
   assert.equal(canMatch('lunch'), false)
   assert.equal(canSubmit('lunch', 'market'), false)
@@ -345,6 +346,23 @@ test('service: next boundary skips a holiday instead of using today', async () =
     assert.equal(status.phase, 'closed')
     // 10-23 is a holiday: the open is the next trading day, not today's 09:15.
     assert.equal(status.nextBoundary, at('2026-10-26', '09:15').toISOString())
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: auction-close limit orders are rejected instead of expiring at the close', async () => {
+  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `auction-close-${process.pid}-${Date.now()}`)
+  const data = makeData()
+  const now = { current: at('2026-10-21', '14:58') }
+  const service = makeService(home, data, now)
+  try {
+    setQuote(data, 10, now.current.toISOString())
+    await service.account()
+    await assert.rejects(
+      () => service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 }),
+      /收盘竞价暂不支持模拟撮合/,
+    )
   } finally {
     await rm(home, { recursive: true, force: true })
   }

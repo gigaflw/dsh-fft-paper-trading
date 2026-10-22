@@ -999,6 +999,26 @@
       }, 4000)
       return result
     }
+    if (name === 'stock-auction-close') {
+      window.__fake.on('market/status', () => ({ phase: 'auction_close', tradeDate: '2026-10-22', canSubmit: true, canMatch: false }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      await new Promise(done => setTimeout(done, 300))
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      e2e.click(e2e.byText('限价')[0])
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '100')
+      e2e.setInput(inputs[2], '10.5')
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('收盘竞价') ? button.title : null
+      }, 4000)
+      result.header = e2e.text('.pt-sub')
+      window.__fake.on('market/status', () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }))
+      return result
+    }
     if (name === 'review-race2') {
       window.__remount('none')
       await new Promise(done => setTimeout(done, 600))

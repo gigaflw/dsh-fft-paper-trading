@@ -380,7 +380,9 @@ export class PaperService {
     if (!canSubmit(phase, draft.type)) {
       throw new PaperError(
         phase === 'closed' ? 'SESSION_CLOSED' : 'AUCTION_ONLY',
-        draft.type === 'market' ? '当前时段不接受市价单，请改限价预埋' : '当前时段不接受委托',
+        phase === 'auction_close'
+          ? '收盘竞价暂不支持模拟撮合'
+          : draft.type === 'market' ? '当前时段不接受市价单，请改限价预埋' : '当前时段不接受委托',
         409,
       )
     }
