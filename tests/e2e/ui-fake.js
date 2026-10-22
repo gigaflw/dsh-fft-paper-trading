@@ -605,6 +605,7 @@
       result.negative = [...document.querySelectorAll('.pt-main td, .pt-main .pt-stat-value')]
         .filter(node => node.className.includes('pt-down')).map(node => node.innerText).slice(0, 3)
       result.initial = e2e.text('.pt-main').includes('初始资金')
+      result.turn = e2e.text('.pt-main').includes('按标的')
       result.truncation = [...document.querySelectorAll('.pt-main .pt-note')]
         .map(node => node.innerText).find(text => text.includes('仅显示最近 30 条')) ?? null
       return result
