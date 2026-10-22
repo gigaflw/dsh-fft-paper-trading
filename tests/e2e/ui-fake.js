@@ -419,10 +419,14 @@
       e2e.click(tab)
       window.__pendingOrders = [{
         id: 'o-cancel', requestId: 'r-pending', symbol: '600519.XSHG', side: 'buy', type: 'limit',
-        qty: 100, limitPrice: 11.4, status: 'pending', createdAt: ts(), updatedAt: ts(),
+        qty: 100, limitPrice: 11.4, status: 'queued', createdAt: ts(), updatedAt: ts(),
       }]
       const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
       if (refresh) e2e.click(refresh)
+      result.note = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('下一交易时段'))
+        return node ? node.innerText.trim() : null
+      }, 3000)
       const cancel = await e2e.wait(() => e2e.byText('撤单')[0] ?? null, 4000)
       e2e.click(cancel)
       result.empty = await e2e.wait(() => {
