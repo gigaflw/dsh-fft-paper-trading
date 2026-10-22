@@ -520,3 +520,77 @@ test('denied and failed upstream states propagate without throwing', async () =>
   assert.equal(thrown.state, 'failed')
   assert.match(thrown.notice, /连接中断/)
 })
+
+test('quotes: bare code + exchange from the real minute feed maps back to the full symbol', async () => {
+  const home = freshHome()
+  const service = fake((tool) => {
+    assert.equal(tool, 'ft_v4_futures_minutes_realtime')
+    return available([
+      {
+        symbol: 'rb2611',
+        exchange: 'SHFE',
+        close: 3092,
+        pre_settlement_price: 3117,
+        high_limit_price: 3272,
+        low_limit_price: 2961,
+        updated_at: 1792652403103,
+        trade_date: 20261022,
+      },
+    ])
+  })
+  process.env.DSH_HOME = home
+  const result = await new FtshareFuturesMarketData(service).quotes(['RB2611.SHFE'])
+  assert.equal(result.state, 'ok')
+  assert.equal(result.value.length, 1)
+  assert.equal(result.value[0].last, 3092)
+  assert.equal(result.value[0].preSettlement, 3117)
+})
+
+test('limits: SHFE table failure falls back to the exact contract before minutes', async () => {
+  const home = freshHome()
+  const service = fake((tool, args) => {
+    if (tool === 'ft_v1_futures_ft_limit') {
+      if (typeof args.ts_code === 'string' && args.ts_code !== '') {
+        return available([{ ts_code: 'RB2611.SHF', up_limit: 3273, down_limit: 2961, m_ratio: 10 }])
+      }
+      return failed('missing pre-settlement price')
+    }
+    return available([])
+  })
+  process.env.DSH_HOME = home
+  const result = await new FtshareFuturesMarketData(service).limits(['RB2611.SHFE'])
+  assert.equal(result.state, 'ok')
+  assert.equal(result.value.length, 1)
+  assert.equal(result.value[0].source, 'limit')
+  assert.equal(result.value[0].upper, 3273)
+  assert.equal(result.value[0].marginRate, 0.1)
+  assert.ok(service.calls.some(call => call.tool === 'ft_v1_futures_ft_limit' && typeof call.args.ts_code === 'string'))
+})
+
+test('settle: an ad-valorem trading_fee_rate is surfaced for the service fallback', async () => {
+  const home = freshHome()
+  const service = fake(() => available([
+    { ts_code: 'RB2611.SHF', settle: 3203, long_margin_rate: 0.07, trading_fee: '0', offset_today_fee: '0', trading_fee_rate: '0.1' },
+  ]))
+  process.env.DSH_HOME = home
+  const result = await new FtshareFuturesMarketData(service).settle(['RB2611.SHFE'])
+  assert.equal(result.state, 'ok')
+  assert.equal(result.value[0].feeRate, 0.1)
+})
+
+test('closes: minute rows with a bare code still resolve for the minute fallback', async () => {
+  const home = freshHome()
+  const service = fake((tool) => {
+    if (tool === 'ft_v1_futures_kline') return available([])
+    if (tool === 'ft_v4_futures_minutes_realtime') {
+      return available([{ symbol: 'rb2611', exchange: 'SHFE', close: 3100, trade_date: 20261022 }])
+    }
+    return available([])
+  })
+  process.env.DSH_HOME = home
+  const result = await new FtshareFuturesMarketData(service).closes(['RB2611.SHFE'], '2026-10-22')
+  assert.equal(result.state, 'ok')
+  assert.equal(result.value.length, 1)
+  assert.equal(result.value[0].close, 3100)
+  assert.equal(result.value[0].source, 'minutes')
+})

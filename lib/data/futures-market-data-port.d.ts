@@ -42,6 +42,12 @@ export interface FuturesRawSettle {
     feePerLotCents?: number;
     /** Close-today fee per lot, in cents. */
     closeTodayFeePerLotCents?: number;
+    /**
+     * Ad-valorem exchange fee (`trading_fee_rate`). Published as a per-mille
+     * number by some exchanges (RB `0.1` means 0.1‰); the service turns it into
+     * a per-lot fee when the per-lot value is missing or zero.
+     */
+    feeRate?: number;
 }
 export interface FuturesRawClose {
     symbol: string;

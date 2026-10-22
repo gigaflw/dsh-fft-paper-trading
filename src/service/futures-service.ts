@@ -129,6 +129,11 @@ interface PlaceOutcome {
 
 type CancelOutcome = { missing?: boolean; notPending?: boolean; blocked?: boolean }
 
+interface SettleParams extends SettleInput {
+  /** Ad-valorem fee, used only when the per-lot fee is missing or zero. */
+  feeRate?: number
+}
+
 interface SymbolData {
   contract?: ContractTerms
   quote?: QuoteInput
@@ -360,15 +365,16 @@ export class FuturesService {
     return { state: result.state, limits, notice: result.notice }
   }
 
-  private async fetchSettleMap(symbols: readonly string[]): Promise<{ state: string; settles: Map<string, SettleInput>; notice?: string }> {
+  private async fetchSettleMap(symbols: readonly string[]): Promise<{ state: string; settles: Map<string, SettleParams>; notice?: string }> {
     const result = await this.callBatched(symbols, batch => this.options.data.settle(batch))
-    const settles = new Map<string, SettleInput>()
+    const settles = new Map<string, SettleParams>()
     for (const row of result.value ?? []) {
       if (row.symbol === undefined) continue
       settles.set(row.symbol, {
         feePerLotCents: row.feePerLotCents,
         closeTodayFeePerLotCents: row.closeTodayFeePerLotCents,
         longMarginRate: row.longMarginRate,
+        feeRate: row.feeRate,
       })
     }
     return { state: result.state, settles, notice: result.notice }
@@ -448,11 +454,27 @@ export class FuturesService {
       if (result.state !== 'ok' && result.notice !== undefined) warnings.push(result.notice)
     }
     const tradeDaysToDeList = await this.tradeDaysToDeList(state.tradeDate, contract)
+    const quote = quoteResult.quotes.get(symbol)
+    let settle: SettleInput | undefined = settleResult.settles.get(symbol)
+    // Some exchanges (e.g. RB on SHFE) publish `trading_fee = 0` plus an
+    // ad-valorem `trading_fee_rate`. The per-lot fee is a snapshot, so convert
+    // the rate with the current price; callers see a normal per-lot fee.
+    const rate = settleResult.settles.get(symbol)?.feeRate
+    if (settle !== undefined && quote !== undefined && contract !== undefined
+      && (settle.feePerLotCents === undefined || settle.feePerLotCents === 0)
+      && typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+      // The upstream unit is per-mille for the common case (0.1 = 0.1‰);
+      // values already in fraction form (<= 0.01) are used as-is.
+      const fraction = rate > 0.01 ? rate / 1000 : rate
+      const perLotCents = Math.max(1, Math.round(quote.last * contract.multiplier * 100 * fraction))
+      settle = { ...settle, feePerLotCents: perLotCents }
+      warnings.push(`该合约按成交额计费，按 ${(perLotCents / 100).toFixed(2)} 元/手估算`)
+    }
     return {
       contract,
-      quote: quoteResult.quotes.get(symbol),
+      quote,
       limit: limitResult.limits.get(symbol),
-      settle: settleResult.settles.get(symbol),
+      settle,
       sessions,
       tradeDaysToDeList,
       warnings: [...new Set(warnings)],

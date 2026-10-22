@@ -24,6 +24,8 @@ export declare class FtshareFuturesMarketData implements FuturesMarketDataPort {
     private toContracts;
     private fetchMinuteRows;
     private groupMinuteRows;
+    /** One-symbol `ft_limit` fallback for exchanges whose whole-table paging fails (SHFE). */
+    private fetchLimitRowBySymbol;
     private quoteFromRows;
     private fetchExchangeTable;
     private klineArgs;
