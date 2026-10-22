@@ -824,6 +824,21 @@
       result.confirmAfter = e2e.byText('确认下单').length
       return result
     }
+    if (name === 'basket-oversize') {
+      const tab = e2e.byText('一揽子')[0]
+      e2e.click(tab)
+      const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
+      if (!fileInput) throw new Error('basket-oversize: no file input')
+      const transfer = new DataTransfer()
+      transfer.items.add(new File(['x'.repeat(33 * 1024)], 'big.csv', { type: 'text/csv' }))
+      fileInput.files = transfer.files
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+      result.error = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-error')].find(el => el.innerText.includes('32 KiB'))
+        return node ? node.innerText.trim() : null
+      }, 3000)
+      return result
+    }
     if (name === 'basket-error') {
       const tab = e2e.byText('一揽子')[0]
       if (!tab) throw new Error('basket tab missing')

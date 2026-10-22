@@ -226,6 +226,8 @@ try {
   await shot('basket-result.png')
   const resetBasket = await scenario('reset-basket')
   assert('resetting the account drops the basket preview', resetBasket.rowsBefore > 0 && resetBasket.rowsAfter === 0 && resetBasket.confirmAfter === 0, JSON.stringify(resetBasket))
+  const basketOversize = await scenario('basket-oversize')
+  assert('an oversize CSV is rejected before upload', typeof basketOversize.error === 'string' && basketOversize.error.includes('32 KiB'), JSON.stringify(basketOversize))
   const basketError = await scenario('basket-error')
   assert('basket structural errors show the host reason', typeof basketError.error === 'string' && basketError.error.includes('最多 20 只'), JSON.stringify(basketError))
   assert('basket error keeps the panel mounted', basketError.panelAlive === true)
