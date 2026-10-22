@@ -238,6 +238,8 @@ try {
   assert('a futures market order without a quote is blocked', typeof futuresNoQuote.title === 'string', JSON.stringify(futuresNoQuote))
   const stockNoQuote = await scenario('stock-no-quote')
   assert('a market order without a quote is blocked with a reason', typeof stockNoQuote.title === 'string', JSON.stringify(stockNoQuote))
+  const reviewRace2 = await scenario('review-race2')
+  assert('a slow stock review period cannot overwrite the newer one (isolated)', Array.isArray(reviewRace2.stats) && reviewRace2.stats.some(text => text.includes('成交笔数') && text.trim().endsWith('30')), JSON.stringify(reviewRace2))
   const slotFallback = await scenario('slot-fallback')
   assert('empty K-line slot shows a loading hint first', typeof slotFallback.loadingHint === 'string' && slotFallback.loadingHint.includes('K 线加载中'), slotFallback.loadingHint ?? '')
   assert('empty K-line slot falls back to the built-in chart', slotFallback.chart === true && slotFallback.panelAlive === true, JSON.stringify(slotFallback))

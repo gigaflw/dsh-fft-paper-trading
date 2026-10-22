@@ -1524,10 +1524,7 @@ window.__ModuleLoader__.load({
             ? h(FuturesOrdersTab, { pending, history, busy, onCancel: cancel })
             : h(FuturesReviewTab, {
               review, period,
-              setPeriod: key => {
-                setPeriod(key)
-                void loadReview(key)
-              },
+              setPeriod: key => setPeriod(key),
             })
 
       return h('div', { className: 'pt-inner' },
@@ -2456,10 +2453,7 @@ window.__ModuleLoader__.load({
                 tab === 'orders' ? h(OrdersTab, { pending, history, busy, onCancel: cancel }) : null,
                 tab === 'review' ? h(ReviewTab, {
                   review, period,
-                  setPeriod: key => {
-                    setPeriod(key)
-                    rpc('review/get', { period: key }).then(setReview).catch(cause => setError(errorOf(cause)))
-                  },
+                  setPeriod: key => setPeriod(key),
                   trades, daily, cashFlow, trips,
                 }) : null,
               ),

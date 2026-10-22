@@ -547,9 +547,7 @@
         const el = document.querySelector('.pt-main input[placeholder^="代码或名称"]')
         return el && el.type !== 'file' ? el : null
       })
-      window.__searchLog = []
       window.__fake.on('market/search', async payload => {
-        window.__searchLog.push(payload.query)
         const first = payload.query === 'aaa'
         await new Promise(done => setTimeout(done, first ? 300 : 50))
         return [{ symbol: first ? '600519.XSHG' : '000001.XSHE', name: first ? '贵州茅台' : '平安银行' }]
@@ -562,7 +560,6 @@
       e2e.click(e2e.byText('搜索')[0])
       await new Promise(done => setTimeout(done, 600))
       result.hits = e2e.text('.pt-main .pt-card')
-      result.log = window.__searchLog.slice()
       window.__fake.on('market/search', query => (query === '600519' ? [{ symbol: '600519.XSHG', name: '贵州茅台' }] : []))
       return result
     }
@@ -718,6 +715,28 @@
         const button = document.querySelector('.pt-ticket-submit')
         return button && button.disabled && button.title.includes('等待行情') ? button.title : null
       }, 4000)
+      return result
+    }
+    if (name === 'review-race2') {
+      window.__remount('none')
+      await new Promise(done => setTimeout(done, 600))
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
+      e2e.click(tab)
+      await e2e.wait(() => document.querySelector('.pt-chart-wrap'))
+      window.__fake.on('review/get', async payload => {
+        const fast = payload.period === '30d'
+        await new Promise(done => setTimeout(done, fast ? 50 : 400))
+        return {
+          equityCurve: [{ date: '2026-10-22', equity: 100000 }],
+          maxDrawdownPct: 0, tradeCount: fast ? 30 : 7, buyCount: 0, sellCount: 0,
+          totalFees: 0, realizedPnl: 0, days: 0,
+        }
+      })
+      e2e.click(e2e.byText('7 天')[0])
+      await new Promise(done => setTimeout(done, 60))
+      e2e.click(e2e.byText('30 天')[0])
+      await new Promise(done => setTimeout(done, 700))
+      result.stats = [...document.querySelectorAll('.pt-stat')].map(item => item.innerText)
       return result
     }
     if (name === 'slot-fallback') {
