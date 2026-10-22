@@ -1235,6 +1235,7 @@ window.__ModuleLoader__.load({
       const [review, setReview] = useState(null)
       const [period, setPeriod] = useState('30d')
       const reviewSeq = useRef(0)
+      const loadAllSeq = useRef(0)
       const [tab, setTab] = useState('trade')
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
@@ -1266,6 +1267,7 @@ window.__ModuleLoader__.load({
       }, [])
 
       const loadAll = useCallback(async (quiet = false) => {
+        const seq = ++loadAllSeq.current
         try {
           const [nextAccount, nextStatus, nextPositions, nextOrders] = await Promise.all([
             rpc('futures/account/get'),
@@ -1274,14 +1276,16 @@ window.__ModuleLoader__.load({
             rpc('futures/orders'),
           ])
           if (!alive.current) return null
-          setAccount(nextAccount)
-          setStatus(nextStatus)
-          setPositions(nextPositions)
-          setOrders(nextOrders)
-          if (!quiet) setError(null)
+          if (seq === loadAllSeq.current) {
+            setAccount(nextAccount)
+            setStatus(nextStatus)
+            setPositions(nextPositions)
+            setOrders(nextOrders)
+            if (!quiet) setError(null)
+          }
           return { account: nextAccount }
         } catch (cause) {
-          if (alive.current) setError(errorOf(cause))
+          if (alive.current && seq === loadAllSeq.current) setError(errorOf(cause))
           return null
         }
       }, [])
