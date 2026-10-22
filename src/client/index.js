@@ -2410,8 +2410,9 @@ window.__ModuleLoader__.load({
         if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
         if (form.type === 'market' && session !== null && !session.canMatch) return '当前时段不能市价成交'
         if (form.type === 'market' && quote === null && !(Number(form.price) > 0)) return '无行情，请填参考价'
+        if (form.side === 'buy' && preview !== null && preview.cashAfterCents < 0) return '资金不足'
         return ''
-      }, [blocked, form, session, quote])
+      }, [blocked, form, session, quote, preview])
       const pending = useMemo(() => orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled'), [orders])
       const history = useMemo(() => orders.filter(order => order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled'), [orders])
       const positions = account?.positions ?? []

@@ -812,6 +812,28 @@
       result.contract = document.querySelector('.pt-ticket-form')?.innerText.slice(0, 80) ?? null
       return result
     }
+    if (name === 'stock-insufficient') {
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await new Promise(done => setTimeout(done, 500))
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('order/preview', (payload) => ({
+        ...preview,
+        symbol: '600519.XSHG', side: 'buy', type: payload.type ?? 'market', qty: Number(payload.qty) || 1000,
+        price: 1318, amountCents: 131800000, commissionCents: 397, stampCents: 0, transferCents: 1318,
+        totalFeesCents: 1715, cashAfterCents: -100, availableQty: 0, maxBuyQty: 0,
+        quote: { ...quote, last: 1318, marketTs: ts() }, warnings: ['可用资金不足，最多可买 0 股'],
+      }))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '1000')
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('资金不足') ? button.title : null
+      }, 4000)
+      return result
+    }
     if (name === 'stock-no-quote') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
