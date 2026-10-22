@@ -252,6 +252,7 @@
       result.stats = [...document.querySelectorAll('.pt-stat')].map(el => el.innerText.replace(/\n/g, ' '))
       result.previewText = e2e.text('.pt-preview-pane')
       result.submitTitle = document.querySelector('.pt-ticket-submit')?.title ?? null
+      result.meta = e2e.text('.pt-ticket-meta')
       result.ticketFields = [...document.querySelectorAll('.pt-ticket-form > *')].map(el => el.className)
       result.book = e2e.text('.pt-trade-book').replace(/\n/g, ' ')
       result.kline = Boolean(document.querySelector('.pt-kline-body'))
@@ -974,6 +975,7 @@
       result.stats = [...document.querySelectorAll('.pt-stat')].map(el => el.innerText.replace(/\n/g, ' '))
       result.previewText = e2e.text('.pt-preview-pane')
       result.submitTitle = document.querySelector('.pt-ticket-submit')?.title ?? null
+      result.meta = e2e.text('.pt-ticket-meta')
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       return result
     }
