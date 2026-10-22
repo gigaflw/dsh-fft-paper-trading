@@ -20,6 +20,7 @@ import type {
   ReviewView,
   RoundTrip,
   TickView,
+  SessionPhase,
 } from '../contract.js'
 import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
 import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, type EngineResult } from '../core/engine.js'
@@ -334,6 +335,16 @@ export class PaperService {
     }
   }
 
+  /**
+   * Session clock that also respects the calendar. `sessionPhaseAt` only knows
+   * wall time, so a weekend/holiday would otherwise look like continuous
+   * trading and match orders against Friday's prices.
+   */
+  private phaseFor(state: AccountState, nowIso: string): SessionPhase {
+    const today = todayTradeDate(this.now())
+    return today === state.tradeDate ? sessionPhaseAt(nowIso) : 'closed'
+  }
+
   private async orderDateFor(state: AccountState, nowIso: string, phase = sessionPhaseAt(nowIso)): Promise<string> {
     const today = todayTradeDate(this.now())
     if (state.tradeDate > today) return state.tradeDate
@@ -364,7 +375,7 @@ export class PaperService {
     // order would also fail the session gate; the repair path comes first.
     if (state.blocked) throw this.blocked(state)
     const now = this.ts()
-    const phase = sessionPhaseAt(now)
+    const phase = this.phaseFor(state, now)
     const matchable = canMatch(phase)
     if (!canSubmit(phase, draft.type)) {
       throw new PaperError(
@@ -455,7 +466,7 @@ export class PaperService {
     const state = await this.sync()
     if (state.blocked) throw this.blocked(state)
     const now = this.ts()
-    const phase = sessionPhaseAt(now)
+    const phase = this.phaseFor(state, now)
     if (!canSubmit(phase, 'market')) {
       throw new PaperError(
         phase === 'closed' ? 'SESSION_CLOSED' : 'AUCTION_ONLY',
@@ -620,7 +631,7 @@ export class PaperService {
   async tick(): Promise<TickView> {
     const state = await this.sync()
     const now = this.ts()
-    const phase = sessionPhaseAt(now)
+    const phase = this.phaseFor(state, now)
     const symbols = this.symbolsInPlay(state)
     const quotes = await this.fetchQuotes(symbols)
     if (!canMatch(phase)) {
@@ -711,7 +722,7 @@ export class PaperService {
   }
 
   private marketStatusAt(state: AccountState, nowIso: string): MarketStatus {
-    const phase = sessionPhaseAt(nowIso)
+    const phase = this.phaseFor(state, nowIso)
     return {
       phase,
       tradeDate: state.tradeDate,

@@ -297,7 +297,11 @@ export function verify(state: FuturesAccountState): string[] {
   }
 
   for (const order of Object.values(state.orders)) {
-    if (!Number.isInteger(order.qty) || order.qty <= 0) issues.push(`订单 ${order.id} 委托数量非法`)
+    // Invalid qty is exactly what an INVALID_QTY rejection stores; only
+    // orders that could have traded must satisfy the lot invariant.
+    if (order.status !== 'rejected' && (!Number.isInteger(order.qty) || order.qty <= 0)) {
+      issues.push(`订单 ${order.id} 委托数量非法`)
+    }
     if (order.status === 'filled') {
       if (order.fillPrice === undefined) issues.push(`订单 ${order.id} 已成交但无成交价`)
       if (!state.fills.some(fill => fill.orderId === order.id)) issues.push(`订单 ${order.id} 已成交但无成交记录`)

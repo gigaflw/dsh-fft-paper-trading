@@ -71,6 +71,7 @@ export declare class FuturesService {
     trades(): Promise<FuturesFillView[]>;
     review(period?: FuturesPeriod): Promise<FuturesReviewView>;
     exportLedger(): Promise<FuturesLedgerExport>;
+    private assertLotQty;
     preview(draft: FuturesDraft): Promise<FuturesPreviewView>;
     place(draft: FuturesDraft, requestId?: string): Promise<FuturesOrderView>;
     cancel(orderId: string): Promise<FuturesOrderView>;

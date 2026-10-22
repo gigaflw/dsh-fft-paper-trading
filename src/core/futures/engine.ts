@@ -157,7 +157,8 @@ export function submit(
   const tickSize = contract?.tickSize ?? position?.tickSize ?? 0
   const product = contract?.product ?? position?.product ?? ''
   const name = contract?.name ?? position?.name
-  const qty = Number.isFinite(draft.qty) ? Math.round(draft.qty) : 0
+  // Keep the raw value: rounding here silently turned 1.5 lots into 2.
+  const qty = Number.isFinite(draft.qty) ? draft.qty : 0
   const resolvedRate = offset === 'open'
     ? marginRateFor({ limit: input.limit, settle: input.settle, contract, settings: working.settings }).rate
     : position?.marginRate

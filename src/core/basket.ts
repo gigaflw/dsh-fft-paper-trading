@@ -238,7 +238,8 @@ function buyBackToBudget(rows: BasketPlanRow[], budgetCents: number, settings: P
     const amount = amountCents(fullest.price ?? 0, qty)
     fullest.qty = qty
     fullest.amountCents = amount
-    fullest.feesCents = computeFees(amount, 'buy', settings).totalCents
+    // A row trimmed to zero lots will not trade: no commission on zero notional.
+    fullest.feesCents = qty === 0 ? 0 : computeFees(amount, 'buy', settings).totalCents
     if (qty === 0) {
       fullest.status = 'zero_lot'
       fullest.warning = '为满足整批预算，已减至 0 手'

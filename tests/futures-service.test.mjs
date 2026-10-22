@@ -11,6 +11,7 @@ import { AccountRepo } from '../lib/store/repo.js'
 import { PaperService } from '../lib/service/paper-service.js'
 import { UnavailableMarketData } from '../lib/data/unavailable-market-data.js'
 import { replayFutures } from '../lib/core/futures/replay.js'
+import { verify as verifyFuturesAccount } from '../lib/core/futures/ledger.js'
 import { SYMBOL, DATE1, DATE2, AM, LUNCH, PM, SETTLEMENT, clockAt, makeHome, makeFakeData, draft, cents } from './futures-fixtures.mjs'
 
 function setup(name, at = clockAt(DATE1, AM)) {
@@ -406,6 +407,44 @@ test('fee fallback: ad-valorem trading_fee_rate becomes a per-lot fee snapshot',
     // Same-day close is charged the ad-valorem close-today rate: 3200 * 10 * 0.05‰ = 160 cents.
     const closePreview = await subject.service.preview(draft({ offset: 'close' }))
     assert.equal(closePreview.feesCents, 160)
+  } finally {
+    await close(subject)
+  }
+})
+
+test('invalid lots are rejected before the ledger and never lock the account', async () => {
+  const subject = setup('futures-lot')
+  try {
+    for (const qty of [0, -1, 1.5, Number.NaN]) {
+      await assert.rejects(
+        () => subject.service.place(draft({ qty }), `bad-${qty}`),
+        error => error instanceof FuturesError && error.code === 'INVALID_ARGUMENT',
+      )
+    }
+    const good = await subject.service.place(draft(), 'good-lot')
+    assert.equal(good.status, 'filled')
+    const account = await subject.service.account()
+    assert.equal(account.blocked, false, 'a bad lot must not trip the ledger invariant')
+    const issues = verifyFuturesAccount(await subject.repo.current())
+    assert.deepEqual(issues, [])
+  } finally {
+    await close(subject)
+  }
+})
+
+test('requestId idempotency compares the normalised draft, including limit price', async () => {
+  const subject = setup('futures-idem-draft')
+  try {
+    const first = await subject.service.place(draft({ symbol: ' RB2611.SHFE ' }), 'idem-draft')
+    assert.equal(first.status, 'filled')
+    // Same normalised symbol: reuse the order.
+    const reused = await subject.service.place(draft({ symbol: ' RB2611.SHFE ' }), 'idem-draft')
+    assert.equal(reused.id, first.id)
+    // Different limit price: reject instead of silently returning the old order.
+    await assert.rejects(
+      () => subject.service.place(draft({ type: 'limit', limitPrice: 3200 }), 'idem-draft'),
+      error => error instanceof FuturesError && error.code === 'INVALID_ARGUMENT',
+    )
   } finally {
     await close(subject)
   }

@@ -80,15 +80,23 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /CANCEL_REASON_TEXT/)
   assert.match(source, /ERROR_TEXT/)
   // The fake day/minute buttons only exist when the K-line slot is absent.
-  assert.match(source, /hasSlot \? null : h\('div', \{ className: 'pt-row'/)
+  assert.match(source, /showFallback \? h\('div', \{ className: 'pt-row'/)
   // K-line identity must not rewrite the ticket when the symbol did not change.
   assert.match(source, /formSymbol\.current/)
+  // The stock preview effect must use the standalone quote state, not a
+  // removed `setQuote` (which threw a ReferenceError on an unfinished draft).
+  // The browser e2e renders a short symbol to cover the runtime path.
+  assert.match(source, /const \[symbolQuote, setSymbolQuote\] = useState\(null\)/)
+  // A limit order without a limit price is blocked before hitting the host.
+  assert.ok(source.match(/if \(form\.type === 'limit' && !\(Number\(form\.limitPrice\) > 0\)\) return '填写限价'/g).length >= 2, 'stock and futures tickets both block an empty limit price')
   // The ticket has no manual quote/preview buttons any more.
   assert.ok(!source.includes('查行情'), 'the quote button must be gone')
   // An unfinished draft (limit with no price) still shows the price: the
   // ticket falls back to a quote-only request instead of a 0.00 preview.
   assert.ok(source.includes("rpc('market/quote'"), 'an unfinished draft asks for the price alone')
   assert.match(source, /previewBlockReason/)
+  assert.match(source, /K 线视图未加载/)
+  assert.match(source, /amountFormat/)
   assert.match(source, /order\/preview/, 'preview runs automatically')
   assert.match(source, /\}, 300\)/, 'preview is debounced by 300 ms')
   assert.match(source, /输入 6 位代码后自动计算/)
@@ -193,7 +201,7 @@ test('browser bundle: futures account switch, four tabs and the futures endpoint
   assert.ok(!futuresScope.includes('KlinePane'), 'the futures half must not render a K-line')
   assert.ok(!futuresScope.includes("'market', '行情'"), 'the futures half must not render a market page')
   // Futures vocabulary and ticket gates.
-  for (const text of ['开多', '开空', '平多', '平空', '手数', '风险度', '保证金占用', '涨跌停', '平仓']) {
+  for (const text of ['开多', '开空', '平多', '平空', '手数', '风险度', '保证金占用', '涨停', '跌停', '平仓']) {
     assert.ok(futuresScope.includes(text), `missing futures copy ${text}`)
   }
   assert.match(source, /var\(--dsw-alias-state-warn-primary/)
