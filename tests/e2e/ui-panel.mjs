@@ -205,6 +205,8 @@ try {
   const cancelOrder = await scenario('cancel-order')
   assert('cancelling a pending order clears the table', typeof cancelOrder.empty === 'string' && cancelOrder.empty.includes('无挂单'), JSON.stringify(cancelOrder))
   assert('a queued order explains that it waits for the next session', typeof cancelOrder.note === 'string' && cancelOrder.note.includes('下一交易时段'), JSON.stringify(cancelOrder.note))
+  const ordersTruncation = await scenario('orders-truncation')
+  assert('a long order history says it is truncated', typeof ordersTruncation.note === 'string' && ordersTruncation.note.includes('共 31 条'), JSON.stringify(ordersTruncation))
   const resetAccount = await scenario('reset-account')
   assert('resetting the stock account reports success', typeof resetAccount.notice === 'string' && resetAccount.notice.includes('账户已重置'), JSON.stringify(resetAccount))
   const basket = await scenario('basket')
