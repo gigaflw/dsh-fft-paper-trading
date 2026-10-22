@@ -275,6 +275,31 @@
       window.__fake.on('market/bars', () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }))
       return result
     }
+    if (name === 'bars-race') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 400))
+      e2e.click(e2e.byText('分时')[0])
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('market/bars', async payload => {
+        const minute = payload.interval === 'minute'
+        await new Promise(done => setTimeout(done, minute ? 50 : 400))
+        return {
+          state: 'ok',
+          bars: minute
+            ? Array.from({ length: 30 }, (_, i) => ({ time: `2026-10-22T${String(9 + Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00.000Z`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i }))
+            : [],
+        }
+      })
+      e2e.click(e2e.byText('日K')[0])
+      await new Promise(done => setTimeout(done, 60))
+      e2e.click(e2e.byText('分时')[0])
+      await new Promise(done => setTimeout(done, 800))
+      result.chart = Boolean(document.querySelector('.pt-kline-body .pt-chart'))
+      result.body = e2e.text('.pt-kline-body')
+      window.__fake.on('market/bars', () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }))
+      return result
+    }
     if (name === 'quote-retry') {
       const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
       if (tradeTab) e2e.click(tradeTab)
