@@ -160,6 +160,8 @@ try {
   await shot('stock-trade.png')
 
   // 2. 一揽子
+  const nextTradeDate = await scenario('next-trade-date')
+  assert('a rolled ledger date is labeled as the next trading day', typeof nextTradeDate.sub === 'string' && nextTradeDate.sub.includes('下一交易日'), JSON.stringify(nextTradeDate))
   const basketPreview = await scenario('basket-preview')
   assert('basket preview is shown before confirmation', typeof basketPreview.preview === 'string' && basketPreview.preview.includes('目标权重'), basketPreview.preview ?? '')
   await shot('basket-preview.png')

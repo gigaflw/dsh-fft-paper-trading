@@ -60,6 +60,15 @@ window.__ModuleLoader__.load({
       const date = toDate(value)
       return date === null ? '—' : timeFormat.format(date)
     }
+    const dateFormat = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    })
+    const shanghaiToday = () => dateFormat.format(new Date())
+    /** After the close the ledger rolls to the next trading day; say so. */
+    const tradeDateText = value => {
+      if (!value) return '—'
+      return value > shanghaiToday() ? `下一交易日 ${value}` : value
+    }
     /** Display form is always the bare 6-digit code; the API accepts either. */
     const bareSymbol = value => String(value ?? '').trim().toUpperCase().split('.')[0]
     const symbolInput = value => String(value ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6)
@@ -1548,7 +1557,7 @@ window.__ModuleLoader__.load({
           h('div', null,
             h('h3', { className: 'pt-title' }, '模拟交易'),
             h('div', { className: 'pt-sub' },
-              `期货 · ${account.tradeDate || '—'} · ${status ? FUTURES_PHASE_TEXT[status.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
+              `期货 · ${tradeDateText(account.tradeDate)} · ${status ? FUTURES_PHASE_TEXT[status.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
               status && !status.canSubmit ? h('span', { className: 'pt-note' }, '（当前时段只读）') : null,
             ),
           ),
@@ -2408,7 +2417,7 @@ window.__ModuleLoader__.load({
             h('div', null,
               h('h3', { className: 'pt-title' }, '模拟交易'),
               h('div', { className: 'pt-sub' },
-                `${account.tradeDate || '—'} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
+                `${tradeDateText(account.tradeDate)} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
                 session && !session.canMatch ? h('span', { className: 'pt-note' }, '（仅可预埋限价单）') : null,
               ),
             ),
