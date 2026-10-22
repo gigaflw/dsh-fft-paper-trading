@@ -121,7 +121,13 @@ export function parseBasketCsv(csv: string): BasketParseResult {
     // Blank lines and comments are deliberately silent: a pasted export can
     // carry them without the user having to clean the file first.
     if (line === '' || line.startsWith('#')) continue
-    const cells = line.split(',').map(cell => cell.trim())
+    const cells = line.split(',').map(cell => {
+      const text = cell.trim()
+      // Excel commonly quotes every cell; the values themselves are simple.
+      return text.length >= 2 && text.startsWith('"') && text.endsWith('"')
+        ? text.slice(1, -1).trim()
+        : text
+    })
     if (firstDataLine) {
       firstDataLine = false
       if (looksLikeHeader(cells)) continue
