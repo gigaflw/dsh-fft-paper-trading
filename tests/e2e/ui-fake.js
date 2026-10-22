@@ -760,6 +760,8 @@
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
       await new Promise(done => setTimeout(done, 500))
+      const stockTrade = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (stockTrade) e2e.click(stockTrade)
       window.__fake.on('account/get', () => ({
         accountId: 'default', currency: 'CNY', initialCash: 1000000, cash: 1000000,
         marketValue: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
@@ -779,6 +781,34 @@
       result.submitTitle = submit?.title ?? null
       result.exportButton = e2e.byText('导出账本').length
       result.copyButton = e2e.byText('复制路径').length
+      return result
+    }
+    if (name === 'futures-locked') {
+      const futuresButton = e2e.byText('期货')[0]
+      if (futuresButton) e2e.click(futuresButton)
+      await new Promise(done => setTimeout(done, 500))
+      const futuresTrade = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (futuresTrade) e2e.click(futuresTrade)
+      window.__fake.on('futures/account/get', () => ({
+        accountId: 'futures', currency: 'CNY', initialCash: 1000000, cash: 1000000,
+        margin: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0, riskRatio: 0,
+        tradeDate: '2026-10-22', blocked: true,
+        blockedReason: 'events.jsonl 第 5 行校验失败：未知事件类型',
+        ledgerPath: '/tmp/paper-trading/futures/events.jsonl',
+        positions: [], settings: { warnRiskRatio: 0.8, liquidateRiskRatio: 1 },
+      }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.blocked = await e2e.wait(() => {
+        const text = document.querySelector('.pt-blocked')?.innerText ?? ''
+        return text.length > 0 ? text : null
+      }, 4000)
+      result.exportButton = e2e.byText('导出账本').length
+      result.copyButton = e2e.byText('复制路径').length
+      const submit = document.querySelector('.pt-ticket-submit')
+      result.hasTicket = Boolean(submit)
+      result.submitDisabled = submit?.disabled ?? null
+      result.submitTitle = submit?.title ?? null
       return result
     }
     if (name === 'slot-fallback') {
