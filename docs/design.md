@@ -1,6 +1,6 @@
 # 模拟盘子插件架构
 
-> 状态：v0.1 已落地；v0.2 P0/P1 已实施（分支 `feat/paper-trading`），K 线视图由 dsh_kline 的 slot 提供，详见 §19.12。
+> 状态：v0.1 已落地；v0.2 P0/P1 已实施（分支 `feat/paper-trading`），并完成账本并发/迁移/重置修复、宿主撮合调度与 UI 本地化（§6、§9、§19.7、§19.11），K 线视图由 dsh_kline 的 slot 提供，详见 §19.12。
 > 本文写架构、模块边界、账本与扩展方式；v0.1 的范围与验收见 [mvp.md](mvp.md)。
 > 配图：图 1–3 见文内。
 > 目标包：`@ft/dsh-fft-paper-trading`
@@ -112,6 +112,7 @@ packages/dsh-fft-paper-trading/
       calendar.ts            # 交易日（Asia/Shanghai，工作日兜底）
       matching.ts            # 市价/限价成交判定与报价时效
       risk.ts                # 下单前硬校验与价格估计
+      settings.ts            # 持久化配置的规范化/迁移（缺失字段回退默认）
       ledger.ts              # 事件应用与账本不变量
       replay.ts              # 事件 → 状态
       engine.ts              # 命令 → 事件（纯函数）
@@ -123,10 +124,11 @@ packages/dsh-fft-paper-trading/
     store/
       port.ts                # AccountStore 端口
       paths.ts               # $DSH_HOME 解析与目录
-      event-store.ts         # JSONL 追加、fsync、读取、坏行隔离、备份
-      repo.ts                # 载入 → 重放 → 状态；写入串行化；对账
+      event-store.ts         # JSONL 追加、fsync、原子替换、读取、坏行隔离、备份
+      repo.ts                # 载入 → 去重/重放 → 状态；事务写入；对账；导出
     service/
-      paper-service.ts       # 编排：预览/下单/撤单/tick/查询/重置
+      paper-service.ts       # 编排：预览/下单/撤单/tick/查询/重置/导出
+      scheduler.ts           # 宿主撮合调度器（可注入时钟，随 fiber 释放）
       rpc.ts                 # endpoint 表与 payload 校验
       route.ts               # connection.fetch 路由注册
       errors.ts              # PaperError（错误码 + HTTP 状态）
@@ -138,7 +140,7 @@ packages/dsh-fft-paper-trading/
   scripts/
     build-client.mjs         # 复制浏览器半到 lib/client.js
     scenario.mjs             # 端到端脚本：下单 → 成交 → 复盘
-  tests/                     # 14 个用例，见 §15
+  tests/                     # 36 个用例，见 §15
 ```
 
 ### 5.2 模块职责与边界
@@ -150,15 +152,17 @@ packages/dsh-fft-paper-trading/
 | `core/calendar` | 交易日、T+1 解锁 | 时间戳 → 交易日 | 网络调用 | 周末 |
 | `core/matching` | 市价/限价是否成交、成交价、报价时效 | 订单、报价、时间 → 成交判定 | 读账本、读文件 | 滑点、限价保护 |
 | `core/risk` | 现金、可卖、手数、金额上限、blocked | 状态 + 订单 → 通过/拒绝码 | 网络、日志 | 各类拒绝路径 |
+| `core/settings` | 持久化配置合并 `DEFAULT_SETTINGS`，拒绝缺字段/非有限值 | 旧 payload → 完整配置 | 读写账本 | 旧账本迁移 |
 | `core/ledger` | 事件类型与不变量 | 状态、事件 → 校验结果 | 持久化 | 现金/数量不变量 |
 | `core/replay` | 事件序列 → 状态 | 事件数组 → 状态 | IO、时间 | 幂等、坏序 |
 | `core/engine` | 应用命令，产出事件 | 状态 + 命令 → `{events, state}` | IO、随机数 | 全场景 |
 | `core/views` | 状态 → 账户/订单/预览/复盘视图 | 状态 → 视图 | 读写文件 | 预览、回撤 |
 | `store/port` | 持久化端口的唯一声明 | — | 业务规则 | — |
-| `store/repo` | 载入、重放、串行追加、对账、价格缓存、备份 | 事件 / 账户 ID → 状态 | 业务规则、创建结算事件 | 坏尾行、并发 |
+| `store/repo` | 载入、去重/重放、事务写入、原子替换、对账、价格缓存、备份、导出 | 事件 / 构建函数 → 状态 | 业务规则、创建结算事件 | 坏尾行、并发、修复 |
 | `data/port` | 行情端口的唯一声明与四态结果 | — | 账本 | — |
 | `data/ftshare` | FTShare 接口映射、代码规范化、四态归一 | 代码列表 → 报价/日 K | 账本 | mock 端口 |
 | `service` | 编排、校验、串行、错误映射、重置命令 | RPC/工具入参 → 视图 | 直接算撮合、直接读写文件 | 集成 |
+| `service/scheduler` | 宿主侧周期 tick，非重叠、可注入定时器 | 间隔 + tick → 周期调用 | 业务规则、读写账本 | 假时钟周期调用 |
 | `service/rpc` | endpoint 白名单、payload 校验 | HTTP → service | 业务逻辑 | 校验失败 |
 | `agent/tools` | 工具 schema、摘要、错误转文字 | 模型入参 → service | 直接写文件 | 摘要格式 |
 | `client` | 面板、页签、RPC 调用、纯 SVG 图 | RPC → UI | 直接算账、直接取行情 | 入口与样式 |
@@ -175,9 +179,13 @@ interface MarketDataPort {
 // store/port.ts —— service 只见端口，不见 JSONL
 interface AccountStore {
   current(): Promise<AccountState>
-  append(events: readonly LedgerEvent[]): Promise<AccountState>
-  markPrices(quotes: readonly Quote[]): Promise<AccountState> // 非账本事件
-  backup(label: string): Promise<boolean>                    // 重置前备份
+  /** 在写队列内用最新状态构建事件并原子追加；并发读不会重复生成日界事件。 */
+  transact<T>(build: (state: AccountState) => Transaction<T> | Promise<Transaction<T>>): Promise<TransactionOutcome<T>>
+  append(events: readonly LedgerEvent[]): Promise<AccountState>   // 仍强制 seq 连续
+  replace(events: readonly LedgerEvent[]): Promise<AccountState>  // 原子替换（重置/压缩）
+  markPrices(quotes: readonly Quote[]): Promise<AccountState>     // 非账本事件
+  backup(label: string): Promise<boolean>                         // 破坏性操作前备份
+  readLedger(): Promise<{ path: string; content: string | null }> // 只读导出
 }
 
 // service/paper-service.ts —— 两个传输层共用这一组方法
@@ -194,6 +202,7 @@ interface PaperService {
   bars(symbol: string, limit?: number): Promise<BarsResult>
   settingsView(): Promise<PaperSettings>
   reset(confirm: boolean): Promise<AccountView>
+  exportLedger(): Promise<LedgerExport>
 }
 ```
 
@@ -230,13 +239,14 @@ interface AccountState {
 | 事件 | 何时写 | 关键字段 |
 | --- | --- | --- |
 | `account.opened` | 首次初始化 | 初始资金、配置快照、交易日 |
-| `account.reset` | 用户确认重置 | 配置、初始资金、交易日、原因 |
+| `account.reset` | 用户确认重置，或作为压缩后账本的单条 genesis | 配置（默认值合并后）、初始资金、交易日、原因 |
 | `order.submitted` | 提交通过风控 | 订单、报价快照 |
 | `order.rejected` | 风控或校验拒绝 | 订单、拒绝码 |
 | `order.canceled` | 撤单、过期、资金/持仓不足 | 订单 ID、原因、时间 |
 | `order.filled` | 撮合成功 | 成交价、数量、费用明细 |
 | `day.closed` | 首次跨交易日 tick | 日期、权益、现金、下一交易日 |
-| `ledger.violation` | 启动或写入对账失败 | 失败项；账户随即 `blocked` |
+| `ledger.violation` | 启动或写入对账失败 | 失败项；账户随即 `blocked`，此后不再追加事件 |
+| `ledger.repaired` | 载入时丢弃了重复 seq 事件 | 丢弃条数；随后原子压缩账本 |
 
 未落地的事件（`account.settings`、`risk.blocked`）在 §14.3 里说明，当前不写。
 
@@ -247,10 +257,11 @@ interface AccountState {
 ### 6.3 恢复与对账
 
 1. 读 `events.jsonl`，末尾坏行（进程被杀）丢弃并记录 warning。
-2. 校验 `seq` 严格递增，倒序即失败关闭。
-3. 重放并校验：现金恒等式、持仓数量、可卖 ≤ 持仓、已成交订单必须有成交记录。
-4. 失败：追加 `ledger.violation`，置 `blocked`；界面红条提示，人工检查后可重置。
-5. 每次 `append` 后同样跑校验；校验通过才把新状态留在内存。
+2. 校验 `seq` 严格递增：同一 seq 且内容相同（忽略易变的 `recordedAt`）视为重复写入，丢弃后补一条 `ledger.repaired` 并把压缩结果原子写回；同一 seq 内容不同则是真损坏，保留原文件并失败关闭。
+3. 重放并校验：现金恒等式、持仓数量、可卖 ≤ 持仓、成交数量/价格/金额/费用必须是有限值、已成交订单必须有成交记录。
+4. 失败：追加一条 `ledger.violation`，置 `blocked`；界面红条提示，可导出账本或重置。已锁定的账户不再追加任何事件，避免每 5 秒刷一条。
+5. 写入：`transact` 在写队列内用最新状态重建事件，落盘前强制 `event.seq === state.lastSeq + 1`；不连续直接抛错，绝不写坏账本。
+6. 重置：先原样备份，再用合并默认值后的配置把账本原子替换为单条 `account.reset`（seq 从 1 开始），内存状态直接替换，不依赖旧账本重放成功。
 
 ![图 2 · 事件账本与恢复](figures/fig-2.png)
 
@@ -303,14 +314,15 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 **路由**：`POST /api/ft-paper-trading`，envelope `{ endpoint, payload }` → `{ ok, value | error }`。
 **限制**：只接受 POST；请求体 256 KiB 上限；非对象 body 直接 400。
-**并发**：同一账户的写命令（append / markPrices）进单一 Promise 队列串行；读可并发。
+**并发**：同一账户的写命令（transact / append / replace / markPrices / backup）进单一 Promise 队列串行；读接口的时钟推进也走 `transact`，因此并发读只会落一份日界事件。
 **错误码**：`ACCOUNT_BLOCKED`、`INVALID_ARGUMENT`、`INVALID_SYMBOL`、`INVALID_QTY`、`INVALID_LOT`、`INSUFFICIENT_CASH`、`INSUFFICIENT_POSITION`、`T1_LOCKED`、`MAX_NOTIONAL`、`ORDER_NOT_FOUND`、`ORDER_NOT_PENDING`、`QUOTE_UNAVAILABLE`、`QUOTE_STALE`。
 
 | endpoint | 作用 | 状态 |
 | --- | --- | --- |
 | `health` | 路由存活探针 | ● |
 | `account/get` / `account/init` | 查账户（首次自动开户） | ● |
-| `account/reset` | 重置（必须 `confirm=true`） | ● |
+| `account/reset` | 重置（必须 `confirm=true`；备份后原子重写为单条 genesis） | ● |
+| `account/export` | 只读返回账本原文 + 绝对路径（锁定横幅的「导出账本」） | ● |
 | `market/quote` / `market/bars` | 行情与日 K | ● |
 | `order/preview` / `order/place` / `order/cancel` | 交易 | ● |
 | `tick` | 刷新行情并撮合挂单 | ● |
@@ -374,8 +386,11 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 复盘 | 7/30/全部区间、成交统计、最大回撤、权益曲线、成交记录 |
 
 账户头：总资产、可用现金、浮动盈亏、今日盈亏、刷新、重置（`window.confirm` 二次确认）。
+锁定横幅带「导出账本」：调 `account/export` 下载 JSONL 并复制绝对路径，不再只提示用户自己找文件。
+`data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 
-**刷新**：页面挂载即拉取 `account/get`、`list/orders`、`list/trades`、`review/get`；每 5 秒在 `document.visibilityState === 'visible'` 时调 `tick` 并静默重载；提交、撤单、手动刷新立即重载。
+**刷新**：页面挂载即拉取 `account/get`、`list/orders`、`list/trades`、`review/get`；每 5 秒在 `document.visibilityState === 'visible'` 时调 `tick` 并静默重载（宿主调度器才是主驱动，见 §19.7）；提交、撤单、重置、手动刷新立即重载，重置后同时刷新日终/流水/回合。
+**文案与格式**：时间统一 `Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai' })`；状态、流水类型、撤单原因、错误码都有中文映射，错误码只留在 `title`/详情；非有限数值显示 `—`；代码统一展示 6 位。
 **主题**：只用宿主 CSS token；交易橙读共享 `--ft-accent-warm*`，`--pt-accent*` 只是本地别名。
 **图表**：`EquityChart` 是纯函数式 SVG（等宽视口、min/max 归一），没有图表库。
 
@@ -412,6 +427,8 @@ v0.1 只读：`settings/get` 返回开户/重置时写进账本的配置；没�
 | `quoteTtlSec` | 30 |
 | `maxOrderNotionalCents` | 0（关闭） |
 
+`account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段（如旧账本没有 `maxParticipationRate` / `fillModel`）回退默认值，非有限值也被拒绝。这样旧账本不需要单独的版本迁移表即可继续成交。
+
 写设置的做法见 §14.3：新增 `account.settings` 事件，随账本重放；`contract.ts` 的 `DEFAULT_SETTINGS` 只给新账户默认值。
 FTShare API Key 由全局设置服务解析，本插件不读、不展示、不修改。
 
@@ -422,12 +439,14 @@ $DSH_HOME/paper-trading/
   default/
     events.jsonl              # 追加写，一行一事件，0600
     backups/
-      events-<ts>.jsonl       # 每次重置前复制一份
+      events-<ts>.jsonl       # 每次重置前原样复制一份
+      events-repair-<ts>.jsonl # 载入时修复重复 seq 前的原文件
 ```
 
 - `DSH_HOME` 优先，`~/.dsh` 兜底；目录 700、文件 600。
 - 每次 append 后 `fsync`；写失败直接报错，不吞。
-- 坏尾行读取时丢弃并 warn；`seq` 倒序/不连续触发 `ledger.violation`。
+- 坏尾行读取时丢弃并 warn；重复 seq 先按内容去重修复，冲突或非有限成交才触发 `ledger.violation`。
+- 重置与压缩都用「同目录临时文件 + fsync + rename」原子替换，失败不留半截文件。
 - `meta.json`、备份保留最近 5 份、按年轮转都还没做（§17）。
 
 ## 14 扩展点（按改动落点）
@@ -482,7 +501,7 @@ $DSH_HOME/paper-trading/
 
 ## 15 测试策略
 
-当前 14 个用例（`pnpm test`，构建后跑 `node --test`）：
+当前 36 个用例（`pnpm test`，构建后跑 `node --test`）：
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -492,9 +511,11 @@ $DSH_HOME/paper-trading/
 | `store.test.mjs` | JSONL 追加、坏尾行隔离 |
 | `adapter.test.mjs` | 代码规范化、分组摊平、日 K 排序 |
 | `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点 |
-| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 8 个工具仍挂载，账户可读、行情四态失败 |
+| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 8 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
+| `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、旧 settings 迁移、重置健壮性、日 K 补 `prevClose` |
+| `scheduler.test.mjs` | 假时钟周期调用、非重叠、start/stop 幂等、异常转 warning |
 
-尚未覆盖：`blocked` 后的撤单/下单、重复 `seq`、路由 405/413、工具卡（待做）。
+尚未覆盖：路由 405/413、工具卡（待做）；P2 挂单冻结资金未实现（见 §19.11）。
 
 ## 16 演进路线
 
@@ -514,7 +535,7 @@ $DSH_HOME/paper-trading/
 | 无 L1/L2 盘口（已实测） | 只能做「最新价 + 参与率」撮合 | 不显示盘口、不伪造深度；明确 `volume-share` 假设（§19.5） |
 | 列表排序不可靠（已实测） | 无法直接做全市场涨幅榜 | `order_by` 只验证到升序；P1 不做涨幅榜，不依赖未确认的 `filter` 语法 |
 | 收盘后探针看不到盘中效果 | 分钟 bar 在盘中是部分完成还是含当前分钟未知 | 交易时段内复验一次，再固化 TTL 与 `marketTs` 口径（§19.9） |
-| 宿主休眠/退出错过收盘 | 快照延迟、T+1 解锁晚 | `ctx.timeout` 到点触发 + `advanceTo(now)` 幂等补算；离线不补成交（§19.2） |
+| 宿主休眠/退出错过收盘 | 快照延迟、T+1 解锁晚 | 宿主 `PaperScheduler` 周期 `advanceTo(now)` 幂等补算；离线不补成交（§19.2、§19.7） |
 | 涨跌停/ST 比例随规则变化 | 拒单错误 | 板块比例集中配置，实现前按交易所现行规则复核 |
 | 部分成交依赖分钟成交量 | 参与率假设影响真实感 | 可配置参与率；无成交量时退回全量并标记 `unlimited` |
 | 开源许可 | 复制 LGPL/GPL 代码会污染许可 | 只借架构与规则，不复制代码（§19.10） |
@@ -527,7 +548,7 @@ $DSH_HOME/paper-trading/
 | # | 决策 | 理由 |
 | --- | --- | --- |
 | D1 | 事件账本用 JSONL | 数据量小、可 diff、确定性重放 |
-| D2 | tick 按需，不常驻撮合 | 少一个后台任务 |
+| D2 | 宿主定时器驱动 tick，前端轮询只作补充 | 面板关掉也要撮合与结算；`advanceTo` 幂等，漏拍可补算 |
 | D3 | 不做部分成交与止损单 | 规则简单可验证 |
 | D4 | 单账户、单币种 | 范围控制 |
 | D5 | 自绘 SVG 图表 | 避免引图表库与跨插件耦合 |
@@ -616,7 +637,7 @@ interface TradingCalendarPort {
 - 15:00 写 `day.closed`（收盘价、权益、费用、持仓、下一交易日）；09:15 写 `day.pre_opened`（只切交易日、不解锁）；09:30 写 `day.opened`（开盘价、昨收、跳空、T+1 解锁）；
 - 所有 service 方法入口统一 `advanceTo(now)`：按交易日顺序补齐遗漏的收盘快照；宿主定时器只负责及时触发，不承担唯一职责；
 - **离线期间不补成交**：宿主不在线时挂单保持原状态，恢复后从当前时段继续；只补收盘快照与 T+1。理由见选型文档 §5；
-- 定时器用 `ctx.effect` 包住原生 `setTimeout/clearTimeout`（DSH 文档的推荐写法，随插件卸载清理）；宿主也提供 `ctx.timeout/ctx.interval`，类型图可见时可直接用；不要用 `setInterval` 秒级轮询。
+- 定时器由 `service/scheduler.ts` 的 `PaperScheduler` 承担：默认 5 秒一轮、不重叠、`start/stop` 幂等，`index.ts` 用 `ctx.effect` 随 fiber 释放；定时器与间隔可注入，测试用假时钟驱动。前端 5 秒轮询保留为面板可见时的补充触发，不再是唯一驱动。
 
 ### 19.3 行情时间与收盘/开盘（P0）
 
@@ -771,6 +792,7 @@ interface MarketListResult {
 - `volume-share`：单次可成交数量 = `min(剩余, floor(本根分钟成交量 × 参与率))`；买入再向下取 100 的整数倍，小于 100 股则不成交；
 - 一根 bar 内可多次成交；订单状态 `partially_filled`，剩余继续挂；可撤剩余；
 - 没有分钟成交量时退回 `unlimited` 并在成交事件标 `fillModel: 'unlimited'`，界面提示「未按成交量约束」；
+- 参与率或成交量非有限（旧配置/脏数据）时按 **不限量** 处理并保证成交数量为整数：取 0 会让挂单永久卡住，取不限量才与「无成交量」的既有回退一致；`normalizeSettings` 让该分支在正常重放下不可达；
 - 成交 ID 确定性：`fill-<orderId>-<n>`；同一 bar + 同一订单顺序固定，重放一致。
 
 **成交价**
@@ -812,7 +834,7 @@ src/core/reports.ts          # 日终、隔夜、回合
 src/data/trading-calendar-port.ts
 src/data/ftshare-trading-calendar.ts
 src/store/watchlist.ts       # UI 偏好，不入账本
-src/service/market-clock.ts  # 定时器 + advanceTo 补算
+src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（advanceTo 幂等补算）
 ```
 
 - `PaperService` 只新增 `advanceTo`/`marketStatus`/`search`/`marketList`/`minuteBars`/`dailyReport`/`roundtrips`/`cashFlow` 等编排方法；成交规则仍留在 `core`；
@@ -957,6 +979,7 @@ paper-trading main 注册
 - L2/L3 盘口与逐档撮合（无数据源）；
 - 止损/条件单/算法单（P2）；
 - 工具卡、设置写入（v0.3，与「真实节奏」无关）；
+- **挂单冻结资金（原 P2）**：现状是「可用现金不减、多笔委托可叠加，成交时才因资金不足静默撤单」。要修干净需要在订单上引入每笔委托的资金/持仓预留，并在 submit / 部分成交 / 撤单 / 过期 / 重放上对称维护，再把「可用/冻结」暴露到 `AccountView` 与持仓表；这属于账本字段变更，不适合混进本轮修复批次。结论：**本轮不做**，列为下一批独立改造，届时同时补不变量与重放用例。
 - 多账户、分红送转、通知（v0.3）；
 - 时间加速/快进（永远不做）。
 

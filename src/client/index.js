@@ -14,33 +14,50 @@ window.__ModuleLoader__.load({
       ['all', '全部'],
     ]
 
-    async function rpc(endpoint, payload) {
-      const response = await fetch(ROUTE, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ endpoint, payload: payload ?? {} }),
-      })
-      let body = null
-      try {
-        body = await response.json()
-      } catch {
-        body = null
-      }
-      if (!response.ok || body === null || body.ok !== true) {
-        const message = body && body.error ? body.error.message : `HTTP ${response.status}`
-        throw new Error(message)
-      }
-      return body.value
-    }
+    /* ---------------------------------------------------------------- text --
+       Pure formatting and vocabularies. Times are always zh-CN /
+       Asia/Shanghai; numbers that are not finite render as `—` instead of a
+       blank or `NaN`, and backend codes never leak into the main copy. */
 
-    const money = value => Number(value ?? 0).toFixed(2)
-    const cents = value => (Number(value ?? 0) / 100).toFixed(2)
-    const pct = value => `${(Number(value ?? 0) * 100).toFixed(2)}%`
+    const TZ = 'Asia/Shanghai'
+    const dateTimeFormat = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    })
+    const timeFormat = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    })
+
+    const isFiniteNumber = value => typeof value === 'number' && Number.isFinite(value)
+    const money = value => isFiniteNumber(value) ? value.toFixed(2) : '—'
+    const cents = value => isFiniteNumber(value) ? (value / 100).toFixed(2) : '—'
+    const pct = value => isFiniteNumber(value) ? `${(value * 100).toFixed(2)}%` : '—'
     const signed = value => {
-      const number = Number(value ?? 0)
-      return `${number >= 0 ? '+' : ''}${number.toFixed(2)}`
+      if (!isFiniteNumber(value)) return '—'
+      return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
     }
-    const statusText = {
+    const count = value => isFiniteNumber(value) ? String(Math.round(value)) : '—'
+    const toDate = value => {
+      if (value === undefined || value === null || value === '') return null
+      const time = Date.parse(value)
+      return Number.isNaN(time) ? null : new Date(time)
+    }
+    const dateTime = value => {
+      const date = toDate(value)
+      return date === null ? '—' : dateTimeFormat.format(date)
+    }
+    const clockTime = value => {
+      const date = toDate(value)
+      return date === null ? '—' : timeFormat.format(date)
+    }
+    /** Display form is always the bare 6-digit code; the API accepts either. */
+    const bareSymbol = value => String(value ?? '').trim().toUpperCase().split('.')[0]
+    const symbolInput = value => String(value ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6)
+    const symbolText = quote => [bareSymbol(quote?.symbol), quote?.name].filter(text => text).join(' ')
+    /** Watchlist entries may carry an exchange suffix; compare on the bare code. */
+    const watched = (watchlist, symbol) => watchlist.some(item => bareSymbol(item) === bareSymbol(symbol))
+
+    const STATUS_TEXT = {
       queued: '排队',
       pending: '挂单',
       partially_filled: '部分成交',
@@ -56,6 +73,75 @@ window.__ModuleLoader__.load({
       continuous_pm: '下午连续竞价',
       auction_close: '收盘竞价',
       closed: '已收盘',
+    }
+    const CASH_TYPE_TEXT = {
+      open: '开户',
+      reset: '重置',
+      buy: '买入',
+      sell: '卖出',
+      fee: '费用',
+    }
+    const CANCEL_REASON_TEXT = {
+      user: '手动撤单',
+      expired: '当日有效期满',
+      insufficient_cash: '资金不足',
+      insufficient_position: '可卖不足',
+    }
+    const ERROR_TEXT = {
+      ACCOUNT_BLOCKED: '账户已锁定，请先重置或导出账本',
+      INVALID_ARGUMENT: '参数不合法',
+      INVALID_SYMBOL: '证券代码不合法',
+      INVALID_QTY: '数量不合法',
+      INVALID_LOT: '买入数量必须是 100 股的整数倍',
+      INSUFFICIENT_CASH: '可用资金不足',
+      INSUFFICIENT_POSITION: '持仓不足',
+      T1_LOCKED: '当日买入的股份不可卖出（T+1）',
+      MAX_NOTIONAL: '超过单笔金额上限',
+      ORDER_NOT_FOUND: '订单不存在',
+      ORDER_NOT_PENDING: '订单不是挂单状态',
+      QUOTE_UNAVAILABLE: '没有可用行情',
+      QUOTE_STALE: '行情已过期',
+      SESSION_CLOSED: '当前时段不接受委托',
+      AUCTION_ONLY: '当前时段不接受市价单',
+      PRICE_LIMIT: '价格超出涨跌停范围',
+      SUSPENDED: '标的停牌',
+      INSUFFICIENT_LIQUIDITY: '可成交量不足',
+      INTERNAL: '内部错误',
+    }
+    const CODE_PREFIX = /^([A-Z_]+):\s*(.*)$/
+    /** `T1_LOCKED: 可卖数量不足（可卖 0 股）` → the Chinese detail only. */
+    const reasonText = reason => {
+      if (!reason) return ''
+      const matched = CODE_PREFIX.exec(reason)
+      if (matched) return matched[2] || ERROR_TEXT[matched[1]] || reason
+      return CANCEL_REASON_TEXT[reason] ?? reason
+    }
+    const errorText = (code, message) => ERROR_TEXT[code] ?? message ?? '操作失败'
+    const errorOf = cause => ({
+      text: cause && cause.message ? cause.message : '操作失败',
+      detail: cause && cause.detail ? cause.detail : '',
+    })
+
+    async function rpc(endpoint, payload) {
+      const response = await fetch(ROUTE, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ endpoint, payload: payload ?? {} }),
+      })
+      let body = null
+      try {
+        body = await response.json()
+      } catch {
+        body = null
+      }
+      if (!response.ok || body === null || body.ok !== true) {
+        const failureBody = body && body.error ? body.error : { code: 'INTERNAL', message: `HTTP ${response.status}` }
+        const failure = new Error(errorText(failureBody.code, failureBody.message))
+        failure.code = failureBody.code
+        failure.detail = `${failureBody.code}: ${failureBody.message}`
+        throw failure
+      }
+      return body.value
     }
 
     const CSS = `
@@ -104,6 +190,8 @@ window.__ModuleLoader__.load({
         padding:5px 9px; cursor:pointer; font-size:12px; font-family:inherit; }
       .pt-btn:hover { border-color:var(--pt-accent);
         background:var(--dsw-alias-interactive-bg-hover, #eef1f5); }
+      .pt-btn[data-active="true"] { border-color:var(--pt-accent); background:var(--pt-accent-soft);
+        color:var(--dsw-alias-label-primary, #171b22); font-weight:500; }
       .pt-btn[disabled] { opacity:.5; cursor:default; }
       .pt-btn-primary { background:var(--pt-accent);
         border-color:var(--pt-accent);
@@ -161,7 +249,8 @@ window.__ModuleLoader__.load({
       .pt-note { color:var(--dsw-alias-label-secondary, #49525f); font-size:12px; }
       .pt-blocked { color:var(--dsw-alias-state-error-primary, #a33b2a);
         border:0.5px solid var(--dsw-alias-state-error-primary, #a33b2a);
-        border-radius:var(--dsw-radius-xs, 4px); padding:7px 9px; }
+        border-radius:var(--dsw-radius-xs, 4px); padding:7px 9px;
+        display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
       .pt-chart { width:100%; height:120px; display:block; }
       .pt-chart-wrap { border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.12));
         border-radius:var(--dsw-radius-sm, 8px); padding:8px; }
@@ -190,6 +279,8 @@ window.__ModuleLoader__.load({
       .pt-root .pt-seg button:focus-visible, .pt-root .pt-tab:focus-visible {
         outline:2px solid var(--pt-accent); outline-offset:2px; }
     `
+
+    /* ------------------------------------------------------------ atoms --- */
 
     function Field({ label, children }) {
       return h('label', { className: 'pt-field' }, h('span', null, label), children)
@@ -232,13 +323,11 @@ window.__ModuleLoader__.load({
       )
     }
 
-
     /** Candlestick/line chart from daily or minute bars; no external chart lib. */
     function PriceChart({ bars, interval }) {
       if (!Array.isArray(bars) || bars.length === 0) return h('div', { className: 'pt-empty' }, '暂无 K 线数据')
       const width = 640
       const height = 200
-      const values = bars.map(bar => bar.close)
       const min = Math.min(...bars.map(bar => bar.low ?? bar.close))
       const max = Math.max(...bars.map(bar => bar.high ?? bar.close))
       const span = max - min || Math.max(1, max * 0.02)
@@ -261,8 +350,13 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /* --------------------------------------------------------- K-line ----- */
 
-    /** Always-visible K-line rail; dsh_kline fills the slot when installed. */
+    /**
+     * Always-visible K-line rail; dsh_kline fills the slot when installed.
+     * The slot owns its own interval switch, so the built-in day/minute
+     * buttons only exist for the fallback SVG (no dead controls).
+     */
     function KlinePane({ renderSlot, symbol, quote, bars, interval, onInterval, onRefresh, onIdentity }) {
       const slot = typeof renderSlot === 'function'
         ? renderSlot('paperTrading.kline', { symbol, onIdentity })
@@ -273,10 +367,10 @@ window.__ModuleLoader__.load({
         h('div', { className: 'pt-card pt-kline-card' },
           h('div', { className: 'pt-kline-head' },
             h('div', { className: 'pt-kline-title' },
-              h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${symbol || '—'} K线`),
-              h('div', { className: 'pt-note' }, quote ? `${quote.name ?? ''} 现价 ${quote.last.toFixed(2)}` : '等待行情'),
+              h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${bareSymbol(symbol) || '—'} K线`),
+              h('div', { className: 'pt-note' }, quote ? `${symbolText(quote)} · 现价 ${money(quote.last)}` : '等待行情'),
             ),
-            h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
+            hasSlot ? null : h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
               h('div', { className: 'pt-seg' },
                 [['day', '日K'], ['minute', '分时']].map(([key, label]) =>
                   h('button', { key, 'data-active': interval === key, onClick: () => onInterval(key) }, label),
@@ -293,6 +387,276 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /* ----------------------------------------------------------- tabs ----- */
+
+    function TradeTab({ account, form, setForm, quote, session, preview, busy, onPreview, onSubmit, onRefreshQuote }) {
+      const maxBuy = preview ? count(preview.maxBuyQty) : '—'
+      return h('div', { className: 'pt-trade-grid' },
+        h('div', { className: 'pt-card' },
+          h('div', { className: 'pt-card-title' }, '下单'),
+          h('div', { className: 'pt-row' },
+            h(Field, { label: '代码' }, h('input', {
+              className: 'pt-input', style: { width: 104 }, value: form.symbol, inputMode: 'numeric', maxLength: 9,
+              placeholder: '600519',
+              onChange: event => setForm(prev => ({ ...prev, symbol: symbolInput(event.target.value) })),
+            })),
+            h('div', { className: 'pt-seg' },
+              [['buy', '买入'], ['sell', '卖出']].map(([key, label]) =>
+                h('button', { key, 'data-active': form.side === key, onClick: () => setForm(prev => ({ ...prev, side: key })) }, label),
+              ),
+            ),
+            h('div', { className: 'pt-seg' },
+              [['market', '市价'], ['limit', '限价']].map(([key, label]) =>
+                h('button', { key, 'data-active': form.type === key, onClick: () => setForm(prev => ({ ...prev, type: key })) }, label),
+              ),
+            ),
+            h(Field, { label: '数量' }, h(DebouncedNumber, {
+              value: form.qty, min: 0, step: 100,
+              onChange: value => setForm(prev => ({ ...prev, qty: value })),
+            })),
+            form.type === 'limit' ? h(Field, { label: '限价' }, h(DebouncedNumber, {
+              value: form.limitPrice, min: 0, step: 0.01,
+              onChange: value => setForm(prev => ({ ...prev, limitPrice: value })),
+            })) : null,
+            h('button', { className: 'pt-btn', onClick: onRefreshQuote, disabled: busy }, '查行情'),
+          ),
+          h('div', { className: 'pt-note', style: { marginTop: 6 } },
+            `可用 ${money(account.cash)} · 最多可买 ${maxBuy} 股${preview ? '' : '（先预览）'}`,
+          ),
+          quote ? h('div', { className: 'pt-quote', style: { marginTop: 8 } },
+            h('span', null, symbolText(quote)),
+            h('span', null, `现价 ${money(quote.last)}`),
+            h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : `行情 ${clockTime(quote.marketTs)}`),
+          ) : h('div', { className: 'pt-note', style: { marginTop: 8 } }, '未取到行情时可填参考价，市价单按参考价成交。'),
+          form.type === 'market' ? h('div', { className: 'pt-row', style: { marginTop: 8 } },
+            h(Field, { label: '参考价（可选）' }, h(DebouncedNumber, {
+              value: form.price, min: 0, step: 0.01,
+              onChange: value => setForm(prev => ({ ...prev, price: value })),
+            })),
+          ) : null,
+          h('div', { className: 'pt-row', style: { marginTop: 8 } },
+            h('button', { className: 'pt-btn', onClick: onPreview, disabled: busy }, '预览'),
+            h('button', { className: 'pt-btn pt-btn-primary', onClick: onSubmit, disabled: busy || (form.type === 'market' && session !== null && !session.canMatch) }, form.side === 'buy' ? '买入' : '卖出'),
+          ),
+          h('div', { className: 'pt-row', style: { marginTop: 8 } },
+            h(Field, { label: '备注（复盘用）' }, h('input', {
+              className: 'pt-input', style: { flex: 1, minWidth: 180 }, value: form.note, maxLength: 120,
+              onChange: event => setForm(prev => ({ ...prev, note: event.target.value })),
+            })),
+          ),
+        ),
+        h(PreviewCard, { preview }),
+      )
+    }
+
+    function PreviewCard({ preview }) {
+      return h('div', { className: 'pt-card' },
+        h('div', { className: 'pt-card-title' }, '预览'),
+        preview ? h('div', { className: 'pt-preview' },
+          h('div', null, h('span', null, '价格'), h('span', null, money(preview.price))),
+          h('div', null, h('span', null, '金额'), h('span', null, cents(preview.amountCents))),
+          h('div', null, h('span', null, '佣金'), h('span', null, cents(preview.commissionCents))),
+          h('div', null, h('span', null, '印花税'), h('span', null, cents(preview.stampCents))),
+          h('div', null, h('span', null, '过户费'), h('span', null, cents(preview.transferCents))),
+          h('div', null, h('span', null, '成交后现金'),
+            h('span', { className: preview.cashAfterCents < 0 ? 'pt-up' : undefined }, cents(preview.cashAfterCents)),
+          ),
+          h('div', null, h('span', null, '最多可买'), h('span', null, `${count(preview.maxBuyQty)} 股`)),
+          preview.warnings.length > 0 ? h('div', { className: 'pt-warn' }, preview.warnings.join('；')) : null,
+        ) : h('div', { className: 'pt-empty' }, '点「预览」计算费用与现金影响'),
+      )
+    }
+
+    function MarketTab({ searchQuery, setSearchQuery, runSearch, searchHits, watchlist, isWatched, toggleWatch, marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote }) {
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+        h('div', { className: 'pt-card' },
+          h('div', { className: 'pt-card-title' }, '搜索标的'),
+          h('div', { className: 'pt-row' },
+            h('input', {
+              className: 'pt-input', style: { flex: 1, minWidth: 200 }, value: searchQuery,
+              placeholder: '代码或名称，例如 600519 / 贵州茅台',
+              onChange: event => setSearchQuery(event.target.value),
+              onKeyDown: event => { if (event.key === 'Enter') void runSearch() },
+            }),
+            h('button', { className: 'pt-btn', onClick: runSearch, disabled: busy }, '搜索'),
+          ),
+          searchHits.length > 0 ? h('div', { style: { marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 } },
+            searchHits.map(hit => h('div', { key: hit.symbol, className: 'pt-row' },
+              h('button', {
+                className: 'pt-btn', style: { flex: 1, justifyContent: 'flex-start' },
+                onClick: () => adoptQuote(hit.symbol, null),
+              }, `${bareSymbol(hit.symbol)} ${hit.name ?? ''}`),
+              h('button', { className: 'pt-btn', onClick: () => toggleWatch(hit.symbol) }, isWatched(hit.symbol) ? '已自选' : '加自选'),
+            )),
+          ) : null,
+        ),
+        h('div', { className: 'pt-card' },
+          h('div', { className: 'pt-row' },
+            h('div', { className: 'pt-card-title', style: { margin: 0 } }, '全市场'),
+            [['main', '主板'], ['star', '科创板'], ['chi_next', '创业板'], ['bjse', '北交所'], ['xshg', '沪市'], ['xshe', '深市']].map(([key, label]) =>
+              h('button', { key, className: 'pt-btn', 'data-active': marketBoard === key, onClick: () => setMarketBoard(key) }, label),
+            ),
+            h('button', { className: 'pt-btn', 'data-active': watchOnly, onClick: () => setWatchOnly(value => !value) }, '只看自选'),
+            h('button', { className: 'pt-btn', onClick: () => loadMarket((marketList?.page ?? 1) + 1) }, '下一页'),
+          ),
+          marketList === null ? h('div', { className: 'pt-empty' }, '加载行情…')
+            : marketList.quotes.length === 0 ? h('div', { className: 'pt-empty' }, marketList.notice ?? '没有行情')
+              : h(Table, null,
+                h('thead', null, h('tr', null, ['代码', '名称', '现价', '涨跌幅', '状态', '自选'].map(label => h('th', { key: label }, label)))),
+                h('tbody', null, marketList.quotes.filter(item => !watchOnly || isWatched(item.symbol)).slice(0, 50).map(item => {
+                  const change = item.prevClose && item.prevClose > 0 ? (item.last - item.prevClose) / item.prevClose : null
+                  return h('tr', {
+                    key: `${item.symbol}-${item.last}`, style: { cursor: 'pointer' },
+                    onClick: () => adoptQuote(item.symbol, item),
+                  },
+                    h('td', null, bareSymbol(item.symbol)),
+                    h('td', null, item.name ?? '—'),
+                    h('td', null, money(item.last)),
+                    h('td', { className: change !== null && change < 0 ? 'pt-down' : 'pt-up' }, change === null ? '—' : pct(change)),
+                    h('td', null, item.status ?? '—'),
+                    h('td', null, h('button', { className: 'pt-btn', onClick: event => { event.stopPropagation(); void toggleWatch(item.symbol) } }, isWatched(item.symbol) ? '★' : '☆')),
+                  )
+                })),
+              ),
+        ),
+      )
+    }
+
+    function PositionsTab({ positions, onSell }) {
+      if (positions.length === 0) return h('div', { className: 'pt-empty' }, '无持仓')
+      return h(Table, null,
+        h('thead', null, h('tr', null,
+          ['代码', '名称', '数量', '可卖', '成本', '现价', '浮盈亏'].map(label => h('th', { key: label }, label)),
+          h('th', null, ''),
+        )),
+        h('tbody', null, positions.map(position => h('tr', { key: position.symbol },
+          h('td', null, bareSymbol(position.symbol)),
+          h('td', null, position.name ?? '—'),
+          h('td', null, count(position.qty)),
+          h('td', null, count(position.available)),
+          h('td', null, money(position.avgCost)),
+          h('td', null, money(position.lastPrice)),
+          h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
+          h('td', null, h('button', {
+            className: 'pt-btn',
+            onClick: () => onSell(position),
+            disabled: !(position.available > 0),
+          }, '卖出')),
+        ))),
+      )
+    }
+
+    function OrdersTab({ pending, history, busy, onCancel }) {
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+        h('div', null,
+          h('div', { className: 'pt-sub' }, '挂单'),
+          pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
+            h('thead', null, h('tr', null, ['代码', '方向', '类型', '数量', '限价', '状态', ''].map(label => h('th', { key: label }, label)))),
+            h('tbody', null, pending.map(order => h('tr', { key: order.id },
+              h('td', null, bareSymbol(order.symbol)),
+              h('td', null, order.side === 'buy' ? '买' : '卖'),
+              h('td', null, order.type === 'limit' ? '限价' : '市价'),
+              h('td', null, count(order.qty)),
+              h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
+              h('td', null, STATUS_TEXT[order.status] ?? order.status),
+              h('td', null, h('button', { className: 'pt-btn', onClick: () => onCancel(order.id), disabled: busy }, '撤单')),
+            ))),
+          ),
+        ),
+        h('div', null,
+          h('div', { className: 'pt-sub' }, '历史'),
+          history.length === 0 ? h('div', { className: 'pt-empty' }, '无历史订单') : h(Table, null,
+            h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '状态', '成交价', '原因'].map(label => h('th', { key: label }, label)))),
+            h('tbody', null, history.slice(0, 30).map(order => h('tr', { key: order.id },
+              h('td', null, dateTime(order.createdAt)),
+              h('td', null, bareSymbol(order.symbol)),
+              h('td', null, order.side === 'buy' ? '买' : '卖'),
+              h('td', null, count(order.qty)),
+              h('td', null, STATUS_TEXT[order.status] ?? order.status),
+              h('td', null, order.fillPrice === undefined ? '—' : money(order.fillPrice)),
+              h('td', { title: order.reason ?? undefined }, reasonText(order.reason)),
+            ))),
+          ),
+        ),
+      )
+    }
+
+    function ReviewTab({ review, period, setPeriod, trades, daily, cashFlow, trips }) {
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+        h('div', { className: 'pt-row' }, PERIODS.map(([key, label]) =>
+          h('button', {
+            key, className: 'pt-btn', 'data-active': period === key,
+            onClick: () => setPeriod(key),
+          }, label),
+        )),
+        review ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+          h('div', { className: 'pt-stats' },
+            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '成交笔数'), h('div', { className: 'pt-stat-value' }, count(review.tradeCount))),
+            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '已实现盈亏'), h('div', { className: `pt-stat-value ${review.realizedPnl >= 0 ? 'pt-up' : 'pt-down'}` }, signed(review.realizedPnl))),
+            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '费用合计'), h('div', { className: 'pt-stat-value' }, money(review.totalFees))),
+            h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '最大回撤'), h('div', { className: 'pt-stat-value' }, pct(review.maxDrawdownPct))),
+          ),
+          h('div', { className: 'pt-chart-wrap' }, h(EquityChart, { points: review.equityCurve })),
+          h('div', null,
+            h('div', { className: 'pt-sub' }, '成交记录'),
+            trades.length === 0 ? h('div', { className: 'pt-empty' }, '无成交') : h(Table, null,
+              h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '价格', '金额', '费用'].map(label => h('th', { key: label }, label)))),
+              h('tbody', null, trades.slice(0, 30).map(trade => h('tr', { key: trade.id },
+                h('td', null, dateTime(trade.ts)),
+                h('td', null, bareSymbol(trade.symbol)),
+                h('td', null, trade.side === 'buy' ? '买' : '卖'),
+                h('td', null, count(trade.qty)),
+                h('td', null, money(trade.price)),
+                h('td', null, cents(trade.amountCents)),
+                h('td', null, cents(trade.feesCents)),
+              ))),
+            ),
+          ),
+          h('div', null,
+            h('div', { className: 'pt-sub' }, '日终报告'),
+            daily.length === 0 ? h('div', { className: 'pt-empty' }, '暂无日终快照') : h(Table, null,
+              h('thead', null, h('tr', null, ['日期', '权益', '当日盈亏', '费用', '收盘价来源'].map(label => h('th', { key: label }, label)))),
+              h('tbody', null, daily.slice(-14).reverse().map(row => h('tr', { key: row.date },
+                h('td', null, row.date),
+                h('td', null, money(row.equity)),
+                h('td', { className: row.dayPnl >= 0 ? 'pt-up' : 'pt-down' }, signed(row.dayPnl)),
+                h('td', null, money(row.fees)),
+                h('td', null, row.closeSource === 'daily' ? '日K收盘' : row.closeSource === 'last' ? '最后报价' : '缺失'),
+              ))),
+            ),
+          ),
+          h('div', null,
+            h('div', { className: 'pt-sub' }, '资金流水'),
+            cashFlow.length === 0 ? h('div', { className: 'pt-empty' }, '暂无流水') : h(Table, null,
+              h('thead', null, h('tr', null, ['时间', '类型', '金额', '余额'].map(label => h('th', { key: label }, label)))),
+              h('tbody', null, cashFlow.slice(-30).reverse().map((row, index) => h('tr', { key: `${row.ts}-${index}` },
+                h('td', null, dateTime(row.ts)),
+                h('td', null, CASH_TYPE_TEXT[row.type] ?? row.type),
+                h('td', { className: row.amount >= 0 ? 'pt-up' : 'pt-down' }, signed(row.amount)),
+                h('td', null, money(row.balance)),
+              ))),
+            ),
+          ),
+          h('div', null,
+            h('div', { className: 'pt-sub' }, '回合统计'),
+            trips.length === 0 ? h('div', { className: 'pt-empty' }, '暂无已平仓回合') : h(Table, null,
+              h('thead', null, h('tr', null, ['代码', '数量', '成本', '收入', '盈亏', '持有天数'].map(label => h('th', { key: label }, label)))),
+              h('tbody', null, trips.slice(0, 30).map(trip => h('tr', { key: trip.symbol },
+                h('td', null, bareSymbol(trip.symbol)),
+                h('td', null, count(trip.qty)),
+                h('td', null, money(trip.cost)),
+                h('td', null, money(trip.proceeds)),
+                h('td', { className: trip.pnl >= 0 ? 'pt-up' : 'pt-down' }, signed(trip.pnl)),
+                h('td', null, count(trip.holdingDays)),
+              ))),
+            ),
+          ),
+        ) : h('div', { className: 'pt-empty' }, '加载复盘…'),
+      )
+    }
+
+    /* ---------------------------------------------------------- dashboard -- */
+
     function Dashboard({ renderSlot } = {}) {
       const [account, setAccount] = useState(null)
       const [orders, setOrders] = useState([])
@@ -300,7 +664,7 @@ window.__ModuleLoader__.load({
       const [review, setReview] = useState(null)
       const [period, setPeriod] = useState('30d')
       const [tab, setTab] = useState('trade')
-      const [error, setError] = useState('')
+      const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
       const [quote, setQuote] = useState(null)
@@ -333,6 +697,9 @@ window.__ModuleLoader__.load({
         return () => { alive.current = false }
       }, [])
 
+      const formSymbol = useRef(form.symbol)
+      useEffect(() => { formSymbol.current = form.symbol }, [form.symbol])
+
       const loadAll = useCallback(async (quiet = false) => {
         try {
           const [nextAccount, nextOrders, nextTrades, nextReview, nextSession] = await Promise.all([
@@ -348,11 +715,27 @@ window.__ModuleLoader__.load({
           setTrades(nextTrades)
           setReview(nextReview)
           setSession(nextSession)
-          if (!quiet) setError('')
+          if (!quiet) setError(null)
         } catch (cause) {
-          if (alive.current) setError(cause.message)
+          if (alive.current) setError(errorOf(cause))
         }
       }, [period])
+
+      const loadReviewDetail = useCallback(async () => {
+        try {
+          const [nextDaily, nextCash, nextTrips] = await Promise.all([
+            rpc('review/daily'),
+            rpc('cash/flow'),
+            rpc('review/roundtrips'),
+          ])
+          if (!alive.current) return
+          setDaily(nextDaily)
+          setCashFlow(nextCash)
+          setTrips(nextTrips)
+        } catch (cause) {
+          if (alive.current) setError(errorOf(cause))
+        }
+      }, [])
 
       useEffect(() => { loadAll() }, [loadAll])
 
@@ -368,6 +751,8 @@ window.__ModuleLoader__.load({
         }
       }, [loadAll])
 
+      // The host scheduler is the primary matcher; this stays as a live extra
+      // trigger while the panel is visible.
       useEffect(() => {
         const timer = setInterval(() => {
           if (document.visibilityState === 'visible') tick()
@@ -381,7 +766,7 @@ window.__ModuleLoader__.load({
           const result = await rpc('market/bars', { symbol: symbol.trim(), interval: barInterval, limit: 80 })
           if (alive.current) setBars(result.bars ?? [])
         } catch (cause) {
-          if (alive.current) setError(cause.message)
+          if (alive.current) setError(errorOf(cause))
         }
       }, [form.symbol, barInterval])
 
@@ -390,7 +775,7 @@ window.__ModuleLoader__.load({
         try {
           setSearchHits(await rpc('market/search', { query: searchQuery.trim(), limit: 12 }))
         } catch (cause) {
-          setError(cause.message)
+          setError(errorOf(cause))
         }
       }, [searchQuery])
 
@@ -398,39 +783,25 @@ window.__ModuleLoader__.load({
         try {
           setMarketList(await rpc('market/list', { board: marketBoard, page, pageSize: 50 }))
         } catch (cause) {
-          setError(cause.message)
+          setError(errorOf(cause))
         }
       }, [marketBoard])
 
+      /**
+       * Only a real K-line selection may rewrite the ticket. dsh_kline calls
+       * `onIdentity` on its own during mount/route changes, so an unchanged
+       * symbol must not pop "已从 K 线选择 …" over the user's real feedback.
+       */
       const klineIdentity = useCallback((symbol, name) => {
-        if (!symbol) return
-        setForm(prev => ({ ...prev, symbol }))
+        const next = bareSymbol(symbol)
+        if (!next || next === bareSymbol(formSymbol.current)) return
+        formSymbol.current = next
+        setForm(prev => ({ ...prev, symbol: next }))
         setQuote(null)
         setNotice(name ? `已从 K 线选择 ${name}` : '')
-        rpc('market/quote', { symbols: [symbol] })
-          .then(result => { if (alive.current) setQuote(result.quotes[0] ?? null) })
-          .catch(() => {})
       }, [])
 
-      const loadReviewDetail = useCallback(async () => {
-        try {
-          const [nextDaily, nextCash, nextTrips] = await Promise.all([
-            rpc('review/daily'),
-            rpc('cash/flow'),
-            rpc('review/roundtrips'),
-          ])
-          if (!alive.current) return
-          setDaily(nextDaily)
-          setCashFlow(nextCash)
-          setTrips(nextTrips)
-        } catch (cause) {
-          if (alive.current) setError(cause.message)
-        }
-      }, [])
-
-      useEffect(() => {
-        void loadBars()
-      }, [loadBars])
+      useEffect(() => { void loadBars() }, [loadBars])
 
       useEffect(() => {
         const symbol = form.symbol.trim()
@@ -453,15 +824,30 @@ window.__ModuleLoader__.load({
         }
       }, [tab, marketBoard, loadMarket])
 
+      const isWatched = useCallback(symbol => watched(watchlist, symbol), [watchlist])
+
       const toggleWatch = useCallback(async (symbol) => {
-        const next = watchlist.includes(symbol) ? watchlist.filter(item => item !== symbol) : [...watchlist, symbol]
+        const code = bareSymbol(symbol)
+        // Store the bare 6-digit code so a search hit (`600519.SH`) and a list
+        // row (`600519.XSHG`) point at the same favourite.
+        const next = isWatched(code)
+          ? watchlist.filter(item => bareSymbol(item) !== code)
+          : [...watchlist, code]
         try {
           const result = await rpc('watchlist/set', { symbols: next })
           if (alive.current) setWatchlist(result.symbols ?? next)
         } catch (cause) {
-          if (alive.current) setError(cause.message)
+          if (alive.current) setError(errorOf(cause))
         }
-      }, [watchlist])
+      }, [watchlist, isWatched])
+
+      const adoptQuote = useCallback((symbol, preset) => {
+        const next = bareSymbol(symbol)
+        formSymbol.current = next
+        setForm(prev => ({ ...prev, symbol: next }))
+        setQuote(preset ?? null)
+        setTab('trade')
+      }, [])
 
       const refreshQuote = useCallback(async () => {
         if (!form.symbol.trim()) return
@@ -471,7 +857,7 @@ window.__ModuleLoader__.load({
           setQuote(result.quotes[0] ?? null)
           setNotice(result.notice ?? (result.quotes.length === 0 ? '没有查到行情' : ''))
         } catch (cause) {
-          setError(cause.message)
+          setError(errorOf(cause))
         } finally {
           setBusy(false)
         }
@@ -489,12 +875,12 @@ window.__ModuleLoader__.load({
 
       const doPreview = useCallback(async () => {
         setBusy(true)
-        setError('')
+        setError(null)
         try {
           setPreview(await rpc('order/preview', draft()))
         } catch (cause) {
           setPreview(null)
-          setError(cause.message)
+          setError(errorOf(cause))
         } finally {
           setBusy(false)
         }
@@ -502,15 +888,15 @@ window.__ModuleLoader__.load({
 
       const doSubmit = useCallback(async () => {
         setBusy(true)
-        setError('')
+        setError(null)
         try {
           const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}`
           const order = await rpc('order/place', { draft: draft(), requestId })
-          setNotice(`${statusText[order.status] ?? order.status}：${order.symbol} ${order.qty} 股${order.reason ? `（${order.reason}）` : ''}`)
+          setNotice(`${STATUS_TEXT[order.status] ?? order.status}：${bareSymbol(order.symbol)} ${count(order.qty)} 股${order.reason ? `（${reasonText(order.reason)}）` : ''}`)
           setPreview(null)
           await loadAll(true)
         } catch (cause) {
-          setError(cause.message)
+          setError(errorOf(cause))
         } finally {
           setBusy(false)
         }
@@ -522,11 +908,36 @@ window.__ModuleLoader__.load({
           await rpc('order/cancel', { orderId })
           await loadAll(true)
         } catch (cause) {
-          setError(cause.message)
+          setError(errorOf(cause))
         } finally {
           setBusy(false)
         }
       }, [loadAll])
+
+      const exportLedger = useCallback(async () => {
+        try {
+          const result = await rpc('account/export')
+          if (!result.exists || !result.content) {
+            setNotice(result.notice ?? '账本文件尚未创建')
+            return
+          }
+          if (typeof document !== 'undefined' && typeof URL !== 'undefined' && typeof Blob !== 'undefined') {
+            const blob = new Blob([result.content], { type: 'application/x-ndjson' })
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'paper-trading-events.jsonl'
+            link.click()
+            URL.revokeObjectURL(url)
+          }
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(result.path).catch(() => {})
+          }
+          setNotice(`已导出账本：${result.path}`)
+        } catch (cause) {
+          setError(errorOf(cause))
+        }
+      }, [])
 
       const reset = useCallback(async () => {
         if (!window.confirm('重置模拟交易账户？持仓与挂单会清空。')) return
@@ -536,13 +947,14 @@ window.__ModuleLoader__.load({
           setQuote(null)
           setPreview(null)
           await loadAll(true)
+          await loadReviewDetail()
           setNotice('账户已重置')
         } catch (cause) {
-          setError(cause.message)
+          setError(errorOf(cause))
         } finally {
           setBusy(false)
         }
-      }, [loadAll])
+      }, [loadAll, loadReviewDetail])
 
       const pending = useMemo(() => orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled'), [orders])
       const history = useMemo(() => orders.filter(order => order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled'), [orders])
@@ -550,7 +962,7 @@ window.__ModuleLoader__.load({
 
       if (account === null) {
         return h('div', { className: 'pt-root' }, h('style', null, CSS),
-          h('div', { className: 'pt-inner' }, error ? h('div', { className: 'pt-error' }, error) : h('div', { className: 'pt-empty' }, '加载模拟交易…')))
+          h('div', { className: 'pt-inner' }, error ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text) : h('div', { className: 'pt-empty' }, '加载模拟交易…')))
       }
 
       return h('div', { className: 'pt-root' },
@@ -560,7 +972,7 @@ window.__ModuleLoader__.load({
             h('div', null,
               h('h3', { className: 'pt-title' }, '模拟交易'),
               h('div', { className: 'pt-sub' },
-                `${account.tradeDate} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
+                `${account.tradeDate || '—'} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
                 session && !session.canMatch ? h('span', { className: 'pt-note' }, '（仅可预埋限价单）') : null,
               ),
             ),
@@ -569,14 +981,17 @@ window.__ModuleLoader__.load({
               h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
             ),
           ),
-          account.blocked ? h('div', { className: 'pt-blocked' }, '账本校验失败，账户已锁定。请导出事件文件检查后重置。') : null,
+          account.blocked ? h('div', { className: 'pt-blocked' },
+            h('div', null, '账本校验失败，账户已锁定。可导出事件文件检查，或重置账户。'),
+            h('button', { className: 'pt-btn', onClick: exportLedger, disabled: busy }, '导出账本'),
+          ) : null,
           h('div', { className: 'pt-stats' },
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '总资产'), h('div', { className: 'pt-stat-value' }, money(account.equity))),
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '可用现金'), h('div', { className: 'pt-stat-value' }, money(account.cash))),
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '浮动盈亏'), h('div', { className: `pt-stat-value ${account.pnl >= 0 ? 'pt-up' : 'pt-down'}` }, signed(account.pnl))),
             h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '今日盈亏'), h('div', { className: `pt-stat-value ${account.todayPnl >= 0 ? 'pt-up' : 'pt-down'}` }, signed(account.todayPnl))),
           ),
-          error ? h('div', { className: 'pt-error' }, error) : null,
+          error ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text) : null,
           notice ? h('div', { className: 'pt-note' }, notice) : null,
           h('div', { className: 'pt-workspace' },
             h('div', { className: 'pt-main' },
@@ -585,258 +1000,33 @@ window.__ModuleLoader__.load({
                   h('button', { key, className: 'pt-tab', 'data-active': tab === key, onClick: () => setTab(key) }, label),
                 ),
               ),
-
-          tab === 'trade' ? h('div', { className: 'pt-trade-grid' },
-            h('div', { className: 'pt-card' },
-              h('div', { className: 'pt-card-title' }, '下单'),
-              h('div', { className: 'pt-row' },
-                h(Field, { label: '代码' }, h('input', {
-                  className: 'pt-input', style: { width: 104 }, value: form.symbol,
-                  onChange: event => setForm(prev => ({ ...prev, symbol: event.target.value.toUpperCase() })),
-                })),
-                h('div', { className: 'pt-seg' },
-                  [['buy', '买入'], ['sell', '卖出']].map(([key, label]) =>
-                    h('button', { key, 'data-active': form.side === key, onClick: () => setForm(prev => ({ ...prev, side: key })) }, label),
-                  ),
-                ),
-                h('div', { className: 'pt-seg' },
-                  [['market', '市价'], ['limit', '限价']].map(([key, label]) =>
-                    h('button', { key, 'data-active': form.type === key, onClick: () => setForm(prev => ({ ...prev, type: key })) }, label),
-                  ),
-                ),
-                h(Field, { label: '数量' }, h(DebouncedNumber, {
-                  value: form.qty, min: 0, step: 100,
-                  onChange: value => setForm(prev => ({ ...prev, qty: value })),
-                })),
-                form.type === 'limit' ? h(Field, { label: '限价' }, h(DebouncedNumber, {
-                  value: form.limitPrice, min: 0, step: 0.01,
-                  onChange: value => setForm(prev => ({ ...prev, limitPrice: value })),
-                })) : null,
-                h('button', { className: 'pt-btn', onClick: refreshQuote, disabled: busy }, '查行情'),
-              ),
-              quote ? h('div', { className: 'pt-quote', style: { marginTop: 8 } },
-                h('span', null, `${quote.symbol} ${quote.name ?? ''}`),
-                h('span', null, `现价 ${quote.last.toFixed(2)}`),
-                h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : quote.marketTs ? new Date(quote.marketTs).toLocaleTimeString() : '无行情时间'),
-              ) : h('div', { className: 'pt-note', style: { marginTop: 8 } }, '未取到行情时可填参考价，市价单按参考价成交。'),
-              form.type === 'market' ? h('div', { className: 'pt-row', style: { marginTop: 8 } },
-                h(Field, { label: '参考价（可选）' }, h(DebouncedNumber, {
-                  value: form.price, min: 0, step: 0.01,
-                  onChange: value => setForm(prev => ({ ...prev, price: value })),
-                })),
-              ) : null,
-              h('div', { className: 'pt-row', style: { marginTop: 8 } },
-                h('button', { className: 'pt-btn', onClick: doPreview, disabled: busy }, '预览'),
-                h('button', { className: 'pt-btn pt-btn-primary', onClick: doSubmit, disabled: busy || (form.type === 'market' && session !== null && !session.canMatch) }, form.side === 'buy' ? '买入' : '卖出'),
-              ),
-              h('div', { className: 'pt-row', style: { marginTop: 8 } },
-                h(Field, { label: '备注（复盘用）' }, h('input', {
-                  className: 'pt-input', style: { flex: 1, minWidth: 180 }, value: form.note, maxLength: 120,
-                  onChange: event => setForm(prev => ({ ...prev, note: event.target.value })),
-                })),
-              ),
-            ),
-            h('div', { className: 'pt-card' },
-              h('div', { className: 'pt-card-title' }, '预览'),
-              preview ? h('div', { className: 'pt-preview' },
-                h('div', null, h('span', null, '价格'), h('span', null, preview.price.toFixed(2))),
-                h('div', null, h('span', null, '金额'), h('span', null, cents(preview.amountCents))),
-                h('div', null, h('span', null, '佣金'), h('span', null, cents(preview.commissionCents))),
-                h('div', null, h('span', null, '印花税'), h('span', null, cents(preview.stampCents))),
-                h('div', null, h('span', null, '过户费'), h('span', null, cents(preview.transferCents))),
-                h('div', null, h('span', null, '成交后现金'), h('span', null, cents(preview.cashAfterCents))),
-                preview.warnings.length > 0 ? h('div', { className: 'pt-warn' }, preview.warnings.join('；')) : null,
-              ) : h('div', { className: 'pt-empty' }, '点「预览」计算费用与现金影响'),
-            ),
-          ) : null,
-
-
-          tab === 'market' ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-            h('div', { className: 'pt-card' },
-              h('div', { className: 'pt-card-title' }, '搜索标的'),
-              h('div', { className: 'pt-row' },
-                h('input', {
-                  className: 'pt-input', style: { flex: 1, minWidth: 200 }, value: searchQuery,
-                  placeholder: '代码或名称，例如 600519 / 贵州茅台',
-                  onChange: event => setSearchQuery(event.target.value),
-                  onKeyDown: event => { if (event.key === 'Enter') void runSearch() },
-                }),
-                h('button', { className: 'pt-btn', onClick: runSearch, disabled: busy }, '搜索'),
-              ),
-              searchHits.length > 0 ? h('div', { style: { marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 } },
-                searchHits.map(hit => h('div', { key: hit.symbol, className: 'pt-row' },
-                  h('button', {
-                    className: 'pt-btn', style: { flex: 1, justifyContent: 'flex-start' },
-                    onClick: () => {
-                      setForm(prev => ({ ...prev, symbol: hit.symbol }))
-                      setQuote(null)
-                      setTab('trade')
-                      rpc('market/quote', { symbols: [hit.symbol] }).then(result => setQuote(result.quotes[0] ?? null)).catch(cause => setError(cause.message))
-                    },
-                  }, `${hit.symbol} ${hit.name}`),
-                  h('button', { className: 'pt-btn', onClick: () => toggleWatch(hit.symbol) }, watchlist.includes(hit.symbol) ? '已自选' : '加自选'),
-                )),
-              ) : null,
-            ),
-            h('div', { className: 'pt-card' },
-              h('div', { className: 'pt-row' },
-                h('div', { className: 'pt-card-title', style: { margin: 0 } }, '全市场'),
-                [['main', '主板'], ['star', '科创板'], ['chi_next', '创业板'], ['bjse', '北交所'], ['xshg', '沪市'], ['xshe', '深市']].map(([key, label]) =>
-                  h('button', { key, className: 'pt-btn', 'data-active': marketBoard === key, onClick: () => setMarketBoard(key) }, label),
-                ),
-                h('button', { className: 'pt-btn', 'data-active': watchOnly, onClick: () => setWatchOnly(value => !value) }, '只看自选'),
-                h('button', { className: 'pt-btn', onClick: () => loadMarket((marketList?.page ?? 1) + 1) }, '下一页'),
-              ),
-              marketList === null ? h('div', { className: 'pt-empty' }, '加载行情…')
-                : marketList.quotes.length === 0 ? h('div', { className: 'pt-empty' }, marketList.notice ?? '没有行情')
-                  : h(Table, null,
-                    h('thead', null, h('tr', null, ['代码', '名称', '现价', '涨跌幅', '状态', '自选'].map(label => h('th', { key: label }, label)))),
-                    h('tbody', null, marketList.quotes.filter(item => !watchOnly || watchlist.includes(item.symbol)).slice(0, 50).map(item => {
-                      const change = item.prevClose && item.prevClose > 0 ? (item.last - item.prevClose) / item.prevClose : null
-                      return h('tr', {
-                        key: `${item.symbol}-${item.last}`, style: { cursor: 'pointer' },
-                        onClick: () => { setForm(prev => ({ ...prev, symbol: item.symbol })); setQuote(item); setTab('trade') },
-                      },
-                        h('td', null, item.symbol),
-                        h('td', null, item.name ?? '—'),
-                        h('td', null, item.last.toFixed(2)),
-                        h('td', { className: change !== null && change < 0 ? 'pt-down' : 'pt-up' }, change === null ? '—' : pct(change)),
-                        h('td', null, item.status ?? '—'),
-                        h('td', null, h('button', { className: 'pt-btn', onClick: event => { event.stopPropagation(); void toggleWatch(item.symbol) } }, watchlist.includes(item.symbol) ? '★' : '☆')),
-                      )
-                    })),
-                  ),
-            ),
-          ) : null,
-
-          tab === 'positions' ? (positions.length === 0 ? h('div', { className: 'pt-empty' }, '无持仓') : h(Table, null,
-            h('thead', null, h('tr', null,
-              ['代码', '名称', '数量', '可卖', '成本', '现价', '浮盈亏'].map(label => h('th', { key: label }, label)),
-              h('th', null, ''),
-            )),
-            h('tbody', null, positions.map(position => h('tr', { key: position.symbol },
-              h('td', null, position.symbol),
-              h('td', null, position.name ?? '—'),
-              h('td', null, position.qty),
-              h('td', null, position.available),
-              h('td', null, position.avgCost.toFixed(2)),
-              h('td', null, position.lastPrice === undefined ? '—' : position.lastPrice.toFixed(2)),
-              h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
-              h('td', null, h('button', {
-                className: 'pt-btn',
-                onClick: () => {
+              tab === 'trade' ? h(TradeTab, {
+                account, form, setForm, quote, session, preview, busy,
+                onPreview: doPreview,
+                onSubmit: doSubmit,
+                onRefreshQuote: refreshQuote,
+              }) : null,
+              tab === 'market' ? h(MarketTab, {
+                searchQuery, setSearchQuery, runSearch, searchHits, watchlist, isWatched, toggleWatch,
+                marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote,
+              }) : null,
+              tab === 'positions' ? h(PositionsTab, {
+                positions,
+                onSell: position => {
+                  formSymbol.current = position.symbol
                   setForm(prev => ({ ...prev, symbol: position.symbol, side: 'sell', type: 'market', qty: String(Math.min(position.available, position.qty)) }))
                   setTab('trade')
                 },
-                disabled: position.available <= 0,
-              }, '卖出')),
-            ))),
-          )) : null,
-
-          tab === 'orders' ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-            h('div', null,
-              h('div', { className: 'pt-sub' }, '挂单'),
-              pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
-                h('thead', null, h('tr', null, ['代码', '方向', '类型', '数量', '限价', '状态', ''].map(label => h('th', { key: label }, label)))),
-                h('tbody', null, pending.map(order => h('tr', { key: order.id },
-                  h('td', null, order.symbol),
-                  h('td', null, order.side === 'buy' ? '买' : '卖'),
-                  h('td', null, order.type === 'limit' ? '限价' : '市价'),
-                  h('td', null, order.qty),
-                  h('td', null, order.limitPrice === undefined ? '—' : order.limitPrice.toFixed(2)),
-                  h('td', null, statusText[order.status]),
-                  h('td', null, h('button', { className: 'pt-btn', onClick: () => cancel(order.id), disabled: busy }, '撤单')),
-                ))),
-              ),
-            ),
-            h('div', null,
-              h('div', { className: 'pt-sub' }, '历史'),
-              history.length === 0 ? h('div', { className: 'pt-empty' }, '无历史订单') : h(Table, null,
-                h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '状态', '成交价', '原因'].map(label => h('th', { key: label }, label)))),
-                h('tbody', null, history.slice(0, 30).map(order => h('tr', { key: order.id },
-                  h('td', null, new Date(order.createdAt).toLocaleString()),
-                  h('td', null, order.symbol),
-                  h('td', null, order.side === 'buy' ? '买' : '卖'),
-                  h('td', null, order.qty),
-                  h('td', null, statusText[order.status] ?? order.status),
-                  h('td', null, order.fillPrice === undefined ? '—' : order.fillPrice.toFixed(2)),
-                  h('td', null, order.reason ?? ''),
-                ))),
-              ),
-            ),
-          ) : null,
-
-          tab === 'review' ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-            h('div', { className: 'pt-row' }, PERIODS.map(([key, label]) =>
-              h('button', {
-                key, className: 'pt-btn', 'data-active': period === key,
-                onClick: () => { setPeriod(key); rpc('review/get', { period: key }).then(setReview).catch(cause => setError(cause.message)) },
-              }, label),
-            )),
-            review ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-              h('div', { className: 'pt-stats' },
-                h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '成交笔数'), h('div', { className: 'pt-stat-value' }, String(review.tradeCount))),
-                h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '已实现盈亏'), h('div', { className: `pt-stat-value ${review.realizedPnl >= 0 ? 'pt-up' : 'pt-down'}` }, signed(review.realizedPnl))),
-                h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '费用合计'), h('div', { className: 'pt-stat-value' }, money(review.totalFees))),
-                h('div', { className: 'pt-stat' }, h('div', { className: 'pt-stat-label' }, '最大回撤'), h('div', { className: 'pt-stat-value' }, pct(review.maxDrawdownPct))),
-              ),
-              h('div', { className: 'pt-chart-wrap' }, h(EquityChart, { points: review.equityCurve })),
-              h('div', null,
-                h('div', { className: 'pt-sub' }, '成交记录'),
-                trades.length === 0 ? h('div', { className: 'pt-empty' }, '无成交') : h(Table, null,
-                  h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '价格', '金额', '费用'].map(label => h('th', { key: label }, label)))),
-                  h('tbody', null, trades.slice(0, 30).map(trade => h('tr', { key: trade.id },
-                    h('td', null, new Date(trade.ts).toLocaleString()),
-                    h('td', null, trade.symbol),
-                    h('td', null, trade.side === 'buy' ? '买' : '卖'),
-                    h('td', null, trade.qty),
-                    h('td', null, trade.price.toFixed(2)),
-                    h('td', null, cents(trade.amountCents)),
-                    h('td', null, cents(trade.feesCents)),
-                  ))),
-                ),
-              ),
-              h('div', null,
-                h('div', { className: 'pt-sub' }, '日终报告'),
-                daily.length === 0 ? h('div', { className: 'pt-empty' }, '暂无日终快照') : h(Table, null,
-                  h('thead', null, h('tr', null, ['日期', '权益', '当日盈亏', '费用', '收盘价来源'].map(label => h('th', { key: label }, label)))),
-                  h('tbody', null, daily.slice(-14).reverse().map(row => h('tr', { key: row.date },
-                    h('td', null, row.date),
-                    h('td', null, money(row.equity)),
-                    h('td', { className: row.dayPnl >= 0 ? 'pt-up' : 'pt-down' }, signed(row.dayPnl)),
-                    h('td', null, money(row.fees)),
-                    h('td', null, row.closeSource === 'daily' ? '日K收盘' : row.closeSource === 'last' ? '最后报价' : '缺失'),
-                  ))),
-                ),
-              ),
-              h('div', null,
-                h('div', { className: 'pt-sub' }, '资金流水'),
-                cashFlow.length === 0 ? h('div', { className: 'pt-empty' }, '暂无流水') : h(Table, null,
-                  h('thead', null, h('tr', null, ['时间', '类型', '金额', '余额'].map(label => h('th', { key: label }, label)))),
-                  h('tbody', null, cashFlow.slice(-30).reverse().map((row, index) => h('tr', { key: `${row.ts}-${index}` },
-                    h('td', null, new Date(row.ts).toLocaleString()),
-                    h('td', null, row.type),
-                    h('td', { className: row.amount >= 0 ? 'pt-up' : 'pt-down' }, signed(row.amount)),
-                    h('td', null, money(row.balance)),
-                  ))),
-                ),
-              ),
-              h('div', null,
-                h('div', { className: 'pt-sub' }, '回合统计'),
-                trips.length === 0 ? h('div', { className: 'pt-empty' }, '暂无已平仓回合') : h(Table, null,
-                  h('thead', null, h('tr', null, ['代码', '数量', '成本', '收入', '盈亏', '持有天数'].map(label => h('th', { key: label }, label)))),
-                  h('tbody', null, trips.slice(0, 30).map(trip => h('tr', { key: trip.symbol },
-                    h('td', null, trip.symbol),
-                    h('td', null, trip.qty),
-                    h('td', null, money(trip.cost)),
-                    h('td', null, money(trip.proceeds)),
-                    h('td', { className: trip.pnl >= 0 ? 'pt-up' : 'pt-down' }, signed(trip.pnl)),
-                    h('td', null, trip.holdingDays),
-                  ))),
-                ),
-              ),
-            ) : h('div', { className: 'pt-empty' }, '加载复盘…'),
-          ) : null,
+              }) : null,
+              tab === 'orders' ? h(OrdersTab, { pending, history, busy, onCancel: cancel }) : null,
+              tab === 'review' ? h(ReviewTab, {
+                review, period,
+                setPeriod: key => {
+                  setPeriod(key)
+                  rpc('review/get', { period: key }).then(setReview).catch(cause => setError(errorOf(cause)))
+                },
+                trades, daily, cashFlow, trips,
+              }) : null,
             ),
             h(KlinePane, {
               renderSlot,

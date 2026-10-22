@@ -69,6 +69,16 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /market\/status/)
   assert.match(source, /review\/daily/)
   assert.match(source, /paperTrading\.kline/)
+  assert.match(source, /account\/export/, 'the locked banner needs an export entry point')
+  // Times are pinned to zh-CN / Asia/Shanghai, never the host locale.
+  assert.match(source, /Intl\.DateTimeFormat\('zh-CN'/)
+  assert.match(source, /Asia\/Shanghai/)
+  assert.match(source, /CANCEL_REASON_TEXT/)
+  assert.match(source, /ERROR_TEXT/)
+  // The fake day/minute buttons only exist when the K-line slot is absent.
+  assert.match(source, /hasSlot \? null : h\('div', \{ className: 'pt-row'/)
+  // K-line identity must not rewrite the ticket when the symbol did not change.
+  assert.match(source, /formSymbol\.current/)
   const glyph = panellist.component({ size: 16 })
   assert.ok(glyph, 'glyph did not render')
 })
@@ -86,6 +96,7 @@ test('browser bundle: the page surface fills the column, only the content is cap
   assert.match(css, /\.pt-kline-rail \{[^}]*position:sticky/)
   assert.match(css, /\.pt-kline-body \{[^}]*clamp\(420px/)
   assert.match(css, /\.pt-table-wrap \{ overflow-x:auto/)
+  assert.match(css, /\.pt-btn\[data-active="true"\]/, 'selected board/watch/period buttons need visible state')
   // Breakpoints follow the panel width (container queries), not the window.
   assert.match(css, /\.pt-root \{[^}]*container:paper-panel \/ inline-size/)
   assert.match(css, /\.pt-main \{[^}]*container:paper-main \/ inline-size/)
