@@ -314,6 +314,23 @@
       window.__fake.on('market/bars', () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }))
       return result
     }
+    if (name === 'bars-flat') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('market/bars', () => ({
+        state: 'ok',
+        bars: Array.from({ length: 30 }, (_, index) => ({
+          time: `2026-09-${String(index % 28 + 1).padStart(2, '0')}`,
+          open: 10, high: 10, low: 10, close: 10,
+        })),
+      }))
+      const refresh = [...document.querySelectorAll('.pt-kline-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.chart = await e2e.wait(() => Boolean(document.querySelector('.pt-kline-body .pt-chart')), 5000)
+      result.nan = (document.querySelector('.pt-kline-body')?.innerHTML ?? '').includes('NaN')
+      return result
+    }
     if (name === 'quote-retry') {
       const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
       if (tradeTab) e2e.click(tradeTab)
