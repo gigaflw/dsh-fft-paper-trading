@@ -15,7 +15,7 @@ function setupRpc(name, at = clockAt(DATE1, AM)) {
   const repo = new FuturesRepo({ home })
   const service = new FuturesService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
   const handler = createFuturesRpcHandler(service)
-  const call = (endpoint, payload) => handler(endpoint, payload, new AbortController().signal)
+  const call = (endpoint, payload, signal = new AbortController().signal) => handler(endpoint, payload, signal)
   return { home, data, service, call, setNow: value => { now = value } }
 }
 
@@ -190,5 +190,18 @@ test('rpc: index routes futures/* to the futures handler and keeps the stock end
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome
     await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('rpc: an aborted futures request returns the cancellation envelope', async () => {
+  const subject = setupRpc('futures-rpc-abort')
+  try {
+    const controller = new AbortController()
+    controller.abort()
+    const result = await subject.call('futures/account/get', {}, controller.signal)
+    assert.equal(result.ok, false)
+    assert.equal(result.error.code, 'INVALID_ARGUMENT')
+  } finally {
+    await rm(subject.home, { recursive: true, force: true })
   }
 })

@@ -335,6 +335,8 @@
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
       await e2e.wait(() => document.querySelector('.pt-kline-rail'))
+      await new Promise(done => setTimeout(done, 500))
+      result.loadingHint = e2e.text('.pt-kline-hint')
       // Simulate the real failure: a loading text that disappears, then an
       // empty host. Text must not stop the fallback timer.
       const host = document.querySelector('.dsh-kline-native-host')
