@@ -10,6 +10,9 @@ tests/e2e/
   flow-fake.mjs          # 用假后端把用户故事 9 步跑一遍并断言
   offline-ledger.mjs     # 账本：重复 seq / 旧 settings / NaN 锁户 / 重置 / 导出
   offline-matching.mjs   # 撮合：最新价全成 / 挂单 / 无 TTL / 旧账本迁移
+  offline-basket.mjs     # 一揽子：预览/整批下单/幂等/收盘拒绝（真服务+真账本）
+  ui-panel.mjs           # 面板 UI：真 React DOM + 真 bundle + 假 RPC（不启 DSH）
+  ui-fake.js             # ui-panel 的假后端与点击剧本
 ```
 
 ## 0. 前置
@@ -64,6 +67,28 @@ node tests/e2e/cdp.mjs watch 30          # 盯面板是否被切走/是否刷新
 
 走查清单（真实行情下的 9 步）：看行情与时段 → 搜索/自选 → 输入即预览 → 下单拿回报 → 持仓/资金 →
 盘后改价看刷新 → 收盘看日终 → 隔夜看 T+1 与今日盈亏 → 复盘看成交/流水/回合。
+
+## 4. 面板 UI 端到端（不开 DSH）
+
+```bash
+pnpm build                     # ui-panel 直接读 lib/client.js
+mkdir -p tmp/ui-deps && (cd tmp/ui-deps && npm i react@18.3.1 react-dom@18.3.1)
+node tests/e2e/ui-panel.mjs    # 0 = 全过；失败打印第一处 DOM 断言
+```
+
+做法：把 `lib/client.js` 挂到静态页，用 UMD 版 React/ReactDOM 渲染；页面里把 `window.fetch`
+换成假后端（`ui-fake.js`，与 `flow-fake.mjs` 同一思路），再按用户路径点按钮、断言 DOM：
+股票面板 → 一揽子导入/预览/下单 → 期货账户切换/搜合约/预览/开仓。不需要调试口，也不会碰到
+真实账本；`REACT_UMD_DIR` 可覆盖 UMD 目录，`CHROME` 可覆盖 headless Chromium 路径。
+
+## 5. 一揽子离线断言
+
+```bash
+node tests/e2e/offline-basket.mjs   # 0 = 全过
+```
+
+用真 `PaperService` + 真 RPC handler + 假行情，覆盖 CSV 预览、费用/整手/剩余现金、逐行成交、
+账本落盘、同 `batchId` 幂等与收盘后整批拒绝。数据写 `tmp/`，不碰 `~/.dsh`。
 
 ## 坑（都是真踩过的）
 

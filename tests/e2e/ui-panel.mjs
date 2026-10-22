@@ -1,0 +1,183 @@
+#!/usr/bin/env node
+/**
+ * 浏览器端端到端：真 React DOM + 真客户端 bundle + 假 RPC。
+ *
+ *   node tests/e2e/ui-panel.mjs
+ *
+ * 不启动 DSH，也不碰 ~/.dsh：把 lib/client.js 里的面板挂到一个静态页，
+ * window.fetch 指向本页内的假后端，然后按用户路径点按钮、断言 DOM。
+ * 覆盖：股票面板、一揽子导入→预览→下单、期货账户切换→搜合约→预览→开仓。
+ *
+ * 前置：`pnpm build`（本脚本直接读 lib/client.js）；react-dom UMD 需要可寻址。
+ * 本机一次性准备：
+ *   mkdir -p tmp/ui-deps && (cd tmp/ui-deps && npm i react@18.3.1 react-dom@18.3.1)
+ * 或用 REACT_UMD_DIR 指向同时含 react.development.js / react-dom.development.js 的目录。
+ */
+import http from 'node:http'
+import net from 'node:net'
+import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { extname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = resolve(fileURLToPath(new URL('../..', import.meta.url)))
+const failures = []
+const assert = (name, ok, detail = '') => {
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail && !ok ? `  ← ${detail}` : ''}`)
+  if (!ok) failures.push(name)
+}
+const findUmd = () => {
+  const explicit = process.env.REACT_UMD_DIR
+  if (explicit) return explicit
+  const candidates = [
+    join(root, 'tmp/ui-deps/node_modules'),
+    join(root, 'node_modules'),
+  ]
+  for (const base of candidates) {
+    const dir = join(base, 'react', 'umd')
+    const reactDom = join(base, 'react-dom', 'umd')
+    if (existsSync(join(dir, 'react.development.js')) && existsSync(join(reactDom, 'react-dom.development.js'))) {
+      return { react: dir, reactDom }
+    }
+  }
+  throw new Error('react/react-dom UMD 不可寻址：见文件头的一次性准备说明，或设置 REACT_UMD_DIR')
+}
+const umd = findUmd()
+const chrome = process.env.CHROME ?? `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell`
+if (!existsSync(chrome)) throw new Error('找不到 headless Chromium：设置 CHROME 指向 chrome-headless-shell')
+
+const freePort = async () => {
+  const server = net.createServer()
+  await new Promise(done => server.listen(0, '127.0.0.1', done))
+  const port = server.address().port
+  await new Promise(done => server.close(done))
+  return port
+}
+const pagePort = await freePort()
+const cdpPort = await freePort()
+const profile = mkdtempSync(join(root, 'tmp', 'e2e-ui-'))
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' }
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://x')
+  const path = url.pathname === '/' ? 'tests/e2e/ui-panel.html' : url.pathname.replace(/^\//, '')
+  const file = path === 'tests/e2e/ui-panel.html'
+    ? join(root, 'tests/e2e/ui-panel.html')
+    : path.startsWith('__react/react-dom')
+      ? join(umd.reactDom, path.slice('__react/'.length))
+      : path.startsWith('__react/')
+        ? join(umd.react, path.slice('__react/'.length))
+        : join(root, path)
+  if (!existsSync(file)) { res.writeHead(404); res.end('not found'); return }
+  res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' })
+  createReadStream(file).pipe(res)
+})
+await new Promise(done => server.listen(pagePort, '127.0.0.1', done))
+
+const child = spawn(chrome, [
+  '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+  `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`,
+  `http://127.0.0.1:${pagePort}/`,
+], { stdio: 'ignore' })
+
+let socket
+const cleanup = async () => {
+  try { if (socket) { socket.close() } } catch {}
+  child.kill('SIGKILL')
+  server.close()
+  rmSync(profile, { recursive: true, force: true })
+}
+const waitFor = async (probe, timeout = 15000) => {
+  const started = Date.now()
+  while (Date.now() - started < timeout) {
+    try { const value = await probe(); if (value) return value } catch {}
+    await new Promise(done => setTimeout(done, 150))
+  }
+  throw new Error('timeout')
+}
+
+try {
+  const page = await waitFor(async () => {
+    const list = await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`)).json()
+    return list.find(target => target.type === 'page' && target.url.startsWith(`http://127.0.0.1:${pagePort}`))
+  })
+  socket = new WebSocket(page.webSocketDebuggerUrl)
+  await new Promise((done, fail) => { socket.addEventListener('open', done); socket.addEventListener('error', fail) })
+  let seq = 0
+  const pending = new Map()
+  const consoleLines = []
+  socket.addEventListener('message', event => {
+    const message = JSON.parse(event.data)
+    if (message.id && pending.has(message.id)) { pending.get(message.id)(message); pending.delete(message.id); return }
+    if (message.method === 'Runtime.consoleAPICalled') consoleLines.push(message.params.args.map(arg => arg.value ?? arg.description ?? '').join(' '))
+    if (message.method === 'Runtime.exceptionThrown') consoleLines.push('EXCEPTION ' + (message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text))
+  })
+  const send = (method, params = {}) => new Promise(done => {
+    const id = ++seq
+    pending.set(id, done)
+    socket.send(JSON.stringify({ id, method, params }))
+  })
+  await send('Runtime.enable')
+  const evaluate = async expression => {
+    const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+    if (result.result?.exceptionDetails) throw new Error(result.result.exceptionDetails.exception?.description ?? result.result.exceptionDetails.text)
+    return result.result?.result?.value
+  }
+  const scenario = async name => {
+    const value = await Promise.race([
+      evaluate(`window.__scenario(${JSON.stringify(name)})`),
+      new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 20000)),
+    ])
+    assert(`scenario ${name} does not hang`, !(value && value.timeout))
+    return value ?? {}
+  }
+
+  await waitFor(() => evaluate('window.__ready === true'))
+  assert('panel mounts', await evaluate("Boolean(document.querySelector('.pt-root'))"))
+
+  // 1. 股票面板
+  const stock = await scenario('stock')
+  assert('stock tabs include basket', Array.isArray(stock.tabs) && ['交易', '一揽子', '行情', '复盘'].every(label => stock.tabs.some(tab => tab.startsWith(label))), JSON.stringify(stock.tabs))
+  assert('stock stats render', Array.isArray(stock.stats) && stock.stats.length === 4, JSON.stringify(stock.stats))
+  assert('stock ticket keeps the aligned form grid', stock.ticketFields?.length === 7, JSON.stringify(stock.ticketFields))
+  assert('stock K-line rail renders', stock.kline === true)
+  assert('stock book renders', typeof stock.book === 'string' && stock.book.includes('持仓'))
+
+  // 2. 一揽子
+  const basket = await scenario('basket')
+  assert('basket preview has three rows', typeof basket.preview === 'string' && ['600519', '000001', '300750'].every(code => basket.preview.includes(code)), basket.preview ?? '')
+  assert('basket preview shows statuses', typeof basket.preview === 'string' && basket.preview.includes('可买') && basket.preview.includes('不足 1 手'))
+  assert('basket confirm is enabled', basket.confirmDisabled === false)
+  assert('basket result has two fills', typeof basket.result === 'string' && basket.result.split('|').filter(part => part.includes('\t成交\t')).length === 2, basket.result ?? '')
+  assert('basket cash line renders', typeof basket.cashLine === 'string' && basket.cashLine.includes('成交后现金'), basket.cashLine ?? '')
+  const basketCalls = await evaluate('window.__calls.filter(item => item.startsWith("basket/"))')
+  assert('basket RPCs were called', basketCalls.includes('basket/preview') && basketCalls.includes('basket/place'), JSON.stringify(basketCalls))
+
+  // 3. 期货
+  const switched = await scenario('futures-switch')
+  assert('futures switch renders the account', typeof switched.head === 'string' && switched.head.includes('期货 ·'), switched.head ?? '')
+  assert('futures stats labels', Array.isArray(switched.stats) && switched.stats.some(text => text.includes('总权益')) && switched.stats.some(text => text.includes('风险度')), JSON.stringify(switched.stats))
+  assert('futures has four tabs and no market tab', switched.tabs.length === 4 && !switched.tabs.some(text => text.includes('行情')), JSON.stringify(switched.tabs))
+  const searched = await scenario('futures-search')
+  assert('futures contract rail filled', typeof searched.contract === 'string' && searched.contract.includes('乘数') && searched.contract.includes('保证金率'), searched.contract ?? '')
+  const previewed = await scenario('futures-preview')
+  assert('futures preview shows margin and risk', typeof previewed.preview === 'string' && previewed.preview.includes('保证金') && previewed.preview.includes('风险度'), previewed.preview ?? '')
+  const submitted = await scenario('futures-submit')
+  assert('futures order fills', typeof submitted.receipt === 'string' && submitted.receipt.includes('成交'), submitted.receipt ?? '')
+  assert('futures position book updates', typeof submitted.book === 'string' && submitted.book.includes('RB2611.SHFE'), submitted.book ?? '')
+  const futuresCalls = await evaluate('window.__calls.filter(item => item.startsWith("futures/"))')
+  assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
+
+  const exceptions = consoleLines.filter(line => line.startsWith('EXCEPTION'))
+  assert('no page exceptions', exceptions.length === 0, exceptions.join(' | '))
+} catch (error) {
+  console.error('FAIL  harness:', error.message)
+  failures.push('harness')
+} finally {
+  await cleanup()
+}
+
+if (failures.length > 0) {
+  console.error(`\n${failures.length} failure(s)`)
+  process.exit(1)
+}
+console.log('\nUI e2e: all checks passed')
