@@ -1437,6 +1437,26 @@
       window.__fake.on('futures/contracts', () => ({ state: 'ok', contracts: [futuresContract, futuresContract2] }))
       return result
     }
+    if (name === 'stock-quote-stale') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[0], '600519')
+      e2e.setInput(inputs[1], '')
+      window.__fake.on('market/quote', () => ({
+        state: 'stale', notice: '行情为缓存数据',
+        quotes: [{ ...quote, last: 1320, marketTs: ts() }],
+      }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.note = await e2e.wait(() => {
+        const text = document.querySelector('.pt-quote')?.innerText ?? ''
+        return text.includes('缓存') ? text : null
+      }, 4000)
+      window.__fake.on('market/quote', () => ({ state: 'ok', quotes: [{ ...quote, last: window.__quoteLast ?? quote.last, marketTs: ts() }] }))
+      return result
+    }
     if (name === 'futures-place-retry') {
       const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
       if (trade) e2e.click(trade)
