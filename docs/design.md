@@ -387,7 +387,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 订单 | 挂单表（可撤单）、历史表 |
 | 复盘 | 7/30/全部区间、成交统计、最大回撤、权益曲线、成交记录 |
 
-账户头：总资产、可用现金、浮动盈亏、今日盈亏、刷新、重置（`window.confirm` 二次确认）。
+账户头：总资产、可用现金、累计盈亏、今日盈亏、刷新、重置（`window.confirm` 二次确认）。
 锁定横幅显示失败原因（最后一条 `ledger.violation` 的 `actual`）与账本绝对路径，带「导出账本」（调 `account/export` 下载 JSONL 并复制路径）和「复制路径」；`AccountView` 带 `blockedReason` / `ledgerPath`，所以工具与横幅不必各自猜文件位置。
 `data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 
