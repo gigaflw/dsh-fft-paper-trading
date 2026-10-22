@@ -685,6 +685,7 @@
       const tab = e2e.byText('一揽子')[0]
       e2e.click(tab)
       const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
+      if (!fileInput) throw new Error('basket-race: no file input')
       const setFile = async (name, text) => {
         const transfer = new DataTransfer()
         transfer.items.add(new File([text], name, { type: 'text/csv' }))
@@ -715,6 +716,30 @@
       result.rows = document.querySelectorAll('.pt-main table tbody tr').length
       result.filename = e2e.text('.pt-trade').includes('b.csv')
       result.confirmDisabled = e2e.byText('确认下单')[0]?.disabled ?? null
+      return result
+    }
+    if (name === 'reset-basket') {
+      const tab = e2e.byText('一揽子')[0]
+      e2e.click(tab)
+      const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
+      if (!fileInput) throw new Error('reset-basket: no file input')
+      const lines = ['代码,权重', '600519,60%', '000001,40%']
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([lines.join('\n')], 'reset.csv', { type: 'text/csv' }))
+      fileInput.files = transfer.files
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+      await e2e.wait(() => e2e.text('.pt-trade').includes('reset.csv'))
+      await new Promise(done => setTimeout(done, 600))
+      e2e.click(e2e.byText('预览配股')[0])
+      await e2e.wait(() => [...document.querySelectorAll('.pt-main table')].some(table => table.innerText.includes('目标权重')), 5000)
+      result.rowsBefore = document.querySelectorAll('.pt-main table tbody tr').length
+      window.confirm = () => true
+      const reset = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '重置')
+      if (reset) e2e.click(reset)
+      await e2e.wait(() => (document.querySelector('.pt-inner')?.innerText ?? '').includes('账户已重置'), 4000)
+      await new Promise(done => setTimeout(done, 500))
+      result.rowsAfter = document.querySelectorAll('.pt-main table tbody tr').length
+      result.confirmAfter = e2e.byText('确认下单').length
       return result
     }
     if (name === 'basket-error') {
