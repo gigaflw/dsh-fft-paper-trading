@@ -22,6 +22,11 @@
   const stockTrades = []
 
   // --- futures fake state ---------------------------------------------------
+  const futuresContract2 = {
+    symbol: 'CU2611.SHFE', name: '沪铜2611', product: 'cu', exchange: 'SHFE',
+    multiplier: 5, tickSize: 10, marginRate: 0.1, deListDate: '2026-11-15',
+    tradeHours: '上午9:00-11:30,下午13:30-15:00,下午21:00-23:00(夜盘)',
+  }
   const futuresContract = {
     symbol: 'RB2611.SHFE', name: '螺纹钢2611', product: 'rb', exchange: 'SHFE',
     multiplier: 10, tickSize: 1, marginRate: 0.1, deListDate: '2026-11-15',
@@ -138,7 +143,7 @@
     'futures/account/get': () => futuresState.account,
     'futures/account/reset': () => futuresState.account,
     'futures/account/export': () => ({ path: '/tmp/futures/events.jsonl', exists: true, content: '{}' }),
-    'futures/contracts': () => ({ state: 'ok', contracts: [futuresContract] }),
+    'futures/contracts': () => ({ state: 'ok', contracts: [futuresContract, futuresContract2] }),
     'futures/quote': () => ({ state: 'ok', quotes: [{ ...futuresQuote, last: window.__futuresLast ?? futuresQuote.last, marketTs: ts() }] }),
     'futures/status': () => futuresStatus,
     'futures/preview': draft => futuresPreview(draft),
@@ -589,6 +594,37 @@
       result.calls = window.__calls.slice(-6)
       result.card = e2e.text('.pt-trade')
       result.panelAlive = Boolean(document.querySelector('.pt-root'))
+      return result
+    }
+    if (name === 'futures-quote-race') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('futures/quote', async payload => {
+        const symbol = payload.symbols[0]
+        const copper = symbol.startsWith('CU')
+        await new Promise(done => setTimeout(done, copper ? 100 : 500))
+        return {
+          state: 'ok',
+          quotes: [{
+            symbol, name: copper ? '沪铜2611' : '螺纹钢2611', last: copper ? 70000 : 3200,
+            preSettlement: copper ? 69900 : 3150, marketTs: ts(),
+          }],
+        }
+      })
+      const search = document.querySelector('input[placeholder^="合约代码"]')
+      e2e.setInput(search, 'rb')
+      e2e.click(e2e.byText('搜索')[0])
+      const rb = await e2e.wait(() => [...document.querySelectorAll('button')].find(el => el.textContent.includes('RB2611.SHFE')), 4000)
+      e2e.click(rb)
+      await new Promise(done => setTimeout(done, 60))
+      e2e.setInput(search, 'cu')
+      e2e.click(e2e.byText('搜索')[0])
+      const cu = await e2e.wait(() => [...document.querySelectorAll('button')].find(el => el.textContent.includes('CU2611.SHFE')), 4000)
+      e2e.click(cu)
+      await new Promise(done => setTimeout(done, 800))
+      result.rail = e2e.text('.pt-futures-rail')
+      result.contract = document.querySelector('.pt-ticket-form')?.innerText.slice(0, 80) ?? null
       return result
     }
     if (name === 'slot-fallback') {
