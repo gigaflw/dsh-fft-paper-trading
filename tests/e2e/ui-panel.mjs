@@ -327,6 +327,8 @@ try {
   assert('pre-open market note names the opening auction', typeof marketPreopen.note === 'string' && marketPreopen.note.includes('集合竞价中'), JSON.stringify(marketPreopen))
   const placeRetry = await scenario('place-retry')
   assert('a retried order reuses the request id', Array.isArray(placeRetry.ids) && placeRetry.ids.length === 2 && placeRetry.ids[0] === placeRetry.ids[1], JSON.stringify(placeRetry))
+  const accountRetry = await scenario('account-retry')
+  assert('a failed account load can be retried', typeof accountRetry.error === 'string' && accountRetry.retry === 1 && typeof accountRetry.loaded === 'string', JSON.stringify(accountRetry))
   const slotIdentity = await scenario('slot-identity')
   assert('a K-line selection fills the ticket symbol', slotIdentity.symbol === '000001' && typeof slotIdentity.notice === 'string' && slotIdentity.notice.includes('平安银行'), JSON.stringify(slotIdentity))
   const slotFallback = await scenario('slot-fallback')

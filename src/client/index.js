@@ -1584,7 +1584,9 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'pt-inner' },
           h('div', { className: 'pt-head' },
             h('div', null, h('h3', { className: 'pt-title' }, '模拟交易'), h('div', { className: 'pt-sub' }, '期货账户')),
-            h('div', { className: 'pt-row' }, accountSwitch),
+            h('div', { className: 'pt-row' }, accountSwitch,
+              h('button', { className: 'pt-btn', onClick: () => { setError(null); void loadAll() } }, '重试'),
+            ),
           ),
           error
             ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text)
@@ -2500,7 +2502,9 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'pt-inner' },
           h('div', { className: 'pt-head' },
             h('div', null, h('h3', { className: 'pt-title' }, '模拟交易')),
-            h('div', { className: 'pt-row' }, accountSwitch),
+            h('div', { className: 'pt-row' }, accountSwitch,
+              h('button', { className: 'pt-btn', onClick: () => { setError(null); void loadAll() } }, '重试'),
+            ),
           ),
           error
             ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text)
