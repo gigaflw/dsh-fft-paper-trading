@@ -408,9 +408,13 @@
         return node ? node.innerText : null
       })
       result.firstBatchIds = window.__basketBatchIds.slice()
-      // A retry after a lost response must reuse the preview's batchId.
-      const retry = e2e.byText('确认下单')[0]
-      if (retry && !retry.disabled) {
+      // A retry after a lost response must reuse the preview's batchId. The
+      // button may still be disabled while the post-place refresh runs.
+      const retry = await e2e.wait(() => {
+        const button = e2e.byText('确认下单')[0]
+        return button && !button.disabled ? button : null
+      }, 5000)
+      if (retry) {
         e2e.click(retry)
         await e2e.wait(() => window.__basketBatchIds.length >= 2)
       }
@@ -755,6 +759,20 @@
         const text = document.querySelector('.pt-main')?.innerText ?? ''
         return text.includes('分品种统计') ? text : null
       }, 4000)
+      window.__fake.on('futures/review', async payload => {
+        const fast = payload.period === '30d'
+        await new Promise(done => setTimeout(done, fast ? 50 : 400))
+        return {
+          equityCurve: [], maxDrawdownPct: 0, tradeCount: fast ? 30 : 7,
+          openCount: 0, closeCount: 0, winCount: 0, lossCount: 0,
+          totalFees: 0, realizedPnl: 0, byProduct: [],
+        }
+      })
+      e2e.click(e2e.byText('7 天')[0])
+      await new Promise(done => setTimeout(done, 60))
+      e2e.click(e2e.byText('30 天')[0])
+      await new Promise(done => setTimeout(done, 700))
+      result.stats = [...document.querySelectorAll('.pt-stat')].map(item => item.innerText)
       return result
     }
     if (name === 'futures-close') {

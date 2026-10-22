@@ -1164,6 +1164,7 @@ window.__ModuleLoader__.load({
       const [orders, setOrders] = useState([])
       const [review, setReview] = useState(null)
       const [period, setPeriod] = useState('30d')
+      const reviewSeq = useRef(0)
       const [tab, setTab] = useState('trade')
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
@@ -1216,11 +1217,12 @@ window.__ModuleLoader__.load({
       useEffect(() => { loadAll() }, [loadAll])
 
       const loadReview = useCallback(async (key = period) => {
+        const seq = ++reviewSeq.current
         try {
           const next = await rpc('futures/review', { period: key })
-          if (alive.current) setReview(next)
+          if (alive.current && seq === reviewSeq.current) setReview(next)
         } catch (cause) {
-          if (alive.current) setError(errorOf(cause))
+          if (alive.current && seq === reviewSeq.current) setError(errorOf(cause))
         }
       }, [period])
 
@@ -1960,6 +1962,7 @@ window.__ModuleLoader__.load({
       })
 
       const alive = useRef(true)
+      const loadAllSeq = useRef(0)
       useEffect(() => {
         alive.current = true
         return () => { alive.current = false }
@@ -1969,6 +1972,7 @@ window.__ModuleLoader__.load({
       useEffect(() => { formSymbol.current = form.symbol }, [form.symbol])
 
       const loadAll = useCallback(async (quiet = false) => {
+        const seq = ++loadAllSeq.current
         try {
           const [nextAccount, nextOrders, nextTrades, nextReview, nextSession] = await Promise.all([
             rpc('account/get'),
@@ -1978,15 +1982,20 @@ window.__ModuleLoader__.load({
             rpc('market/status'),
           ])
           if (!alive.current) return null
-          setAccount(nextAccount)
-          setOrders(nextOrders)
-          setTrades(nextTrades)
-          setReview(nextReview)
-          setSession(nextSession)
-          if (!quiet) setError(null)
+          // A poll started before a period switch carries the old review;
+          // newer requests own the page state, but callers still get their own
+          // snapshot (order receipts need the fresh cash).
+          if (seq === loadAllSeq.current) {
+            setAccount(nextAccount)
+            setOrders(nextOrders)
+            setTrades(nextTrades)
+            setReview(nextReview)
+            setSession(nextSession)
+            if (!quiet) setError(null)
+          }
           return { account: nextAccount, orders: nextOrders, trades: nextTrades }
         } catch (cause) {
-          if (alive.current) setError(errorOf(cause))
+          if (alive.current && seq === loadAllSeq.current) setError(errorOf(cause))
           return null
         }
       }, [period])

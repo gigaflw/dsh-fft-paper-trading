@@ -225,6 +225,7 @@ try {
 
   const futuresReview = await scenario('futures-review')
   assert('futures review renders without a stale variable', typeof futuresReview.body === 'string' && futuresReview.body.includes('已实现盈亏'), JSON.stringify(futuresReview))
+  assert('a slow review period cannot overwrite the newer one', Array.isArray(futuresReview.stats) && futuresReview.stats.some(text => text.includes('成交笔数') && text.trim().endsWith('30')), JSON.stringify(futuresReview.stats))
   const liveFutures = await scenario('live-futures')
   assert('futures rail re-prices on the polling tick', typeof liveFutures.rail === 'string' && liveFutures.rail.includes('3,300.00'), JSON.stringify(liveFutures))
   const futuresClose = await scenario('futures-close')
