@@ -285,3 +285,26 @@ test('service: pre-open sell of yesterday T+1 shares is queued, not rejected', a
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('service: next boundary is today before the open and skips the weekend after close', async () => {
+  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `boundary-${process.pid}-${Date.now()}`)
+  const data = makeData()
+  const now = { current: at('2026-10-23', '00:04') }
+  const service = makeService(home, data, now)
+  try {
+    await service.account()
+    const pre = await service.marketStatus()
+    assert.equal(pre.phase, 'closed')
+    assert.equal(pre.nextBoundary, at('2026-10-23', '09:15').toISOString())
+
+    now.current = at('2026-10-23', '16:00')
+    const after = await service.marketStatus()
+    assert.equal(after.nextBoundary, at('2026-10-26', '09:15').toISOString())
+
+    now.current = at('2026-10-24', '08:00')
+    const weekend = await service.marketStatus()
+    assert.equal(weekend.nextBoundary, at('2026-10-26', '09:15').toISOString())
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
