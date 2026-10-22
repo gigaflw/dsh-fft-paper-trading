@@ -222,6 +222,7 @@ try {
   const searched = await scenario('futures-search')
   assert('futures contract rail filled', typeof searched.contract === 'string' && searched.contract.includes('乘数') && searched.contract.includes('保证金率'), searched.contract ?? '')
   const previewed = await scenario('futures-preview')
+  assert('futures ticket shows the quote update time', typeof previewed.quoteLine === 'string' && previewed.quoteLine.includes('更新'), JSON.stringify(previewed.quoteLine))
   assert('futures preview shows margin and risk', typeof previewed.preview === 'string' && previewed.preview.includes('保证金') && previewed.preview.includes('风险度'), previewed.preview ?? '')
   await shot('futures-preview.png')
   const submitted = await scenario('futures-submit')

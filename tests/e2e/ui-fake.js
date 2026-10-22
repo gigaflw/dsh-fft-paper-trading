@@ -933,6 +933,7 @@
       return result
     }
     if (name === 'futures-preview') {
+      result.quoteLine = e2e.text('.pt-quote')
       result.preview = await e2e.wait(() => {
         const pane = document.querySelector('.pt-preview-pane')
         return pane && pane.innerText.includes('保证金') ? pane.innerText.replace(/\n/g, ' ') : null
