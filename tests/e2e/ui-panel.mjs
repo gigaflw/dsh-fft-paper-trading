@@ -153,6 +153,7 @@ try {
   assert('zero PnL is neutral, not +0.00', !stock.stats.some(text => text.includes('+0.00')), JSON.stringify(stock.stats))
   assert('stock ticket keeps the aligned form grid', stock.ticketFields?.length === 7, JSON.stringify(stock.ticketFields))
   assert('an untouched ticket does not preview a negative balance', typeof stock.previewText === 'string' && !stock.previewText.includes('成交后现金'), JSON.stringify(stock.previewText))
+  assert('a blank quantity reads as fill-in, not invalid', stock.submitTitle === '填写数量', JSON.stringify(stock.submitTitle))
   assert('stock K-line rail renders', stock.kline === true)
   assert('stock book renders', typeof stock.book === 'string' && stock.book.includes('持仓'))
   assert('short symbol keeps the panel mounted', stock.shortSymbolAlive === true, stock.shortSymbolHint ?? '')

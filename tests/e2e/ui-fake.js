@@ -251,6 +251,7 @@
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       result.stats = [...document.querySelectorAll('.pt-stat')].map(el => el.innerText.replace(/\n/g, ' '))
       result.previewText = e2e.text('.pt-preview-pane')
+      result.submitTitle = document.querySelector('.pt-ticket-submit')?.title ?? null
       result.ticketFields = [...document.querySelectorAll('.pt-ticket-form > *')].map(el => el.className)
       result.book = e2e.text('.pt-trade-book').replace(/\n/g, ' ')
       result.kline = Boolean(document.querySelector('.pt-kline-body'))
@@ -968,6 +969,7 @@
       result.head = await e2e.wait(() => e2e.text('.pt-head').includes('期货 ·') ? e2e.text('.pt-head').replace(/\n/g, ' ') : null)
       result.stats = [...document.querySelectorAll('.pt-stat')].map(el => el.innerText.replace(/\n/g, ' '))
       result.previewText = e2e.text('.pt-preview-pane')
+      result.submitTitle = document.querySelector('.pt-ticket-submit')?.title ?? null
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       return result
     }
