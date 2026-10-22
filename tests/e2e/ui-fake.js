@@ -1327,6 +1327,45 @@
       result.ids = window.__placeIds.slice()
       return result
     }
+    if (name === 'futures-place-retry') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      e2e.click(e2e.byText('限价')[0])
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[0], '1')
+      e2e.setInput(inputs[1], '3300')
+      window.__futuresPlaceIds = []
+      let calls = 0
+      window.__fake.on('futures/order', (payload) => {
+        window.__futuresPlaceIds.push(payload.requestId)
+        calls += 1
+        if (calls === 1) return { __error: { code: 'INTERNAL', message: '网络中断' } }
+        return {
+          id: 'f-retry', requestId: payload.requestId, symbol: payload.draft.symbol, name: '沪铜2611',
+          side: 'long', offset: 'open', type: 'limit', qty: 1, limitPrice: 3300, status: 'filled',
+          fillPrice: 3300, marginCents: 165000, feesCents: 500, createdAt: ts(), updatedAt: ts(),
+        }
+      })
+      const submit = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && !button.disabled ? button : null
+      }, 5000)
+      if (!submit) throw new Error('futures-place-retry: submit disabled; title=' + (document.querySelector('.pt-ticket-submit')?.title ?? 'none'))
+      e2e.click(submit)
+      result.failure = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('网络中断') ? text : null
+      }, 4000)
+      e2e.click(submit)
+      result.receipt = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('成交') ? text : null
+      }, 5000)
+      result.ids = window.__futuresPlaceIds.slice()
+      return result
+    }
     if (name === 'slot-identity') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)

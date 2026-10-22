@@ -267,6 +267,8 @@ try {
 
   const futuresPositionsClose = await scenario('futures-positions-close')
   assert('closing from the positions tab fills a close ticket', futuresPositionsClose.tab === '交易' && futuresPositionsClose.direction === '平多' && futuresPositionsClose.qty === '1', JSON.stringify(futuresPositionsClose))
+  const futuresPlaceRetry = await scenario('futures-place-retry')
+  assert('a retried futures order reuses the request id', Array.isArray(futuresPlaceRetry.ids) && futuresPlaceRetry.ids.length === 2 && futuresPlaceRetry.ids[0] === futuresPlaceRetry.ids[1], JSON.stringify(futuresPlaceRetry))
   const futuresLimit = await scenario('futures-limit')
   assert('a resting futures limit shows the pending receipt', typeof futuresLimit.receipt === 'string' && futuresLimit.receipt.includes('挂单') && futuresLimit.receipt.includes('3,300.00'), JSON.stringify(futuresLimit))
   const futuresCancel = await scenario('futures-cancel')
