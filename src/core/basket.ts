@@ -72,8 +72,15 @@ function yuanText(cents: number): string {
  * percent (`30` → 30%) and reported, because a user pasting 30 almost never
  * means 3000%. `1` is 100% (a bare `1` is not "above 1").
  */
+/** Chinese IME full-width digits/percent → ASCII, so pasted sheet cells parse. */
+function halfWidth(value: string): string {
+  return value
+    .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
+    .replace(/％/g, '%')
+}
+
 function parseWeightCell(raw: string): { weight: number; percentShorthand: boolean } | null {
-  const text = raw.trim()
+  const text = halfWidth(raw.trim())
   if (text === '') return null
   const withPercent = text.endsWith('%')
   const value = Number(withPercent ? text.slice(0, -1).trim() : text)
@@ -85,7 +92,7 @@ function parseWeightCell(raw: string): { weight: number; percentShorthand: boole
 
 /** `SH600519`, `600519.SH`, `600519.XSHG` or bare `600519` → `600519`. */
 function normaliseSymbol(raw: string): string | undefined {
-  const bare = raw.trim().toUpperCase()
+  const bare = halfWidth(raw.trim()).toUpperCase()
     .replace(/^(SH|SZ|BJ)(?=\d{6}$)/, '')
     .replace(/\.(SH|SZ|BJ|XSHG|XSHE)$/, '')
   return /^\d{6}$/.test(bare) ? bare : undefined
