@@ -876,6 +876,12 @@
       }, 4000)
       result.exportButton = e2e.byText('导出账本').length
       result.copyButton = e2e.byText('复制路径').length
+      const copy = e2e.byText('复制路径')[0]
+      if (copy) e2e.click(copy)
+      result.copyNotice = await e2e.wait(() => {
+        const text = [...document.querySelectorAll('.pt-note')].map(node => node.innerText).find(item => item.includes('账本路径') || item.includes('已复制账本路径'))
+        return text ?? null
+      }, 3000)
       const submit = document.querySelector('.pt-ticket-submit')
       result.hasTicket = Boolean(submit)
       result.submitDisabled = submit?.disabled ?? null
@@ -975,6 +981,47 @@
         const text = document.querySelector('.pt-receipt')?.innerText ?? null
         return text !== null && text.includes('挂单') ? text : null
       }, 5000)
+      return result
+    }
+    if (name === 'futures-cancel') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
+      if (tab) e2e.click(tab)
+      const pending = {
+        id: 'f-pending', requestId: 'r-f-pending', symbol: 'RB2611.SHFE', name: '螺纹钢2611',
+        side: 'long', offset: 'open', type: 'limit', qty: 1, limitPrice: 3000,
+        status: 'pending', createdAt: ts(), updatedAt: ts(),
+      }
+      window.__fake.on('futures/orders', () => [pending])
+      window.__fake.on('futures/cancel', (payload) => {
+        window.__fake.on('futures/orders', () => [])
+        return { ...pending, id: payload.orderId, status: 'canceled', reason: '手动撤单' }
+      })
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      const cancel = await e2e.wait(() => e2e.byText('撤单')[0] ?? null, 4000)
+      if (cancel) e2e.click(cancel)
+      result.empty = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('无挂单') ? text : null
+      }, 4000)
+      return result
+    }
+    if (name === 'futures-reset') {
+      window.confirm = () => true
+      const resetAccount = {
+        accountId: 'futures', currency: 'CNY', initialCash: 1000000, cash: 1000000,
+        margin: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0, riskRatio: 0,
+        tradeDate: '2026-10-22', blocked: false, positions: [],
+        settings: { warnRiskRatio: 0.8, liquidateRiskRatio: 1 },
+      }
+      window.__fake.on('futures/account/get', () => resetAccount)
+      window.__fake.on('futures/account/reset', () => resetAccount)
+      const reset = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '重置')
+      if (reset) e2e.click(reset)
+      result.notice = await e2e.wait(() => {
+        const text = document.querySelector('.pt-inner')?.innerText ?? ''
+        return text.includes('期货账户已重置') ? text : null
+      }, 4000)
       return result
     }
     if (name === 'futures-review') {
