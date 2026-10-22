@@ -226,3 +226,11 @@ test('basket: accepts quoted cells from an Excel export', () => {
   assert.equal(parsed.issues.length, 0)
   assert.deepEqual(parsed.rows.map(row => row.symbol), ['600519', '000001'])
 })
+
+
+test('basket: accepts full-width digits and percent from an IME', () => {
+  const parsed = parseBasketCsv('６００５１９,３０％\n000001,70%')
+  assert.equal(parsed.issues.length, 0)
+  assert.deepEqual(parsed.rows.map(row => row.symbol), ['600519', '000001'])
+  assert.ok(Math.abs(parsed.rows[0].weight - 0.3) < 1e-9)
+})
