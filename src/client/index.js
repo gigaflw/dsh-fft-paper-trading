@@ -20,7 +20,9 @@ window.__ModuleLoader__.load({
        blank or `NaN`, and backend codes never leak into the main copy. */
 
     const TZ = 'Asia/Shanghai'
-    const dateTimeFormat = new Intl.DateTimeFormat('zh-CN', {
+    // sv-SE formats as YYYY-MM-DD, which matches the trade-date column and the
+    // header; zh-CN would print 2026/10/22 slashes instead.
+    const dateTimeFormat = new Intl.DateTimeFormat('sv-SE', {
       timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
     })
@@ -54,8 +56,28 @@ window.__ModuleLoader__.load({
     const bareSymbol = value => String(value ?? '').trim().toUpperCase().split('.')[0]
     const symbolInput = value => String(value ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6)
     const symbolText = quote => [bareSymbol(quote?.symbol), quote?.name].filter(text => text).join(' ')
+    /** Quote origin in human terms; the raw interface name is too technical. */
+    const quoteSourceText = quote => {
+      if (!quote || !quote.source) return 'FTShare'
+      if (quote.source === 'manual') return '参考价'
+      if (quote.source === 'daily-bar') return '日K'
+      return 'FTShare'
+    }
     /** Watchlist entries may carry an exchange suffix; compare on the bare code. */
     const watched = (watchlist, symbol) => watchlist.some(item => bareSymbol(item) === bareSymbol(symbol))
+
+    /**
+     * Why the ticket cannot be previewed yet. An incomplete draft would
+     * otherwise come back priced at 0.00 — a card that looks like a real
+     * order for nothing — so the panel asks for the missing field instead.
+     */
+    const previewBlockReason = draft => {
+      if (String(draft.symbol ?? '').trim().length < 6) return '输入 6 位代码后自动计算'
+      const qty = Number(draft.qty)
+      if (!Number.isInteger(qty) || qty <= 0) return '填写数量后自动计算'
+      if (draft.type === 'limit' && !(Number(draft.limitPrice) > 0)) return '填写限价后自动计算'
+      return ''
+    }
 
     const STATUS_TEXT = {
       queued: '排队',
@@ -216,6 +238,12 @@ window.__ModuleLoader__.load({
       .pt-preview { display:flex; flex-direction:column; gap:1px; }
       .pt-preview div { display:flex; justify-content:space-between; gap:12px; padding:2px 0; }
       .pt-preview .pt-warn { color:var(--dsw-alias-state-warn-primary, #8a6410); display:block; }
+      .pt-receipt { margin-top:8px; padding:7px 9px; font-size:12px; border-radius:var(--dsw-radius-xs, 4px);
+        border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.16));
+        background:var(--dsw-alias-bg-layer-2, #f7f8fa); font-variant-numeric:tabular-nums; }
+      .pt-receipt[data-state="filled"] { border-color:var(--dsw-alias-state-success-primary, #2f6b47); }
+      .pt-receipt[data-state="rejected"] { color:var(--dsw-alias-state-error-primary, #a33b2a);
+        border-color:var(--dsw-alias-state-error-primary, #a33b2a); }
       .pt-card { border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.12));
         border-radius:var(--dsw-radius-sm, 8px); background:var(--dsw-alias-bg-layer-1, #fff); padding:10px; min-width:0; }
       .pt-card-title { font-size:11px; font-weight:500; letter-spacing:.04em;
@@ -304,7 +332,11 @@ window.__ModuleLoader__.load({
     }
 
     function EquityChart({ points }) {
-      if (points.length === 0) return h('div', { className: 'pt-empty' }, '暂无权益快照')
+      // One snapshot cannot be a curve: show the value and say why it is flat.
+      if (points.length < 2) {
+        const only = points.length === 1 ? `最新权益 ${money(points[0].equity)} · ` : ''
+        return h('div', { className: 'pt-empty' }, `${only}至少两个交易日后才有权益曲线`)
+      }
       const width = 620
       const height = 160
       const values = points.map(point => point.equity)
@@ -389,7 +421,7 @@ window.__ModuleLoader__.load({
 
     /* ----------------------------------------------------------- tabs ----- */
 
-    function TradeTab({ account, form, setForm, quote, session, preview, busy, onPreview, onSubmit, onRefreshQuote }) {
+    function TradeTab({ account, form, setForm, quote, quoteError, preview, previewState, previewError, previewHint, busy, onSubmit, submitReason, receipt }) {
       const maxBuy = preview ? count(preview.maxBuyQty) : '—'
       return h('div', { className: 'pt-trade-grid' },
         h('div', { className: 'pt-card' },
@@ -418,16 +450,17 @@ window.__ModuleLoader__.load({
               value: form.limitPrice, min: 0, step: 0.01,
               onChange: value => setForm(prev => ({ ...prev, limitPrice: value })),
             })) : null,
-            h('button', { className: 'pt-btn', onClick: onRefreshQuote, disabled: busy }, '查行情'),
           ),
-          h('div', { className: 'pt-note', style: { marginTop: 6 } },
-            `可用 ${money(account.cash)} · 最多可买 ${maxBuy} 股${preview ? '' : '（先预览）'}`,
-          ),
+          previewError !== '' ? h('div', { className: 'pt-error', style: { marginTop: 8 } }, previewError) : null,
+          quoteError !== '' ? h('div', { className: 'pt-error', style: { marginTop: 8 } }, quoteError) : null,
           quote ? h('div', { className: 'pt-quote', style: { marginTop: 8 } },
             h('span', null, symbolText(quote)),
             h('span', null, `现价 ${money(quote.last)}`),
             h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : `行情 ${clockTime(quote.marketTs)}`),
-          ) : h('div', { className: 'pt-note', style: { marginTop: 8 } }, '未取到行情时可填参考价，市价单按参考价成交。'),
+            h('span', { className: 'pt-note' }, `来源 ${quoteSourceText(quote)}`),
+          ) : h('div', { className: 'pt-note', style: { marginTop: 8 } },
+            form.symbol.trim().length < 6 ? '输入 6 位代码后自动取行情' : previewState === 'loading' ? '取行情…' : '未取到行情，可填参考价'
+          ),
           form.type === 'market' ? h('div', { className: 'pt-row', style: { marginTop: 8 } },
             h(Field, { label: '参考价（可选）' }, h(DebouncedNumber, {
               value: form.price, min: 0, step: 0.01,
@@ -435,9 +468,18 @@ window.__ModuleLoader__.load({
             })),
           ) : null,
           h('div', { className: 'pt-row', style: { marginTop: 8 } },
-            h('button', { className: 'pt-btn', onClick: onPreview, disabled: busy }, '预览'),
-            h('button', { className: 'pt-btn pt-btn-primary', onClick: onSubmit, disabled: busy || (form.type === 'market' && session !== null && !session.canMatch) }, form.side === 'buy' ? '买入' : '卖出'),
+            h('button', {
+              className: 'pt-btn pt-btn-primary', onClick: onSubmit, title: submitReason || undefined,
+              disabled: busy || submitReason !== '',
+            }, form.side === 'buy' ? '买入' : '卖出'),
           ),
+          submitReason !== '' ? h('div', { className: 'pt-note', style: { marginTop: 4 } }, `不可提交：${submitReason}`) : null,
+          h('div', { className: 'pt-note', style: { marginTop: 6 } },
+            form.side === 'sell'
+              ? `可卖 ${count(preview ? preview.availableQty : undefined)} 股 · 可用 ${money(account.cash)}`
+              : `可用 ${money(account.cash)} · 最多可买 ${maxBuy} 股`,
+          ),
+          receipt ? h(ReceiptLine, { receipt }) : null,
           h('div', { className: 'pt-row', style: { marginTop: 8 } },
             h(Field, { label: '备注（复盘用）' }, h('input', {
               className: 'pt-input', style: { flex: 1, minWidth: 180 }, value: form.note, maxLength: 120,
@@ -445,15 +487,21 @@ window.__ModuleLoader__.load({
             })),
           ),
         ),
-        h(PreviewCard, { preview }),
+        h(PreviewCard, { preview, previewState, previewError, hint: previewHint, symbol: form.symbol }),
       )
     }
 
-    function PreviewCard({ preview }) {
+    /** Numbers stay put while a preview refreshes; only the status line moves. */
+    function PreviewCard({ preview, previewState, previewError, hint, symbol }) {
+      const emptyHint = hint !== ''
+        ? hint
+        : previewState === 'loading'
+          ? '计算中…'
+          : previewError !== '' ? previewError : '计算中…'
       return h('div', { className: 'pt-card' },
         h('div', { className: 'pt-card-title' }, '预览'),
         preview ? h('div', { className: 'pt-preview' },
-          h('div', null, h('span', null, '价格'), h('span', null, money(preview.price))),
+          h('div', null, h('span', null, '预估成交价'), h('span', null, money(preview.price))),
           h('div', null, h('span', null, '金额'), h('span', null, cents(preview.amountCents))),
           h('div', null, h('span', null, '佣金'), h('span', null, cents(preview.commissionCents))),
           h('div', null, h('span', null, '印花税'), h('span', null, cents(preview.stampCents))),
@@ -462,8 +510,42 @@ window.__ModuleLoader__.load({
             h('span', { className: preview.cashAfterCents < 0 ? 'pt-up' : undefined }, cents(preview.cashAfterCents)),
           ),
           h('div', null, h('span', null, '最多可买'), h('span', null, `${count(preview.maxBuyQty)} 股`)),
+          previewState === 'loading' ? h('div', { className: 'pt-note' }, '计算中…') : null,
           preview.warnings.length > 0 ? h('div', { className: 'pt-warn' }, preview.warnings.join('；')) : null,
-        ) : h('div', { className: 'pt-empty' }, '点「预览」计算费用与现金影响'),
+          previewState === 'error' && previewError !== '' ? h('div', { className: 'pt-warn' }, previewError) : null,
+        ) : h('div', { className: 'pt-empty' }, emptyHint),
+      )
+    }
+
+    /** Post-submit receipt, built from the ledger's fill record, not the draft. */
+    function ReceiptLine({ receipt }) {
+      if (receipt.failure !== undefined) {
+        return h('div', { className: 'pt-receipt', 'data-state': 'rejected', title: receipt.failure.detail || undefined },
+          `拒绝：${receipt.failure.text}`,
+        )
+      }
+      const { order, fill, cash } = receipt
+      const symbol = bareSymbol(order.symbol)
+      const side = order.side === 'buy' ? '买入' : '卖出'
+      if (order.status === 'rejected') {
+        return h('div', { className: 'pt-receipt', 'data-state': 'rejected', title: order.reason || undefined },
+          `拒绝：${side} ${symbol} ${count(order.qty)} 股 · ${reasonText(order.reason) || '未通过风控'}`,
+        )
+      }
+      if (order.status === 'filled') {
+        const price = fill ? fill.price : order.fillPrice
+        const qty = fill ? fill.qty : order.filledQty
+        const amount = fill ? fill.amountCents : order.amountCents
+        const fees = fill ? fill.feesCents : order.feesCents
+        return h('div', { className: 'pt-receipt', 'data-state': 'filled', title: order.id },
+          `成交：${side} ${symbol} ${count(qty)} 股 · 价 ${money(price)} · 金额 ${cents(amount)} · 费用 ${cents(fees)} · 成交后现金 ${money(cash)} · 单 ${order.id}`,
+        )
+      }
+      const pendingText = order.status === 'queued'
+        ? '当前时段不撮合，进入连续竞价后按最新价判定'
+        : '现价未穿越，成交前一直挂单'
+      return h('div', { className: 'pt-receipt', 'data-state': 'resting', title: order.id },
+        `挂单：${side} ${symbol} ${count(order.qty)} 股${order.limitPrice === undefined ? '' : ` @ ${money(order.limitPrice)}`} · ${pendingText} · 单 ${order.id}`,
       )
     }
 
@@ -566,12 +648,13 @@ window.__ModuleLoader__.load({
         h('div', null,
           h('div', { className: 'pt-sub' }, '历史'),
           history.length === 0 ? h('div', { className: 'pt-empty' }, '无历史订单') : h(Table, null,
-            h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '状态', '成交价', '原因'].map(label => h('th', { key: label }, label)))),
+            h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '限价', '状态', '成交价', '原因'].map(label => h('th', { key: label }, label)))),
             h('tbody', null, history.slice(0, 30).map(order => h('tr', { key: order.id },
               h('td', null, dateTime(order.createdAt)),
               h('td', null, bareSymbol(order.symbol)),
               h('td', null, order.side === 'buy' ? '买' : '卖'),
               h('td', null, count(order.qty)),
+              h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
               h('td', null, STATUS_TEXT[order.status] ?? order.status),
               h('td', null, order.fillPrice === undefined ? '—' : money(order.fillPrice)),
               h('td', { title: order.reason ?? undefined }, reasonText(order.reason)),
@@ -667,8 +750,12 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
-      const [quote, setQuote] = useState(null)
       const [preview, setPreview] = useState(null)
+      const [previewState, setPreviewState] = useState('idle')
+      const [previewError, setPreviewError] = useState('')
+      const [previewNonce, setPreviewNonce] = useState(0)
+      const [quoteError, setQuoteError] = useState('')
+      const [receipt, setReceipt] = useState(null)
       const [session, setSession] = useState(null)
       const [searchQuery, setSearchQuery] = useState('')
       const [searchHits, setSearchHits] = useState([])
@@ -709,15 +796,17 @@ window.__ModuleLoader__.load({
             rpc('review/get', { period }),
             rpc('market/status'),
           ])
-          if (!alive.current) return
+          if (!alive.current) return null
           setAccount(nextAccount)
           setOrders(nextOrders)
           setTrades(nextTrades)
           setReview(nextReview)
           setSession(nextSession)
           if (!quiet) setError(null)
+          return { account: nextAccount, orders: nextOrders, trades: nextTrades }
         } catch (cause) {
           if (alive.current) setError(errorOf(cause))
+          return null
         }
       }, [period])
 
@@ -797,21 +886,10 @@ window.__ModuleLoader__.load({
         if (!next || next === bareSymbol(formSymbol.current)) return
         formSymbol.current = next
         setForm(prev => ({ ...prev, symbol: next }))
-        setQuote(null)
         setNotice(name ? `已从 K 线选择 ${name}` : '')
       }, [])
 
       useEffect(() => { void loadBars() }, [loadBars])
-
-      useEffect(() => {
-        const symbol = form.symbol.trim()
-        if (symbol.length < 6) return
-        let cancelled = false
-        rpc('market/quote', { symbols: [symbol] })
-          .then(result => { if (!cancelled && alive.current) setQuote(result.quotes[0] ?? null) })
-          .catch(() => {})
-        return () => { cancelled = true }
-      }, [form.symbol])
 
       useEffect(() => {
         if (tab === 'review') void loadReviewDetail()
@@ -841,27 +919,12 @@ window.__ModuleLoader__.load({
         }
       }, [watchlist, isWatched])
 
-      const adoptQuote = useCallback((symbol, preset) => {
+      const adoptQuote = useCallback(symbol => {
         const next = bareSymbol(symbol)
         formSymbol.current = next
         setForm(prev => ({ ...prev, symbol: next }))
-        setQuote(preset ?? null)
         setTab('trade')
       }, [])
-
-      const refreshQuote = useCallback(async () => {
-        if (!form.symbol.trim()) return
-        setBusy(true)
-        try {
-          const result = await rpc('market/quote', { symbols: [form.symbol.trim()] })
-          setQuote(result.quotes[0] ?? null)
-          setNotice(result.notice ?? (result.quotes.length === 0 ? '没有查到行情' : ''))
-        } catch (cause) {
-          setError(errorOf(cause))
-        } finally {
-          setBusy(false)
-        }
-      }, [form.symbol])
 
       const draft = useCallback(() => ({
         symbol: form.symbol.trim(),
@@ -873,30 +936,92 @@ window.__ModuleLoader__.load({
         note: form.note.trim() === '' ? undefined : form.note.trim(),
       }), [form])
 
-      const doPreview = useCallback(async () => {
-        setBusy(true)
-        setError(null)
-        try {
-          setPreview(await rpc('order/preview', draft()))
-        } catch (cause) {
+      // The note is not part of the preview: only the trading fields are.
+      const previewDraft = useCallback(() => ({
+        symbol: form.symbol.trim(),
+        side: form.side,
+        type: form.type,
+        qty: Number(form.qty),
+        limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
+        price: form.type === 'market' && form.price !== '' ? Number(form.price) : undefined,
+      }), [form.symbol, form.side, form.type, form.qty, form.limitPrice, form.price])
+
+      const previewSymbol = useRef('')
+      const previewSeq = useRef(0)
+      // Symbols whose quote the blocked-preview path already asked for.
+      const quoteSymbol = useRef('')
+
+      // One preview per input change, debounced; the response carries the quote,
+      // so a complete draft still costs a single request. While the draft is
+      // unfinished the price line asks for the quote alone — a limit order
+      // whose limit is still being typed must show what the stock costs.
+      useEffect(() => {
+        const current = previewDraft()
+        previewSeq.current += 1
+        const seq = previewSeq.current
+        if (previewBlockReason(current) !== '') {
+          previewSymbol.current = ''
           setPreview(null)
-          setError(errorOf(cause))
-        } finally {
-          setBusy(false)
+          setPreviewState('idle')
+          setPreviewError('')
+          if (current.symbol.length < 6) {
+            quoteSymbol.current = ''
+            setQuote(null)
+            setQuoteError('')
+            return
+          }
+          if (quoteSymbol.current === current.symbol) return
+          const timer = setTimeout(() => {
+            rpc('market/quote', { symbols: [current.symbol] })
+              .then(result => {
+                if (!alive.current || seq !== previewSeq.current) return
+                quoteSymbol.current = current.symbol
+                setQuote(result.quotes[0] ?? null)
+                setQuoteError(result.quotes[0] ? '' : (result.notice ?? '没有查到行情'))
+              })
+              .catch(cause => {
+                if (!alive.current || seq !== previewSeq.current) return
+                setQuoteError(errorOf(cause).text)
+              })
+          }, 300)
+          return () => clearTimeout(timer)
         }
-      }, [draft])
+        quoteSymbol.current = current.symbol
+        if (previewSymbol.current !== current.symbol) {
+          previewSymbol.current = current.symbol
+          setPreview(null)
+        }
+        setPreviewState('loading')
+        const timer = setTimeout(() => {
+          rpc('order/preview', current)
+            .then(result => {
+              if (!alive.current || seq !== previewSeq.current) return
+              setPreview(result)
+              setPreviewError('')
+              setPreviewState('ready')
+            })
+            .catch(cause => {
+              if (!alive.current || seq !== previewSeq.current) return
+              setPreviewError(errorOf(cause).text)
+              setPreviewState('error')
+            })
+        }, 300)
+        return () => clearTimeout(timer)
+      }, [previewDraft, previewNonce])
 
       const doSubmit = useCallback(async () => {
         setBusy(true)
-        setError(null)
+        setReceipt(null)
         try {
           const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}`
           const order = await rpc('order/place', { draft: draft(), requestId })
-          setNotice(`${STATUS_TEXT[order.status] ?? order.status}：${bareSymbol(order.symbol)} ${count(order.qty)} 股${order.reason ? `（${reasonText(order.reason)}）` : ''}`)
-          setPreview(null)
-          await loadAll(true)
+          const snapshot = await loadAll(true)
+          const fill = snapshot === null ? undefined : snapshot.trades.find(item => item.orderId === order.id)
+          setReceipt({ order, fill, cash: snapshot === null ? undefined : snapshot.account.cash })
+          // Keep the card's numbers; recompute them against the new cash.
+          setPreviewNonce(value => value + 1)
         } catch (cause) {
-          setError(errorOf(cause))
+          setReceipt({ failure: errorOf(cause) })
         } finally {
           setBusy(false)
         }
@@ -944,10 +1069,11 @@ window.__ModuleLoader__.load({
         setBusy(true)
         try {
           setAccount(await rpc('account/reset', { confirm: true }))
-          setQuote(null)
           setPreview(null)
+          setReceipt(null)
           await loadAll(true)
           await loadReviewDetail()
+          setPreviewNonce(value => value + 1)
           setNotice('账户已重置')
         } catch (cause) {
           setError(errorOf(cause))
@@ -956,6 +1082,34 @@ window.__ModuleLoader__.load({
         }
       }, [loadAll, loadReviewDetail])
 
+      /** Header refresh: account/orders/trades/review plus one fresh preview. */
+      const refreshAll = useCallback(async () => {
+        setBusy(true)
+        try {
+          await loadAll()
+          if (tab === 'review') await loadReviewDetail()
+          setPreviewNonce(value => value + 1)
+        } finally {
+          setBusy(false)
+        }
+      }, [loadAll, loadReviewDetail, tab])
+
+      /** Only real blockers disable submit; a failed preview never does. */
+      /** Read the flag outside the deps array: `account` is null on the first render. */
+      const blocked = account?.blocked === true
+      const submitReason = useMemo(() => {
+        if (account === null) return '加载账户中'
+        if (blocked) return '账户已锁定'
+        const symbol = form.symbol.trim()
+        if (symbol.length < 6) return '输入 6 位代码'
+        const qty = Number(form.qty)
+        if (!Number.isInteger(qty) || qty <= 0) return '数量需为正整数'
+        if (form.side === 'buy' && qty % 100 !== 0) return '买入需 100 股整数倍'
+        if (form.type === 'market' && session !== null && !session.canMatch) return '当前时段不能市价成交'
+        return ''
+      }, [blocked, form, session])
+
+      const quote = preview ? preview.quote ?? null : null
       const pending = useMemo(() => orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled'), [orders])
       const history = useMemo(() => orders.filter(order => order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled'), [orders])
       const positions = account?.positions ?? []
@@ -977,7 +1131,7 @@ window.__ModuleLoader__.load({
               ),
             ),
             h('div', { className: 'pt-row' },
-              h('button', { className: 'pt-btn', onClick: () => loadAll(), disabled: busy }, '刷新'),
+              h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
               h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
             ),
           ),
@@ -1001,10 +1155,12 @@ window.__ModuleLoader__.load({
                 ),
               ),
               tab === 'trade' ? h(TradeTab, {
-                account, form, setForm, quote, session, preview, busy,
-                onPreview: doPreview,
+                account, form, setForm, quote, quoteError, preview, previewState, previewError,
+                previewHint: previewBlockReason(previewDraft()),
+                busy,
                 onSubmit: doSubmit,
-                onRefreshQuote: refreshQuote,
+                submitReason,
+                receipt,
               }) : null,
               tab === 'market' ? h(MarketTab, {
                 searchQuery, setSearchQuery, runSearch, searchHits, watchlist, isWatched, toggleWatch,
