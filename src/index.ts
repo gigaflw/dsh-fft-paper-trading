@@ -24,6 +24,7 @@ import { UnavailableMarketData } from './data/unavailable-market-data.js'
 import { PaperService } from './service/paper-service.js'
 import { createPaperRoute, type HostConnectionLike } from './service/route.js'
 import { createPaperRpcHandler } from './service/rpc.js'
+import { PaperScheduler } from './service/scheduler.js'
 import { AccountRepo } from './store/repo.js'
 import { resolveDshHome } from './store/paths.js'
 import { WatchlistStore } from './store/watchlist.js'
@@ -33,6 +34,7 @@ export * from './contract.js'
 export { PaperService } from './service/paper-service.js'
 export { createPaperRpcHandler } from './service/rpc.js'
 export { createPaperRoute } from './service/route.js'
+export { PaperScheduler } from './service/scheduler.js'
 export { AccountRepo } from './store/repo.js'
 export { FtshareMarketData } from './data/ftshare-market-data.js'
 export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
@@ -66,6 +68,17 @@ export function apply(ctx: Context): void {
 
   const service = new PaperService({ repo, data, calendar, watchlist, logger })
   const handler = createPaperRpcHandler(service)
+
+  // Matching and day settlement must not depend on the panel being open: the
+  // host fiber drives `tick` even while the browser half is unmounted.
+  const scheduler = new PaperScheduler({ logger, tick: () => service.tick() })
+  ctx.effect(
+    () => {
+      scheduler.start()
+      return () => scheduler.stop()
+    },
+    'ft-paper-trading: matching scheduler',
+  )
 
   ctx.inject(['ftshareData'], scope => {
     const service = scope.get('ftshareData') as unknown as FtshareDataLike
