@@ -493,7 +493,7 @@ window.__ModuleLoader__.load({
      * The slot owns its own interval switch, so the built-in day/minute
      * buttons only exist for the fallback SVG (no dead controls).
      */
-    function KlinePane({ renderSlot, symbol, quote, bars, interval, onInterval, onRefresh, onIdentity }) {
+    function KlinePane({ renderSlot, symbol, quote, bars, error, interval, onInterval, onRefresh, onIdentity }) {
       const slot = typeof renderSlot === 'function'
         ? renderSlot('paperTrading.kline', { symbol, onIdentity })
         : null
@@ -548,7 +548,7 @@ window.__ModuleLoader__.load({
           showFallback ? h('div', { className: 'pt-note pt-kline-hint' },
             slotFailed
               ? 'K 线视图未加载，当前为内置简图。'
-              : '安装或升级 dsh_kline 后显示完整 K 线；当前为内置简图。',
+              : error !== '' ? error : '安装或升级 dsh_kline 后显示完整 K 线；当前为内置简图。',
             slotFailed ? h('button', {
               className: 'pt-btn', style: { marginLeft: 8 },
               onClick: () => { setSlotFailed(false); setSlotNonce(value => value + 1) },
@@ -1910,6 +1910,7 @@ window.__ModuleLoader__.load({
       const [marketList, setMarketList] = useState(null)
       const [marketBoard, setMarketBoard] = useState('main')
       const [bars, setBars] = useState([])
+      const [barError, setBarError] = useState('')
       const [barInterval, setBarInterval] = useState('day')
       const [daily, setDaily] = useState([])
       const [cashFlow, setCashFlow] = useState([])
@@ -2001,12 +2002,26 @@ window.__ModuleLoader__.load({
       }, [tick])
 
       const loadBars = useCallback(async (symbol = form.symbol) => {
-        if (symbol.trim().length < 6) return
+        if (symbol.trim().length < 6) {
+          // Do not leave the previous symbol's candles under a new title.
+          if (alive.current) { setBars([]); setBarError('') }
+          return
+        }
         try {
           const result = await rpc('market/bars', { symbol: symbol.trim(), interval: barInterval, limit: 80 })
-          if (alive.current) setBars(result.bars ?? [])
+          if (!alive.current) return
+          if (result.state === 'ok') {
+            setBars(result.bars ?? [])
+            setBarError('')
+          } else {
+            setBars([])
+            setBarError(result.notice ?? 'K 线数据暂不可用')
+          }
         } catch (cause) {
-          if (alive.current) setError(errorOf(cause))
+          if (!alive.current) return
+          setBars([])
+          setBarError('K 线数据暂不可用')
+          setError(errorOf(cause))
         }
       }, [form.symbol, barInterval])
 
@@ -2391,6 +2406,7 @@ window.__ModuleLoader__.load({
               symbol: form.symbol,
               quote,
               bars,
+              error: barError,
               interval: barInterval,
               onInterval: setBarInterval,
               onRefresh: () => loadBars(),
