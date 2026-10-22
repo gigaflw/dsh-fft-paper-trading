@@ -180,3 +180,72 @@ test('rpc: basket preview and place payloads', async () => {
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('route: wrong method, malformed body, oversize and bad endpoint are rejected', async () => {
+  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `route-${process.pid}-${Date.now()}`)
+  const data = {
+    async quotes() { return { state: 'ok', quotes: [] } },
+    async dailyBars() { return { state: 'ok', bars: [] } },
+    async minuteBars() { return { state: 'ok', bars: [] } },
+    async search() { return [] },
+    async marketList() { return { state: 'ok', quotes: [], page: 1 } },
+  }
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), watchlist: new WatchlistStore(home), now: () => NOW })
+  const route = createPaperRoute(createPaperRpcHandler(service))
+  const url = 'http://127.0.0.1/api/ft-paper-trading'
+  try {
+    const get = await route.fetch(new Request(url, { method: 'GET' }))
+    assert.equal(get.status, 405)
+
+    const malformed = await route.fetch(new Request(url, { method: 'POST', body: 'not json' }))
+    assert.equal(malformed.status, 400)
+    assert.equal((await malformed.json()).error.code, 'INVALID_ARGUMENT')
+
+    const nullBody = await route.fetch(new Request(url, { method: 'POST', body: 'null' }))
+    assert.equal(nullBody.status, 400)
+
+    const noEndpoint = await route.fetch(new Request(url, { method: 'POST', body: '{}' }))
+    assert.equal(noEndpoint.status, 400)
+    assert.match((await noEndpoint.json()).error.message, /endpoint/)
+
+    const huge = await route.fetch(new Request(url, {
+      method: 'POST',
+      headers: { 'content-length': String(256 * 1024 + 1) },
+      body: '{}',
+    }))
+    assert.equal(huge.status, 413)
+
+    const unknown = await route.fetch(new Request(url, {
+      method: 'POST', body: JSON.stringify({ endpoint: 'nope/get', payload: {} }),
+    }))
+    assert.equal(unknown.status, 200)
+    assert.equal((await unknown.json()).error.code, 'INVALID_ARGUMENT')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('rpc: an aborted request returns the cancellation envelope', async () => {
+  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `abort-${process.pid}-${Date.now()}`)
+  const data = {
+    async quotes() { return { state: 'ok', quotes: [] } },
+    async dailyBars() { return { state: 'ok', bars: [] } },
+    async minuteBars() { return { state: 'ok', bars: [] } },
+    async search() { return [] },
+    async marketList() { return { state: 'ok', quotes: [], page: 1 } },
+  }
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), watchlist: new WatchlistStore(home), now: () => NOW })
+  const handler = createPaperRpcHandler(service)
+  try {
+    const controller = new AbortController()
+    controller.abort()
+    const result = await handler('account/get', {}, controller.signal)
+    assert.equal(result.ok, false)
+    assert.equal(result.error.code, 'INVALID_ARGUMENT')
+    assert.match(result.error.message, /取消/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

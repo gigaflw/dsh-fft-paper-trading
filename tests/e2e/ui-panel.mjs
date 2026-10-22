@@ -196,6 +196,7 @@ try {
   assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
 
   const slotFallback = await scenario('slot-fallback')
+  assert('empty K-line slot shows a loading hint first', typeof slotFallback.loadingHint === 'string' && slotFallback.loadingHint.includes('K 线加载中'), slotFallback.loadingHint ?? '')
   assert('empty K-line slot falls back to the built-in chart', slotFallback.chart === true && slotFallback.panelAlive === true, JSON.stringify(slotFallback))
   assert('empty K-line slot explains and offers a retry', typeof slotFallback.hint === 'string' && slotFallback.hint.includes('K 线视图未加载') && slotFallback.retryButton === true, JSON.stringify(slotFallback))
 
