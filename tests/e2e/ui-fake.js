@@ -1751,6 +1751,25 @@
       result.stats = [...document.querySelectorAll('.pt-stat')].map(item => item.innerText)
       return result
     }
+    if (name === 'futures-review-poll') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
+      if (tab) e2e.click(tab)
+      await new Promise(done => setTimeout(done, 400))
+      let calls = 0
+      window.__fake.on('futures/review', () => {
+        calls += 1
+        return {
+          equityCurve: [], maxDrawdownPct: 0, tradeCount: 0, openCount: 0, closeCount: 0,
+          winCount: 0, lossCount: 0, totalFees: 0, realizedPnl: 0, byProduct: [],
+        }
+      })
+      await new Promise(done => setTimeout(done, 6500))
+      result.calls = calls
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      return result
+    }
     if (name === 'futures-close') {
       const closeButton = [...document.querySelectorAll('.pt-trade-book button')].find(button => button.innerText === '平仓')
       result.hasClose = Boolean(closeButton)

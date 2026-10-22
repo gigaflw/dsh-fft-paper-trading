@@ -295,6 +295,8 @@ try {
   assert('a slow review period cannot overwrite the newer one', Array.isArray(futuresReview.stats) && futuresReview.stats.some(text => text.includes('成交笔数') && text.trim().endsWith('30')), JSON.stringify(futuresReview.stats))
   const liveFutures = await scenario('live-futures')
   assert('futures rail re-prices on the polling tick', typeof liveFutures.rail === 'string' && liveFutures.rail.includes('3,300.00'), JSON.stringify(liveFutures))
+  const futuresReviewPoll = await scenario('futures-review-poll')
+  assert('the futures review refreshes on the poll', futuresReviewPoll.calls >= 1, JSON.stringify(futuresReviewPoll))
   const futuresClose = await scenario('futures-close')
   assert('closing from the book fills a close ticket', futuresClose.hasClose === true && typeof futuresClose.ticket === 'string' && futuresClose.ticket.includes('平多') && futuresClose.qty === '1', JSON.stringify(futuresClose))
   assert('close ticket submits and reports the fill', typeof futuresClose.receipt === 'string' && futuresClose.receipt.includes('平') && futuresClose.receipt.includes('成交'), JSON.stringify(futuresClose))
