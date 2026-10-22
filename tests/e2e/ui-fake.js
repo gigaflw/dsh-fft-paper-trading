@@ -1356,6 +1356,33 @@
       result.calls = window.__placeCalls
       return result
     }
+    if (name === 'futures-search-race') {
+      window.__fake.on('futures/contracts', async (payload) => {
+        if (payload.query === 'RB') {
+          await new Promise(done => setTimeout(done, 400))
+          return { state: 'ok', contracts: [futuresContract] }
+        }
+        if (payload.query === 'CU') {
+          await new Promise(done => setTimeout(done, 50))
+          return { state: 'ok', contracts: [futuresContract2] }
+        }
+        return { state: 'ok', contracts: [] }
+      })
+      const input = document.querySelector('input[placeholder^="合约代码"]')
+      const enter = element => element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      e2e.setInput(input, 'RB')
+      await new Promise(done => setTimeout(done, 50))
+      enter(input)
+      await new Promise(done => setTimeout(done, 60))
+      e2e.setInput(input, 'CU')
+      await new Promise(done => setTimeout(done, 50))
+      enter(input)
+      await e2e.wait(() => (document.querySelector('.pt-main')?.innerText ?? '').includes('CU2611'), 4000)
+      await new Promise(done => setTimeout(done, 600))
+      result.results = [...document.querySelectorAll('.pt-ticket-card > div:nth-child(2) button')].map(button => button.innerText).join('|')
+      window.__fake.on('futures/contracts', () => ({ state: 'ok', contracts: [futuresContract, futuresContract2] }))
+      return result
+    }
     if (name === 'futures-place-retry') {
       const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
       if (trade) e2e.click(trade)

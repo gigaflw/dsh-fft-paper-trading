@@ -267,6 +267,8 @@ try {
 
   const futuresPositionsClose = await scenario('futures-positions-close')
   assert('closing from the positions tab fills a close ticket', futuresPositionsClose.tab === '交易' && futuresPositionsClose.direction === '平多' && futuresPositionsClose.qty === '1', JSON.stringify(futuresPositionsClose))
+  const futuresSearchRace = await scenario('futures-search-race')
+  assert('a stale contract search cannot overwrite the latest', typeof futuresSearchRace.results === 'string' && futuresSearchRace.results.includes('CU2611') && !futuresSearchRace.results.includes('RB2611'), JSON.stringify(futuresSearchRace))
   const futuresPlaceRetry = await scenario('futures-place-retry')
   assert('a retried futures order reuses the request id', Array.isArray(futuresPlaceRetry.ids) && futuresPlaceRetry.ids.length === 2 && futuresPlaceRetry.ids[0] === futuresPlaceRetry.ids[1], JSON.stringify(futuresPlaceRetry))
   const futuresLimit = await scenario('futures-limit')
