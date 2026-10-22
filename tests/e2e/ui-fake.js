@@ -663,6 +663,16 @@
       result.errorAfter = document.querySelector('.pt-error')?.innerText ?? null
       return result
     }
+    if (name === 'market-adopt') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('行情'))
+      e2e.click(tab)
+      await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length > 0, 4000)
+      e2e.click(document.querySelector('.pt-main tbody tr'))
+      await new Promise(done => setTimeout(done, 300))
+      result.tab = [...document.querySelectorAll('.pt-tab')].find(item => item.getAttribute('data-active') === 'true')?.innerText ?? null
+      result.symbol = document.querySelector('.pt-ticket-form input')?.value ?? null
+      return result
+    }
     if (name === 'market-watch') {
       const tab = e2e.byText('行情')[0]
       e2e.click(tab)
@@ -1327,6 +1337,20 @@
         return book.includes('RB2611.SHFE') ? book.replace(/\n/g, ' ') : null
       }, 5000)
       result.calls = window.__calls.slice(-10)
+      return result
+    }
+    if (name === 'futures-positions-close') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('持仓'))
+      e2e.click(tab)
+      await e2e.wait(() => (document.querySelector('.pt-main')?.innerText ?? '').includes('到期日'), 4000)
+      const close = await e2e.wait(() => [...document.querySelectorAll('.pt-main button')].find(button => button.innerText === '平仓') ?? null, 4000)
+      result.found = Boolean(close)
+      if (close) close.click()
+      await new Promise(done => setTimeout(done, 500))
+      result.tab = [...document.querySelectorAll('.pt-tab')].find(item => item.getAttribute('data-active') === 'true')?.innerText ?? null
+      result.direction = [...document.querySelectorAll('.pt-ticket-form .pt-seg button')]
+        .find(button => button.getAttribute('data-active') === 'true')?.innerText ?? null
+      result.qty = document.querySelector('.pt-ticket-form input')?.value ?? null
       return result
     }
     if (name === 'futures-limit') {
