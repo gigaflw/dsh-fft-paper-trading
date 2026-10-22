@@ -13,6 +13,10 @@ window.__ModuleLoader__.load({
       ['30d', '30 天'],
       ['all', '全部'],
     ]
+    // The futures account has no market page and no K-line: search lives inside
+    // the ticket, so the wallet pages match the stock ones one for one.
+    const FUTURES_TABS = ['trade', 'positions', 'orders', 'review']
+    const FUTURES_TAB_LABEL = { trade: '交易', positions: '持仓', orders: '订单', review: '复盘' }
 
     /* ---------------------------------------------------------------- text --
        Pure formatting and vocabularies. Times are always zh-CN /
@@ -109,6 +113,36 @@ window.__ModuleLoader__.load({
       insufficient_cash: '资金不足',
       insufficient_position: '可卖不足',
     }
+    /** Basket row states; the raw codes never reach the table. */
+    const BASKET_STATUS_TEXT = {
+      ok: '可买',
+      zero_lot: '不足 1 手',
+      no_quote: '无行情',
+      suspended: '停牌',
+    }
+    const FUTURES_PHASE_TEXT = {
+      pre_open: '集合竞价',
+      trading: '交易中',
+      lunch: '午休',
+      closed: '已收盘',
+    }
+    const FUTURES_STATUS_TEXT = {
+      pending: '挂单',
+      filled: '成交',
+      canceled: '已撤',
+      rejected: '拒绝',
+      expired: '过期',
+    }
+    /** Position direction; orders use the open/close form below. */
+    const FUTURES_SIDE_TEXT = { long: '多', short: '空' }
+    const FUTURES_DIRECTION_TEXT = {
+      long_open: '开多',
+      short_open: '开空',
+      long_close: '平多',
+      short_close: '平空',
+    }
+    const directionText = (side, offset) => FUTURES_DIRECTION_TEXT[`${side}_${offset}`] ?? '—'
+    const orderTypeText = type => type === 'limit' ? '限价' : '市价'
     const ERROR_TEXT = {
       ACCOUNT_BLOCKED: '账户已锁定，请先重置或导出账本',
       INVALID_ARGUMENT: '参数不合法',
@@ -128,6 +162,12 @@ window.__ModuleLoader__.load({
       PRICE_LIMIT: '价格超出涨跌停范围',
       SUSPENDED: '标的停牌',
       INSUFFICIENT_LIQUIDITY: '可成交量不足',
+      INSUFFICIENT_MARGIN: '保证金不足',
+      CONTRACT_NOT_FOUND: '合约不存在',
+      CONTRACT_EXPIRED: '合约临近交割或已到期',
+      NO_VOLUME: '当日无成交',
+      LIMIT_UNAVAILABLE: '暂无涨跌停数据',
+      MARGIN_UNAVAILABLE: '暂无保证金率数据',
       INTERNAL: '内部错误',
     }
     const CODE_PREFIX = /^([A-Z_]+):\s*(.*)$/
@@ -311,6 +351,11 @@ window.__ModuleLoader__.load({
       .pt-chart { width:100%; height:120px; display:block; }
       .pt-chart-wrap { border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.12));
         border-radius:var(--dsw-radius-sm, 8px); padding:8px; }
+      /* Futures: the element rail is narrower than the K-line rail, and the
+         risk figure turns amber before the account reaches the liquidation line. */
+      .pt-workspace-futures { grid-template-columns:minmax(0, 1fr) clamp(260px, 30%, 400px); }
+      .pt-futures-rail { position:sticky; top:calc(12px + var(--dsh-frame-top-clearance, 0px)); align-self:start; min-width:0; }
+      .pt-risk-high { color:var(--dsw-alias-state-warn-primary, #8a6410); }
       /* Breakpoints follow the panel's own width, not the window's: the centre
          column also yields to the sidebar and the right pane, so a wide screen
          can still leave a narrow trading surface. */
@@ -321,8 +366,9 @@ window.__ModuleLoader__.load({
       }
       @container paper-main (max-width: 460px) { .pt-ticket-form { grid-template-columns:minmax(0, 1fr); } }
       @container paper-panel (max-width: 1100px) {
-        .pt-workspace { grid-template-columns:minmax(0, 1fr); }
+        .pt-workspace, .pt-workspace-futures { grid-template-columns:minmax(0, 1fr); }
         .pt-kline-rail { position:static; order:-1; }
+        .pt-futures-rail { position:static; order:-1; }
         .pt-kline-body { height:360px; }
       }
       @container paper-panel (max-width: 760px) {
@@ -353,6 +399,15 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'pt-table-wrap' }, h('table', { className: 'pt-table' }, children))
     }
 
+    /** A label/value row inside the `.pt-preview` cards. */
+    const previewRow = (label, value) => h('div', null, h('span', null, label), h('span', null, value))
+
+    /** One cell of the compact `.pt-stats` strip. */
+    const statCell = (label, value, tone) => h('div', { className: 'pt-stat' },
+      h('div', { className: 'pt-stat-label' }, label),
+      h('div', { className: tone ? `pt-stat-value ${tone}` : 'pt-stat-value' }, value),
+    )
+
     function DebouncedNumber({ value, onChange, placeholder, min, step }) {
       return h('input', {
         className: 'pt-input',
@@ -363,6 +418,15 @@ window.__ModuleLoader__.load({
         step,
         onChange: event => onChange(event.target.value),
       })
+    }
+
+    /** Top-level account switch: the stock and futures ledgers are independent. */
+    function AccountSwitch({ mode, onChange }) {
+      return h('div', { className: 'pt-seg', role: 'group', 'aria-label': '账户' },
+        [['stock', '股票'], ['futures', '期货']].map(([key, label]) =>
+          h('button', { key, 'data-active': mode === key, onClick: () => onChange(key) }, label),
+        ),
+      )
     }
 
     function EquityChart({ points }) {
@@ -830,9 +894,903 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /* --------------------------------------------------------- basket ----- */
+
+    /**
+     * Basket import: CSV in, host-computed plan out. Confirming submits the
+     * plan's `{symbol, qty}` rows verbatim, so the quantities the user sees are
+     * the quantities that reach the ledger. All state is local: leaving the tab
+     * unmounts the panel and clears the import.
+     */
+    function BasketTab({ account, onDone }) {
+      const [csv, setCsv] = useState('')
+      const [fileName, setFileName] = useState('')
+      const [budget, setBudget] = useState('')
+      const [preview, setPreview] = useState(null)
+      const [result, setResult] = useState(null)
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+
+      // Empty means "host uses the available cash"; the input is yuan, cents go out.
+      const budgetCents = useMemo(() => {
+        const text = budget.trim()
+        if (text === '') return undefined
+        const value = Number(text)
+        return Number.isFinite(value) && value > 0 ? Math.round(value * 100) : NaN
+      }, [budget])
+
+      const readFile = useCallback(async event => {
+        const file = event.target.files && event.target.files[0]
+        // Clear the value so picking the same file again still fires a change.
+        event.target.value = ''
+        if (!file) return
+        setError('')
+        setPreview(null)
+        setResult(null)
+        setFileName(file.name)
+        try {
+          setCsv(await file.text())
+        } catch {
+          setError('读取文件失败')
+        }
+      }, [])
+
+      const runPreview = useCallback(async () => {
+        if (csv.trim() === '') return
+        if (Number.isNaN(budgetCents)) {
+          setError('预算需为正数')
+          return
+        }
+        setBusy(true)
+        setError('')
+        setResult(null)
+        try {
+          const payload = { csv }
+          if (budgetCents !== undefined) payload.budgetCents = budgetCents
+          setPreview(await rpc('basket/preview', payload))
+        } catch (cause) {
+          setError(errorOf(cause).text)
+          setPreview(null)
+        } finally {
+          setBusy(false)
+        }
+      }, [csv, budgetCents])
+
+      const rows = useMemo(
+        () => preview === null ? [] : preview.rows.filter(row => row.qty > 0).map(row => ({ symbol: row.symbol, qty: row.qty })),
+        [preview],
+      )
+      const placeReason = useMemo(() => {
+        if (account !== null && account.blocked === true) return '账户已锁定'
+        if (preview === null) return '先预览配股'
+        if (rows.length === 0) return '没有可下单的行'
+        if (preview.session && preview.session.canMatch === false) return '当前时段不能市价成交'
+        return ''
+      }, [account, preview, rows])
+
+      const place = useCallback(async () => {
+        if (busy || placeReason !== '') return
+        setBusy(true)
+        setError('')
+        try {
+          const batchId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `basket-${Date.now()}`
+          setResult(await rpc('basket/place', { batchId, rows }))
+          if (typeof onDone === 'function') await onDone()
+        } catch (cause) {
+          setError(errorOf(cause).text)
+        } finally {
+          setBusy(false)
+        }
+      }, [busy, placeReason, rows, onDone])
+
+      return h('div', { className: 'pt-trade' },
+        h('div', { className: 'pt-card pt-ticket-card' },
+          h('div', { className: 'pt-card-title' }, '导入组合'),
+          h('div', { className: 'pt-row' },
+            h(Field, { label: 'CSV 文件' }, h('input', {
+              className: 'pt-input', type: 'file', accept: '.csv,text/csv', onChange: readFile,
+            })),
+            fileName !== '' ? h('div', { className: 'pt-note' }, fileName) : null,
+            h(Field, { label: '预算（元）' }, h('input', {
+              className: 'pt-input', style: { width: 140 }, value: budget, inputMode: 'decimal',
+              placeholder: account === null ? '默认可用现金' : `默认可用 ${money(account.cash)}`,
+              onChange: event => setBudget(event.target.value),
+            })),
+            h('button', {
+              className: 'pt-btn pt-btn-primary', onClick: runPreview, disabled: busy || csv.trim() === '',
+            }, busy ? '预览中…' : '预览配股'),
+          ),
+          h('div', { className: 'pt-note' }, '两列「代码,权重」，最多 20 只；仅连续竞价时段可下单'),
+          error !== '' ? h('div', { className: 'pt-error', style: { marginTop: 8 } }, error) : null,
+        ),
+        preview !== null ? h('div', { className: 'pt-card' },
+          h('div', { className: 'pt-card-title' }, '预览'),
+          h(Table, null,
+            h('thead', null, h('tr', null,
+              ['代码', '名称', '目标权重', '目标金额', '股数', '金额', '费用', '实际权重', '状态'].map(label => h('th', { key: label }, label)),
+            )),
+            h('tbody', null, preview.rows.map(row => h('tr', { key: row.symbol },
+              h('td', null, row.symbol),
+              h('td', null, row.name ?? '—'),
+              h('td', null, pct(row.weight)),
+              h('td', null, cents(row.targetCents)),
+              h('td', null, count(row.qty)),
+              h('td', null, cents(row.amountCents)),
+              h('td', null, cents(row.feesCents)),
+              h('td', null, pct(row.actualWeight)),
+              h('td', {
+                title: row.warning || undefined,
+                className: row.status === 'ok' ? undefined : 'pt-note',
+              }, BASKET_STATUS_TEXT[row.status] ?? row.status),
+            ))),
+          ),
+          h('div', { className: 'pt-quote', style: { marginTop: 8 } },
+            [['合计金额', preview.totalAmountCents], ['费用', preview.totalFeesCents],
+              ['剩余现金', preview.residualCents], ['成交后现金', preview.cashAfterCents]].map(([label, value]) =>
+              h('span', { key: label }, `${label} ${cents(value)}`)),
+          ),
+          preview.issues.length > 0 ? h('div', { className: 'pt-error', style: { marginTop: 8 } },
+            preview.issues.map(issue => `${issue.line > 0 ? `第 ${issue.line} 行：` : ''}${issue.message}`).join('；'),
+          ) : null,
+          preview.warnings.length > 0 ? h('div', { className: 'pt-note', style: { marginTop: 8 } }, preview.warnings.join('；')) : null,
+          h('div', { className: 'pt-row', style: { marginTop: 8 } },
+            placeReason !== '' ? h('div', { className: 'pt-note', style: { marginRight: 'auto' } }, placeReason) : null,
+            h('button', {
+              className: 'pt-btn pt-btn-primary', onClick: place, disabled: busy || placeReason !== '',
+              title: placeReason || undefined,
+            }, busy ? '提交中…' : '确认下单'),
+          ),
+        ) : null,
+        result !== null ? h('div', { className: 'pt-card' },
+          h('div', { className: 'pt-card-title' }, '下单结果'),
+          h(Table, null,
+            h('thead', null, h('tr', null,
+              ['代码', '状态', '数量', '成交价', '原因'].map(label => h('th', { key: label }, label)),
+            )),
+            h('tbody', null, result.rows.map(row => h('tr', { key: row.symbol },
+              h('td', null, row.symbol),
+              h('td', null, row.order ? STATUS_TEXT[row.order.status] ?? row.order.status : '拒绝'),
+              h('td', null, count(row.order ? row.order.qty : undefined)),
+              h('td', null, row.order && row.order.fillPrice !== undefined ? money(row.order.fillPrice) : '—'),
+              h('td', { title: row.error ?? row.order?.reason ?? undefined }, reasonText(row.error ?? row.order?.reason)),
+            ))),
+          ),
+          h('div', { className: 'pt-note', style: { marginTop: 8 } }, `成交后现金 ${cents(result.cashAfterCents)}`),
+        ) : null,
+      )
+    }
+
+    /* -------------------------------------------------------- futures ----- */
+
+    /**
+     * Futures dashboard: its own endpoints, polling loop and reset. The stock
+     * half never reads this state, so either account can fail or reset alone.
+     */
+    function FuturesDashboard({ accountSwitch }) {
+      const [account, setAccount] = useState(null)
+      const [status, setStatus] = useState(null)
+      const [positions, setPositions] = useState([])
+      const [orders, setOrders] = useState([])
+      const [review, setReview] = useState(null)
+      const [period, setPeriod] = useState('30d')
+      const [tab, setTab] = useState('trade')
+      const [error, setError] = useState(null)
+      const [notice, setNotice] = useState('')
+      const [busy, setBusy] = useState(false)
+      const [searchQuery, setSearchQuery] = useState('')
+      const [searching, setSearching] = useState(false)
+      const [contracts, setContracts] = useState(null)
+      const [contractNotice, setContractNotice] = useState('')
+      const [contract, setContract] = useState(null)
+      const [quote, setQuote] = useState(null)
+      const [quoteNotice, setQuoteNotice] = useState('')
+      const [preview, setPreview] = useState(null)
+      const [previewState, setPreviewState] = useState('idle')
+      const [previewError, setPreviewError] = useState('')
+      const [previewNonce, setPreviewNonce] = useState(0)
+      const [receipt, setReceipt] = useState(null)
+      const [form, setForm] = useState({
+        side: 'long', offset: 'open', type: 'market', qty: '1', limitPrice: '', price: '', note: '',
+      })
+
+      const alive = useRef(true)
+      useEffect(() => {
+        alive.current = true
+        return () => { alive.current = false }
+      }, [])
+
+      const loadAll = useCallback(async (quiet = false) => {
+        try {
+          const [nextAccount, nextStatus, nextPositions, nextOrders] = await Promise.all([
+            rpc('futures/account/get'),
+            rpc('futures/status'),
+            rpc('futures/positions'),
+            rpc('futures/orders'),
+          ])
+          if (!alive.current) return null
+          setAccount(nextAccount)
+          setStatus(nextStatus)
+          setPositions(nextPositions)
+          setOrders(nextOrders)
+          if (!quiet) setError(null)
+          return { account: nextAccount }
+        } catch (cause) {
+          if (alive.current) setError(errorOf(cause))
+          return null
+        }
+      }, [])
+
+      useEffect(() => { loadAll() }, [loadAll])
+
+      const loadReview = useCallback(async (key = period) => {
+        try {
+          const next = await rpc('futures/review', { period: key })
+          if (alive.current) setReview(next)
+        } catch (cause) {
+          if (alive.current) setError(errorOf(cause))
+        }
+      }, [period])
+
+      useEffect(() => {
+        if (tab === 'review') void loadReview()
+      }, [tab, loadReview])
+
+      // The host scheduler settles; this is the visible-panel extra trigger.
+      const poll = useCallback(async () => {
+        try {
+          const tick = await rpc('futures/tick')
+          if (!alive.current) return
+          if (tick.filled.length > 0) setNotice(`成交 ${tick.filled.length} 笔`)
+          if (tick.notices.length > 0) setNotice(tick.notices.join('；'))
+          await loadAll(true)
+        } catch {
+          // Polling failures stay silent; the manual refresh shows the error.
+        }
+      }, [loadAll])
+
+      useEffect(() => {
+        const timer = setInterval(() => {
+          if (document.visibilityState === 'visible') poll()
+        }, 5000)
+        return () => clearInterval(timer)
+      }, [poll])
+
+      const searchContracts = useCallback(async (refresh = false) => {
+        setSearching(true)
+        try {
+          const payload = { limit: 20 }
+          if (searchQuery.trim() !== '') payload.query = searchQuery.trim()
+          if (refresh) payload.refresh = true
+          const result = await rpc('futures/contracts', payload)
+          if (!alive.current) return
+          setContracts(result.contracts ?? [])
+          setContractNotice(result.notice ?? '')
+          if (result.state === 'denied' || result.state === 'failed') {
+            setError(errorOf(new Error(result.notice ?? '合约列表不可用')))
+          }
+        } catch (cause) {
+          if (alive.current) setError(errorOf(cause))
+        } finally {
+          if (alive.current) setSearching(false)
+        }
+      }, [searchQuery])
+
+      const fetchQuote = useCallback(async symbol => {
+        try {
+          const result = await rpc('futures/quote', { symbols: [symbol] })
+          if (!alive.current) return
+          setQuote(result.quotes[0] ?? null)
+          setQuoteNotice(result.quotes.length === 0 ? (result.notice ?? '取不到行情，可手填参考价') : '')
+        } catch {
+          if (!alive.current) return
+          setQuote(null)
+          setQuoteNotice('取不到行情，可手填参考价')
+        }
+      }, [])
+
+      const selectContract = useCallback(next => {
+        setContract(next)
+        setQuote(null)
+        setQuoteNotice('')
+        setPreview(null)
+        setPreviewError('')
+        setPreviewNonce(value => value + 1)
+        void fetchQuote(next.symbol)
+      }, [fetchQuote])
+
+      /** Closing from a book only fills the ticket; the user still confirms. */
+      const selectPosition = useCallback(position => {
+        setContract({
+          symbol: position.symbol,
+          name: position.name,
+          multiplier: position.multiplier,
+          marginRate: position.marginRate,
+          deListDate: position.deListDate,
+        })
+        setQuote(null)
+        setQuoteNotice('')
+        setPreview(null)
+        setForm(prev => ({ ...prev, side: position.side, offset: 'close', type: 'market', qty: String(position.qty) }))
+        setTab('trade')
+        setPreviewNonce(value => value + 1)
+        void fetchQuote(position.symbol)
+      }, [fetchQuote])
+
+      const futuresDraft = useCallback(() => ({
+        symbol: contract === null ? '' : contract.symbol,
+        side: form.side,
+        offset: form.offset,
+        type: form.type,
+        qty: Number(form.qty),
+        limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
+        // Manual fallback only for a market close, per the contract's draft shape.
+        price: form.type === 'market' && form.offset === 'close' && form.price !== '' ? Number(form.price) : undefined,
+        note: form.note.trim() === '' ? undefined : form.note.trim(),
+      }), [contract, form])
+
+      const previewDraft = useCallback(() => contract === null ? null : {
+        symbol: contract.symbol,
+        side: form.side,
+        offset: form.offset,
+        type: form.type,
+        qty: Number(form.qty),
+        limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
+        price: form.type === 'market' && form.offset === 'close' && form.price !== '' ? Number(form.price) : undefined,
+      }, [
+        contract, form.side, form.offset, form.type, form.qty, form.limitPrice, form.price,
+      ])
+
+      const previewSeq = useRef(0)
+      useEffect(() => {
+        previewSeq.current += 1
+        const seq = previewSeq.current
+        const draft = previewDraft()
+        if (draft === null) {
+          setPreview(null)
+          setPreviewState('idle')
+          setPreviewError('')
+          return
+        }
+        if (!Number.isInteger(draft.qty) || draft.qty <= 0 || (draft.type === 'limit' && !(draft.limitPrice > 0))) {
+          setPreview(null)
+          setPreviewState('idle')
+          setPreviewError('')
+          return
+        }
+        setPreviewState('loading')
+        const timer = setTimeout(() => {
+          rpc('futures/preview', draft)
+            .then(result => {
+              if (!alive.current || seq !== previewSeq.current) return
+              setPreview(result)
+              setPreviewError('')
+              setPreviewState('ready')
+            })
+            .catch(cause => {
+              if (!alive.current || seq !== previewSeq.current) return
+              setPreviewError(errorOf(cause).text)
+              setPreviewState('error')
+            })
+        }, 300)
+        return () => clearTimeout(timer)
+      }, [previewDraft, previewNonce])
+
+      const pending = useMemo(() => orders.filter(order => order.status === 'pending'), [orders])
+      const history = useMemo(() => orders.filter(order => order.status !== 'pending'), [orders])
+
+      const previewHint = useMemo(() => {
+        if (contract === null) return '搜索并选择合约后自动计算'
+        if (!Number.isInteger(Number(form.qty)) || Number(form.qty) <= 0) return '填写手数后自动计算'
+        if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价后自动计算'
+        return ''
+      }, [contract, form.qty, form.type, form.limitPrice])
+
+      const submitReason = useMemo(() => {
+        if (account === null) return '加载账户中'
+        if (account.blocked === true) return '账户已锁定'
+        if (contract === null) return '选择合约'
+        const qty = Number(form.qty)
+        if (!Number.isInteger(qty) || qty <= 0) return '手数需为正整数'
+        if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
+        if (status !== null && status.canSubmit === false) return '当前时段不可下单'
+        if (form.type === 'market' && status !== null && status.canMatch === false) return '当前时段不能市价成交'
+        if (form.offset === 'close' && preview !== null && qty > preview.availableCloseQty) return '可平手数不足'
+        return ''
+      }, [account, contract, form, status, preview])
+
+      const doSubmit = useCallback(async () => {
+        if (submitReason !== '') return
+        setBusy(true)
+        setReceipt(null)
+        try {
+          const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}`
+          const order = await rpc('futures/order', { draft: futuresDraft(), requestId })
+          const snapshot = await loadAll(true)
+          setReceipt({ order, cash: snapshot === null ? undefined : snapshot.account.cash })
+          setPreviewNonce(value => value + 1)
+        } catch (cause) {
+          setReceipt({ failure: errorOf(cause) })
+        } finally {
+          setBusy(false)
+        }
+      }, [submitReason, futuresDraft, loadAll])
+
+      const cancel = useCallback(async orderId => {
+        setBusy(true)
+        try {
+          await rpc('futures/cancel', { orderId })
+          await loadAll(true)
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [loadAll])
+
+      const exportLedger = useCallback(async () => {
+        try {
+          const result = await rpc('futures/account/export')
+          if (!result.exists || !result.content) {
+            setNotice(result.notice ?? '账本文件尚未创建')
+            return
+          }
+          if (typeof document !== 'undefined' && typeof URL !== 'undefined' && typeof Blob !== 'undefined') {
+            const blob = new Blob([result.content], { type: 'application/x-ndjson' })
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'futures-events.jsonl'
+            link.click()
+            URL.revokeObjectURL(url)
+          }
+          setNotice(`已导出期货账本：${result.path}`)
+        } catch (cause) {
+          setError(errorOf(cause))
+        }
+      }, [])
+
+      const refreshAll = useCallback(async () => {
+        setBusy(true)
+        try {
+          await loadAll()
+          if (tab === 'review') await loadReview()
+          setPreviewNonce(value => value + 1)
+        } finally {
+          setBusy(false)
+        }
+      }, [loadAll, loadReview, tab])
+
+      const reset = useCallback(async () => {
+        if (!window.confirm('重置期货模拟账户？持仓与挂单会清空，账本会先备份。')) return
+        setBusy(true)
+        try {
+          setAccount(await rpc('futures/account/reset', { confirm: true }))
+          setPreview(null)
+          setReceipt(null)
+          await loadAll(true)
+          if (tab === 'review') await loadReview()
+          setPreviewNonce(value => value + 1)
+          setNotice('期货账户已重置')
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [loadAll, loadReview, tab])
+
+      if (account === null) {
+        return h('div', { className: 'pt-inner' },
+          h('div', { className: 'pt-head' },
+            h('div', null, h('h3', { className: 'pt-title' }, '模拟交易'), h('div', { className: 'pt-sub' }, '期货账户')),
+            h('div', { className: 'pt-row' }, accountSwitch),
+          ),
+          error
+            ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text)
+            : h('div', { className: 'pt-empty' }, '加载期货模拟交易…'),
+        )
+      }
+
+      // Amber from the configured warning line (80% by default), never hard-coded.
+      const riskWarn = isFiniteNumber(account.riskRatio) && account.riskRatio >= (account.settings?.warnRiskRatio ?? 0.8)
+      const displayQuote = quote ?? (preview !== null ? preview.quote ?? null : null)
+      const tabBar = h('div', { className: 'pt-tabs' }, FUTURES_TABS.map(key => {
+        const badge = key === 'positions' ? ` ${positions.length}` : key === 'orders' ? ` ${pending.length}` : ''
+        return h('button', {
+          key, className: 'pt-tab', 'data-active': tab === key, onClick: () => setTab(key),
+        }, `${FUTURES_TAB_LABEL[key]}${badge}`)
+      }))
+      const tabBody = tab === 'trade'
+        ? h(FuturesTradeTab, {
+          account, searchQuery, setSearchQuery, searchContracts, searching, contracts, contractNotice,
+          contract, selectContract, form, setForm, quote: displayQuote, quoteNotice,
+          preview, previewState, previewError, previewHint,
+          busy, onSubmit: doSubmit, submitReason, receipt,
+          positions, pending, onCancel: cancel, onClose: selectPosition,
+        })
+        : tab === 'positions'
+          ? h(FuturesPositionsTab, { positions, onClose: selectPosition })
+          : tab === 'orders'
+            ? h(FuturesOrdersTab, { pending, history, busy, onCancel: cancel })
+            : h(FuturesReviewTab, {
+              review, period,
+              setPeriod: key => {
+                setPeriod(key)
+                void loadReview(key)
+              },
+            })
+
+      return h('div', { className: 'pt-inner' },
+        h('div', { className: 'pt-head' },
+          h('div', null,
+            h('h3', { className: 'pt-title' }, '模拟交易'),
+            h('div', { className: 'pt-sub' },
+              `期货 · ${account.tradeDate || '—'} · ${status ? FUTURES_PHASE_TEXT[status.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
+              status && !status.canSubmit ? h('span', { className: 'pt-note' }, '（当前时段只读）') : null,
+            ),
+          ),
+          h('div', { className: 'pt-row' },
+            accountSwitch,
+            h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
+            h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
+          ),
+        ),
+        account.blocked ? h('div', { className: 'pt-blocked' },
+          h('div', { className: 'pt-blocked-text' },
+            h('div', null, '期货账本校验失败，账户已锁定。'),
+            account.blockedReason ? h('div', { className: 'pt-blocked-detail', title: account.blockedReason }, `原因：${account.blockedReason}`) : null,
+            account.ledgerPath ? h('div', { className: 'pt-blocked-detail', title: account.ledgerPath }, `账本：${account.ledgerPath}`) : null,
+            h('div', { className: 'pt-blocked-hint' }, '修复后需完全退出并重开 DSH；重置会先备份。'),
+          ),
+          h('div', { className: 'pt-row' },
+            h('button', { className: 'pt-btn', onClick: exportLedger, disabled: busy }, '导出账本'),
+          ),
+        ) : null,
+        h('div', { className: 'pt-stats' },
+          statCell('总权益', money(account.equity)),
+          statCell('可用资金', money(account.cash)),
+          statCell('保证金占用', money(account.margin)),
+          statCell('风险度', pct(account.riskRatio), riskWarn ? 'pt-risk-high' : ''),
+        ),
+        error ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text) : null,
+        notice ? h('div', { className: 'pt-note' }, notice) : null,
+        tab === 'trade'
+          ? h('div', { className: 'pt-workspace pt-workspace-futures' },
+            h('div', { className: 'pt-main' }, tabBar, h('div', { className: 'pt-tab-body' }, tabBody)),
+            h(FuturesContractRail, {
+              contract,
+              quote: displayQuote,
+              limit: preview !== null ? preview.limit ?? null : null,
+            }),
+          )
+          : h('div', { className: 'pt-main' }, tabBar, h('div', { className: 'pt-tab-body' }, tabBody)),
+      )
+    }
+
+    /** Futures ticket: search picks the contract, direction is open/close × long/short. */
+    function FuturesTradeTab({
+      account, searchQuery, setSearchQuery, searchContracts, searching, contracts, contractNotice,
+      contract, selectContract, form, setForm, quote, quoteNotice, preview, previewState, previewError, previewHint,
+      busy, onSubmit, submitReason, receipt, positions, pending, onCancel, onClose,
+    }) {
+      const [book, setBook] = useState(() => (positions.length === 0 && pending.length > 0 ? 'orders' : 'positions'))
+      const emptyPreview = previewHint !== ''
+        ? previewHint
+        : previewState === 'loading' ? '计算中…' : previewError !== '' ? previewError : '计算中…'
+      return h('div', { className: 'pt-trade' },
+        h('div', { className: 'pt-card pt-ticket-card' },
+          h('div', { className: 'pt-row' },
+            h('input', {
+              className: 'pt-input', style: { flex: 1, minWidth: 180 }, value: searchQuery,
+              placeholder: '合约代码/品种/中文名，例如 rb2611',
+              onChange: event => setSearchQuery(event.target.value),
+              onKeyDown: event => { if (event.key === 'Enter') void searchContracts() },
+            }),
+            h('button', { className: 'pt-btn', onClick: () => searchContracts(), disabled: searching }, searching ? '搜索中…' : '搜索'),
+            h('button', { className: 'pt-btn', onClick: () => searchContracts(true), disabled: searching, title: '重新拉取合约列表' }, '刷新合约'),
+          ),
+          contracts === null
+            ? h('div', { className: 'pt-note' }, contract !== null ? `已选 ${contract.symbol} ${contract.name ?? ''}` : '输入代码搜索合约')
+            : contracts.length === 0
+              ? h('div', { className: 'pt-empty' }, contractNotice || '没有匹配的合约')
+              : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8, maxHeight: 150, overflow: 'auto' } },
+                contracts.map(item => h('button', {
+                  key: item.symbol, className: 'pt-btn', 'data-active': contract !== null && contract.symbol === item.symbol,
+                  style: { textAlign: 'left' },
+                  onClick: () => selectContract(item),
+                }, `${item.symbol} ${item.name ?? ''}${item.exchange ? ` · ${item.exchange}` : ''}`)),
+              ),
+          h('div', { className: 'pt-ticket' },
+            h('div', { className: 'pt-ticket-form' },
+              h(Field, { label: '合约', span: true },
+                h('div', { className: 'pt-quote' },
+                  contract !== null
+                    ? h('span', null, `${contract.symbol} ${contract.name ?? ''}`)
+                    : h('span', { className: 'pt-note' }, '尚未选择合约'),
+                  quote !== null ? h('span', null, `最新 ${money(quote.last)}`) : null,
+                  quoteNotice !== '' ? h('span', { className: 'pt-note' }, quoteNotice) : null,
+                ),
+              ),
+              h(Field, { label: '方向', span: true },
+                h('div', { className: 'pt-seg' },
+                  [['long', 'open', '开多'], ['short', 'open', '开空'], ['long', 'close', '平多'], ['short', 'close', '平空']].map(([side, offset, label]) =>
+                    h('button', {
+                      key: `${side}_${offset}`, 'data-active': form.side === side && form.offset === offset,
+                      onClick: () => setForm(prev => ({ ...prev, side, offset })),
+                    }, label),
+                  ),
+                ),
+              ),
+              h(Field, { label: '类型' }, h('div', { className: 'pt-seg' },
+                [['market', '市价'], ['limit', '限价']].map(([key, label]) =>
+                  h('button', { key, 'data-active': form.type === key, onClick: () => setForm(prev => ({ ...prev, type: key })) }, label)),
+              )),
+              h(Field, { label: '手数' }, h(DebouncedNumber, {
+                value: form.qty, min: 1, step: 1,
+                onChange: value => setForm(prev => ({ ...prev, qty: value })),
+              })),
+              h(Field, { label: form.type === 'limit' ? '限价' : '参考价（可选）' }, h(DebouncedNumber, {
+                value: form.type === 'limit' ? form.limitPrice : form.price, min: 0, step: 0.01,
+                onChange: value => setForm(prev => prev.type === 'limit'
+                  ? { ...prev, limitPrice: value }
+                  : { ...prev, price: value }),
+              })),
+              h(Field, { label: '备注（复盘用）', span: true }, h('input', {
+                className: 'pt-input', value: form.note, maxLength: 120,
+                onChange: event => setForm(prev => ({ ...prev, note: event.target.value })),
+              })),
+            ),
+            h('div', { className: 'pt-preview-pane' },
+              h('div', { className: 'pt-card-title', style: { marginBottom: 6 } }, '预览'),
+              preview !== null ? h('div', { className: 'pt-preview' },
+                previewRow('预估成交价', money(preview.price)),
+                previewRow('合约价值', cents(preview.amountCents)),
+                previewRow('保证金', cents(preview.marginCents)),
+                previewRow('手续费', cents(preview.feesCents)),
+                previewRow('成交后现金', cents(preview.cashAfterCents)),
+                previewRow('风险度', pct(preview.riskRatioAfter)),
+                previewRow('最多可开', `${count(preview.maxOpenQty)} 手`),
+                previewRow('平仓可平', `${count(preview.availableCloseQty)} 手`),
+                previewRow('涨跌停', preview.limit
+                  ? `${money(preview.limit.upper)} / ${money(preview.limit.lower)}`
+                  : '—'),
+                previewState === 'loading' ? h('div', { className: 'pt-note' }, '计算中…') : null,
+                preview.warnings.length > 0 ? h('div', { className: 'pt-warn' }, preview.warnings.join('；')) : null,
+                previewState === 'error' && previewError !== '' ? h('div', { className: 'pt-warn' }, previewError) : null,
+              ) : h('div', { className: 'pt-empty' }, emptyPreview),
+            ),
+          ),
+          h('div', { className: 'pt-ticket-foot' },
+            submitReason !== '' ? h('div', { className: 'pt-note' }, `不可提交：${submitReason}`) : null,
+            h('button', {
+              className: 'pt-btn pt-btn-primary pt-ticket-submit', onClick: onSubmit,
+              title: submitReason || undefined,
+              disabled: busy || submitReason !== '',
+            }, directionText(form.side, form.offset)),
+            h('div', { className: 'pt-ticket-meta' },
+              h('span', { className: 'pt-note' },
+                `可用 ${money(account.cash)} · 保证金 ${money(account.margin)} · 风险度 ${pct(account.riskRatio)}`),
+            ),
+            receipt ? h(FuturesReceiptLine, { receipt }) : null,
+          ),
+        ),
+        h(FuturesBook, { positions, pending, book, setBook, busy, onCancel, onClose }),
+      )
+    }
+
+    /** Persistent holdings/orders book under the futures ticket. */
+    function FuturesBook({ positions, pending, book, setBook, busy, onCancel, onClose }) {
+      const showPositions = book === 'positions'
+      return h('div', { className: 'pt-card pt-trade-book' },
+        h('div', { className: 'pt-book-head' },
+          h('div', { className: 'pt-seg' },
+            h('button', { 'data-active': showPositions, onClick: () => setBook('positions') }, `持仓 ${positions.length}`),
+            h('button', { 'data-active': !showPositions, onClick: () => setBook('orders') }, `挂单 ${pending.length}`),
+          ),
+          h('div', { className: 'pt-note' }, showPositions ? '收盘按结算价盯市' : '未成交委托，可随时撤单'),
+        ),
+        h('div', { className: 'pt-book-scroll' },
+          showPositions
+            ? (positions.length === 0
+              ? h('div', { className: 'pt-empty pt-book-empty' }, '无持仓 · 成交后自动显示')
+              : h(Table, null,
+                h('thead', null, h('tr', null,
+                  ['合约', '方向', '手数', '今仓', '均价', '最新价', '浮盈亏'].map(label => h('th', { key: label }, label)),
+                  h('th', null, ''),
+                )),
+                h('tbody', null, positions.map(position => h('tr', { key: `${position.symbol}-${position.side}` },
+                  h('td', null, position.symbol),
+                  h('td', null, FUTURES_SIDE_TEXT[position.side] ?? position.side),
+                  h('td', null, count(position.qty)),
+                  h('td', null, count(position.todayQty)),
+                  h('td', null, money(position.avgPrice)),
+                  h('td', null, money(position.lastPrice)),
+                  h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
+                  h('td', null, h('button', {
+                    className: 'pt-btn', onClick: () => onClose(position), disabled: !(position.qty > 0),
+                  }, '平仓')),
+                ))),
+              ))
+            : (pending.length === 0
+              ? h('div', { className: 'pt-empty pt-book-empty' }, '无挂单 · 未成交的限价委托会停在这里')
+              : h(Table, null,
+                h('thead', null, h('tr', null,
+                  ['合约', '方向', '类型', '手数', '限价', '状态'].map(label => h('th', { key: label }, label)),
+                  h('th', null, ''),
+                )),
+                h('tbody', null, pending.map(order => h('tr', { key: order.id },
+                  h('td', null, order.symbol),
+                  h('td', null, directionText(order.side, order.offset)),
+                  h('td', null, orderTypeText(order.type)),
+                  h('td', null, count(order.qty)),
+                  h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
+                  h('td', null, FUTURES_STATUS_TEXT[order.status] ?? order.status),
+                  h('td', null, h('button', { className: 'pt-btn', onClick: () => onCancel(order.id), disabled: busy }, '撤单')),
+                ))),
+              )),
+        ),
+      )
+    }
+
+    function FuturesReceiptLine({ receipt }) {
+      if (receipt.failure !== undefined) {
+        return h('div', { className: 'pt-receipt', 'data-state': 'rejected', title: receipt.failure.detail || undefined },
+          `拒绝：${receipt.failure.text}`,
+        )
+      }
+      const { order, cash } = receipt
+      const direction = directionText(order.side, order.offset)
+      if (order.status === 'rejected') {
+        return h('div', { className: 'pt-receipt', 'data-state': 'rejected', title: order.reason || undefined },
+          `拒绝：${direction} ${order.symbol} ${count(order.qty)} 手 · ${reasonText(order.reason) || '未通过风控'}`,
+        )
+      }
+      if (order.status === 'filled') {
+        return h('div', { className: 'pt-receipt', 'data-state': 'filled', title: order.id },
+          `成交：${direction} ${order.symbol} ${count(order.qty)} 手 · 价 ${money(order.fillPrice)} · 保证金 ${cents(order.marginCents)} · 费用 ${cents(order.feesCents)} · 成交后现金 ${money(cash)} · 单 ${order.id}`,
+        )
+      }
+      return h('div', { className: 'pt-receipt', 'data-state': 'resting', title: order.id },
+        `挂单：${direction} ${order.symbol} ${count(order.qty)} 手${order.limitPrice === undefined ? '' : ` @ ${money(order.limitPrice)}`} · 现价未穿越，成交前一直挂单 · 单 ${order.id}`,
+      )
+    }
+
+    function FuturesPositionsTab({ positions, onClose }) {
+      if (positions.length === 0) return h('div', { className: 'pt-empty' }, '无持仓')
+      return h(Table, null,
+        h('thead', null, h('tr', null,
+          ['合约', '方向', '手数', '今仓', '均价', '最新价', '浮盈亏', '保证金', '到期日'].map(label => h('th', { key: label }, label)),
+          h('th', null, ''),
+        )),
+        h('tbody', null, positions.map(position => h('tr', { key: `${position.symbol}-${position.side}` },
+          h('td', null, position.symbol),
+          h('td', null, FUTURES_SIDE_TEXT[position.side] ?? position.side),
+          h('td', null, count(position.qty)),
+          h('td', null, count(position.todayQty)),
+          h('td', null, money(position.avgPrice)),
+          h('td', null, money(position.lastPrice)),
+          h('td', { className: (position.unrealizedPnlCents ?? 0) >= 0 ? 'pt-up' : 'pt-down' }, cents(position.unrealizedPnlCents)),
+          h('td', null, cents(position.marginCents)),
+          h('td', null, position.deListDate ?? '—'),
+          h('td', null, h('button', { className: 'pt-btn', onClick: () => onClose(position) }, '平仓')),
+        ))),
+      )
+    }
+
+    function FuturesOrdersTab({ pending, history, busy, onCancel }) {
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+        h('div', null,
+          h('div', { className: 'pt-sub' }, '挂单'),
+          pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
+            h('thead', null, h('tr', null,
+              ['合约', '方向', '类型', '手数', '限价', '状态', ''].map(label => h('th', { key: label }, label)),
+            )),
+            h('tbody', null, pending.map(order => h('tr', { key: order.id },
+              h('td', null, order.symbol),
+              h('td', null, directionText(order.side, order.offset)),
+              h('td', null, orderTypeText(order.type)),
+              h('td', null, count(order.qty)),
+              h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
+              h('td', null, FUTURES_STATUS_TEXT[order.status] ?? order.status),
+              h('td', null, h('button', { className: 'pt-btn', onClick: () => onCancel(order.id), disabled: busy }, '撤单')),
+            ))),
+          ),
+        ),
+        h('div', null,
+          h('div', { className: 'pt-sub' }, '历史'),
+          history.length === 0 ? h('div', { className: 'pt-empty' }, '无历史订单') : h(Table, null,
+            h('thead', null, h('tr', null,
+              ['时间', '合约', '方向', '类型', '手数', '限价', '状态', '成交价', '原因'].map(label => h('th', { key: label }, label)),
+            )),
+            h('tbody', null, history.slice(0, 30).map(order => h('tr', { key: order.id },
+              h('td', null, dateTime(order.createdAt)),
+              h('td', null, order.symbol),
+              h('td', null, directionText(order.side, order.offset)),
+              h('td', null, orderTypeText(order.type)),
+              h('td', null, count(order.qty)),
+              h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
+              h('td', null, FUTURES_STATUS_TEXT[order.status] ?? order.status),
+              h('td', null, order.fillPrice === undefined ? '—' : money(order.fillPrice)),
+              h('td', { title: order.reason ?? undefined }, reasonText(order.reason)),
+            ))),
+          ),
+        ),
+      )
+    }
+
+    function FuturesReviewTab({ review, period, setPeriod }) {
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+        h('div', { className: 'pt-row' }, PERIODS.map(([key, label]) =>
+          h('button', { key, className: 'pt-btn', 'data-active': period === key, onClick: () => setPeriod(key) }, label),
+        )),
+        review !== null ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+          h('div', { className: 'pt-stats' },
+            statCell('成交笔数', count(review.tradeCount)),
+            statCell('已实现盈亏', signed(review.realizedPnl), review.realizedPnl >= 0 ? 'pt-up' : 'pt-down'),
+            statCell('费用合计', money(review.totalFees)),
+            statCell('最大回撤', pct(review.maxDrawdownPct)),
+          ),
+          h('div', { className: 'pt-note' },
+            `开仓 ${count(review.openCount)} · 平仓 ${count(review.closeCount)} · 盈利 ${count(review.winCount)} · 亏损 ${count(review.lossCount)}`),
+          h('div', { className: 'pt-chart-wrap' }, h(EquityChart, { points: review.equityCurve })),
+          h('div', null,
+            h('div', { className: 'pt-sub' }, '分品种统计'),
+            review.byProduct.length === 0 ? h('div', { className: 'pt-empty' }, '暂无成交') : h(Table, null,
+              h('thead', null, h('tr', null,
+                ['品种', '成交笔数', '已实现盈亏'].map(label => h('th', { key: label }, label)),
+              )),
+              h('tbody', null, review.byProduct.map(item => h('tr', { key: item.product },
+                h('td', null, item.product),
+                h('td', null, count(item.tradeCount)),
+                h('td', { className: item.realizedPnl >= 0 ? 'pt-up' : 'pt-down' }, signed(item.realizedPnl)),
+              ))),
+            ),
+          ),
+        ) : h('div', { className: 'pt-empty' }, '加载复盘…'),
+      )
+    }
+
+    /** Right rail for the futures ticket: static terms plus the marked quote. */
+    function FuturesContractRail({ contract, quote, limit }) {
+      return h('aside', { className: 'pt-futures-rail', 'aria-label': '合约要素' },
+        h('div', { className: 'pt-card' },
+          h('div', { className: 'pt-card-title' }, '合约要素'),
+          contract === null
+            ? h('div', { className: 'pt-empty' }, '搜索并选择合约')
+            : h('div', { className: 'pt-preview' },
+              previewRow('合约', contract.symbol),
+              previewRow('名称', contract.name ?? '—'),
+              previewRow('交易所', contract.exchange ?? '—'),
+              previewRow('品种', contract.product ?? '—'),
+              previewRow('乘数', contract.multiplier === undefined ? '—' : count(contract.multiplier)),
+              previewRow('最小变动', money(contract.tickSize)),
+              previewRow('保证金率', pct(contract.marginRate)),
+              previewRow('到期日', contract.deListDate ?? '—'),
+              previewRow('涨跌停', limit === null ? '—' : `${money(limit.upper)} / ${money(limit.lower)}`),
+              previewRow('最新价', quote === null ? '—' : money(quote.last)),
+              previewRow('昨结', quote === null || quote.preSettlement === undefined ? '—' : money(quote.preSettlement)),
+            ),
+        ),
+      )
+    }
+
     /* ---------------------------------------------------------- dashboard -- */
 
+    /**
+     * Top-level shell: the account switch lives above both dashboards, so the
+     * stock half keeps its exact layout and the futures half mounts on demand.
+     */
     function Dashboard({ renderSlot } = {}) {
+      const [accountMode, setAccountMode] = useState('stock')
+      const accountSwitch = h(AccountSwitch, { mode: accountMode, onChange: setAccountMode })
+      return h('div', { className: 'pt-root' },
+        h('style', null, CSS),
+        accountMode === 'futures'
+          ? h(FuturesDashboard, { accountSwitch })
+          : h(StockDashboard, { renderSlot, accountSwitch }),
+      )
+    }
+
+    function StockDashboard({ renderSlot, accountSwitch }) {
       const [account, setAccount] = useState(null)
       const [orders, setOrders] = useState([])
       const [trades, setTrades] = useState([])
@@ -1223,14 +2181,19 @@ window.__ModuleLoader__.load({
       }, [])
 
       if (account === null) {
-        return h('div', { className: 'pt-root' }, h('style', null, CSS),
-          h('div', { className: 'pt-inner' }, error ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text) : h('div', { className: 'pt-empty' }, '加载模拟交易…')))
+        return h('div', { className: 'pt-inner' },
+          h('div', { className: 'pt-head' },
+            h('div', null, h('h3', { className: 'pt-title' }, '模拟交易')),
+            h('div', { className: 'pt-row' }, accountSwitch),
+          ),
+          error
+            ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text)
+            : h('div', { className: 'pt-empty' }, '加载模拟交易…'),
+        )
       }
 
-      return h('div', { className: 'pt-root' },
-        h('style', null, CSS),
-        h('div', { className: 'pt-inner' },
-          h('div', { className: 'pt-head' },
+      return h('div', { className: 'pt-inner' },
+        h('div', { className: 'pt-head' },
             h('div', null,
               h('h3', { className: 'pt-title' }, '模拟交易'),
               h('div', { className: 'pt-sub' },
@@ -1239,6 +2202,7 @@ window.__ModuleLoader__.load({
               ),
             ),
             h('div', { className: 'pt-row' },
+              accountSwitch,
               h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
               h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
             ),
@@ -1266,7 +2230,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-workspace' },
             h('div', { className: 'pt-main' },
               h('div', { className: 'pt-tabs' },
-                [['trade', '交易'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
+                [['trade', '交易'], ['basket', '一揽子'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
                   h('button', { key, className: 'pt-tab', 'data-active': tab === key, onClick: () => setTab(key) }, label),
                 ),
               ),
@@ -1282,6 +2246,7 @@ window.__ModuleLoader__.load({
                   onCancel: cancel,
                   onSell: sellPosition,
                 }) : null,
+                tab === 'basket' ? h(BasketTab, { account, onDone: refreshAll }) : null,
                 tab === 'market' ? h(MarketTab, {
                   searchQuery, setSearchQuery, runSearch, searchHits, watchlist, isWatched, toggleWatch,
                   marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote,
@@ -1312,7 +2277,6 @@ window.__ModuleLoader__.load({
               onIdentity: klineIdentity,
             }),
           ),
-        ),
       )
     }
 
