@@ -89,3 +89,94 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('rpc: basket preview and place payloads', async () => {
+  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `rpc-basket-${process.pid}-${Date.now()}`)
+  const prices = new Map([
+    ['600519', { symbol: '600519', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
+    ['000001', { symbol: '000001', last: 20, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
+  ])
+  const data = {
+    async quotes(symbols) {
+      const rows = symbols.map(symbol => prices.get(symbol)).filter(Boolean)
+      return { state: rows.length > 0 ? 'ok' : 'failed', quotes: rows }
+    },
+    async dailyBars() {
+      return { state: 'ok', bars: [] }
+    },
+    async minuteBars() {
+      return { state: 'ok', bars: [] }
+    },
+    async search() {
+      return []
+    },
+    async marketList() {
+      return { state: 'ok', quotes: [], page: 1 }
+    },
+  }
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => NOW })
+  const handler = createPaperRpcHandler(service)
+  const route = createPaperRoute(handler)
+  try {
+    const call = async (endpoint, payload) => {
+      const response = await route.fetch(new Request('http://127.0.0.1/api/ft-paper-trading', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ endpoint, payload }),
+      }))
+      assert.equal(response.status, 200)
+      return response.json()
+    }
+    const rejects = async (endpoint, payload) => {
+      const result = await call(endpoint, payload)
+      assert.equal(result.ok, false, `${endpoint} should reject ${JSON.stringify(payload)}`)
+      assert.equal(result.error.code, 'INVALID_ARGUMENT')
+    }
+
+    const preview = await call('basket/preview', { csv: '600519,50%\n000001,50%', budgetCents: 1_000_000 })
+    assert.equal(preview.ok, true)
+    assert.equal(preview.value.budgetCents, 1_000_000)
+    assert.equal(preview.value.rows.length, 2)
+    assert.equal(preview.value.session.tradeDate, '2026-10-19')
+
+    const defaultBudget = await call('basket/preview', { csv: '600519,100%' })
+    assert.equal(defaultBudget.ok, true)
+    assert.equal(defaultBudget.value.budgetCents, 10_000_000, 'budget defaults to cash')
+
+    await rejects('basket/preview', {})
+    await rejects('basket/preview', { csv: '   ' })
+    await rejects('basket/preview', { csv: `600519,100%\n# ${'x'.repeat(33 * 1024)}` })
+    await rejects('basket/preview', { csv: '600519,100%', budgetCents: 0 })
+    await rejects('basket/preview', { csv: '600519,100%', budgetCents: -1 })
+    await rejects('basket/preview', { csv: '600519,100%', budgetCents: 1.5 })
+
+    const placed = await call('basket/place', {
+      batchId: 'rpc-batch-1',
+      rows: [{ symbol: '600519', qty: 100 }, { symbol: '000001', qty: 100 }],
+    })
+    assert.equal(placed.ok, true)
+    assert.equal(placed.value.batchId, 'rpc-batch-1')
+    assert.equal(placed.value.rows.length, 2)
+    assert.ok(placed.value.rows.every(row => row.order.status === 'filled'))
+    assert.equal(typeof placed.value.cashAfterCents, 'number')
+
+    const generated = await call('basket/place', { rows: [{ symbol: '600519', qty: 100 }] })
+    assert.equal(generated.ok, true)
+    assert.equal(typeof generated.value.batchId, 'string')
+    assert.ok(generated.value.batchId.length > 0)
+    assert.equal((await call('list/orders', {})).value.length, 3)
+    assert.equal((await call('account/get', {})).value.positions.length, 2)
+
+    await rejects('basket/place', {})
+    await rejects('basket/place', { rows: [] })
+    await rejects('basket/place', { rows: Array.from({ length: 21 }, (_, index) => ({ symbol: `60000${index}`, qty: 100 })) })
+    await rejects('basket/place', { rows: [{ qty: 100 }] })
+    await rejects('basket/place', { rows: [{ symbol: '600519', qty: 150 }] })
+    await rejects('basket/place', { rows: [{ symbol: '600519', qty: 100 }], batchId: 'x'.repeat(101) })
+    // Rejected payloads must not have written an order.
+    assert.equal((await call('list/orders', {})).value.length, 3)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto'
 import type {
   AccountView,
   Bar,
+  BasketOrderInput,
+  BasketOrderResult,
+  BasketOrderRowResult,
+  BasketPreview,
   CashFlowEntry,
   DayReport,
+  ErrorCode,
   FillView,
   LedgerExport,
   MarketStatus,
@@ -21,9 +26,11 @@ import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, r
 import { addDays, todayTradeDate, tradeDateOf } from '../core/calendar.js'
 import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt } from '../core/session.js'
 import { m2Settings } from '../core/settings.js'
+import { allocateBasket, parseBasketCsv } from '../core/basket.js'
+import { computeFees } from '../core/fees.js'
 import { prevCloseFromBars } from '../core/price-limit.js'
 import { roundPrice } from '../core/money.js'
-import { estimatePrice } from '../core/risk.js'
+import { checkOrder, estimatePrice } from '../core/risk.js'
 import { toAccountView, toFillView, toOrderView, toReview, previewOrder } from '../core/views.js'
 import type { AccountState, LedgerEvent, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
@@ -64,6 +71,11 @@ interface PlaceOutcome {
 }
 
 type CancelOutcome = { missing?: boolean; notPending?: boolean; blocked?: boolean }
+
+interface BasketPlaceOutcome {
+  rows: BasketOrderRowResult[]
+  blocked?: boolean
+}
 
 /** Orchestrates the ledger, the data port, the calendar and the clock. No IO of its own. */
 export class PaperService {
@@ -384,6 +396,207 @@ export class PaperService {
     const order = outcome.value.orderId === undefined ? undefined : outcome.state.orders[outcome.value.orderId]
     if (order === undefined) throw new PaperError('INTERNAL', '订单未写入账本')
     return toOrderView(order)
+  }
+
+  /**
+   * Read-only basket preview: parse the CSV, fetch every quote in one call and
+   * split the budget into lots. Parse problems ride back in `issues`; only a
+   * structurally invalid explicit budget throws.
+   */
+  async basketPreview(csv: string, budgetCents?: number): Promise<BasketPreview> {
+    if (budgetCents !== undefined && (!Number.isSafeInteger(budgetCents) || budgetCents <= 0)) {
+      throw new PaperError('INVALID_ARGUMENT', '预算必须是正整数（分）', 400)
+    }
+    const state = await this.sync()
+    const parsed = parseBasketCsv(csv)
+    const quotes = await this.fetchQuotes(parsed.rows.map(row => row.symbol))
+    const cashCents = state.cashCents
+    // The entered number is a cap, never a claim on cash the account lacks.
+    const budget = budgetCents === undefined ? Math.max(0, cashCents) : Math.min(budgetCents, Math.max(0, cashCents))
+    const allocation = allocateBasket({
+      rows: parsed.rows,
+      quotes: quotes.quotes,
+      budgetCents: budget,
+      cashCents,
+      settings: state.settings,
+    })
+    const session = this.marketStatusAt(state, this.ts())
+    const warnings = [...parsed.warnings, ...allocation.warnings]
+    // The plan is still readable after the close; the hint is why the client
+    // must keep the confirm button disabled.
+    if (!session.canMatch) warnings.push('当前时段不能市价成交，只能预览')
+    return {
+      budgetCents: budget,
+      cashCents,
+      rows: allocation.rows,
+      issues: parsed.issues,
+      warnings,
+      totalAmountCents: allocation.totalAmountCents,
+      totalFeesCents: allocation.totalFeesCents,
+      residualCents: allocation.residualCents,
+      cashAfterCents: allocation.cashAfterCents,
+      session,
+    }
+  }
+
+  /**
+   * Place a confirmed basket.
+   *
+   * Everything that can reject the whole batch is checked before the store
+   * transaction, so a failed pre-check writes nothing. Inside the transaction
+   * rows are submitted in input order with `${batchId}:${symbol}` as the
+   * request id: a retried batch reuses its orders, and a row that still fails
+   * (e.g. a concurrent change) is written as `order.rejected` while the rest of
+   * the batch continues.
+   */
+  async basketPlace(rows: readonly BasketOrderInput[], batchId?: string): Promise<BasketOrderResult> {
+    const inputs = this.basketRows(rows)
+    const batch = batchId === undefined || batchId.trim() === '' ? randomUUID() : batchId.trim()
+    const state = await this.sync()
+    if (state.blocked) throw this.blocked(state)
+    const now = this.ts()
+    const phase = sessionPhaseAt(now)
+    if (!canSubmit(phase, 'market')) {
+      throw new PaperError(
+        phase === 'closed' ? 'SESSION_CLOSED' : 'AUCTION_ONLY',
+        '当前时段不接受市价单，请改限价预埋或连续竞价时段重试',
+        409,
+      )
+    }
+    const matchable = canMatch(phase)
+
+    // Orders of an earlier attempt of the same batch are reused and skipped in
+    // the pre-checks: re-running the cash checks would reject the retry for the
+    // cash that first attempt already spent.
+    const byRequestId = new Map<string, Order>()
+    for (const order of Object.values(state.orders)) byRequestId.set(order.requestId, order)
+    const requestIds = new Map<string, string>()
+    const reused = new Map<string, Order>()
+    const pending: BasketOrderInput[] = []
+    for (const row of inputs) {
+      const requestId = `${batch}:${row.symbol}`
+      requestIds.set(row.symbol, requestId)
+      const existing = byRequestId.get(requestId)
+      if (existing === undefined) {
+        pending.push(row)
+        continue
+      }
+      if (existing.qty !== row.qty) {
+        throw new PaperError('INVALID_ARGUMENT', `${row.symbol} 与同批次已提交的数量不一致（原 ${existing.qty} 股）`, 400)
+      }
+      reused.set(row.symbol, existing)
+    }
+    if (pending.length === 0) {
+      return {
+        batchId: batch,
+        rows: inputs.map(row => this.basketResultRow(row.symbol, reused.get(row.symbol))),
+        cashAfterCents: state.cashCents,
+      }
+    }
+
+    // One quotes call for the whole batch, then prevClose backfill so the price
+    // limit check is the same one a single order gets.
+    const fetched = await this.fetchQuotes(pending.map(row => row.symbol))
+    const live = new Map(fetched.quotes.map(quote => [quote.symbol, quote]))
+    const quotes = new Map<string, Quote>()
+    await Promise.all(pending.map(async row => {
+      const quote = live.get(row.symbol)
+      if (quote !== undefined) quotes.set(row.symbol, await this.withPrevClose(quote))
+    }))
+    const tradeDate = await this.orderDateFor(state, now, phase)
+
+    let totalCostCents = 0
+    for (const row of pending) {
+      const quote = quotes.get(row.symbol) ?? null
+      const check = checkOrder(
+        state,
+        { symbol: row.symbol, side: 'buy', type: 'market', qty: row.qty },
+        quote,
+        state.settings,
+        tradeDate,
+      )
+      if (!check.ok) throw this.basketRejection(row.symbol, check.code, check.message)
+      totalCostCents += check.amountCents + computeFees(check.amountCents, 'buy', state.settings).totalCents
+    }
+    if (totalCostCents > state.cashCents) {
+      throw new PaperError(
+        'INSUFFICIENT_CASH',
+        `整批需要 ${(totalCostCents / 100).toFixed(2)} 元，可用现金 ${(state.cashCents / 100).toFixed(2)} 元`,
+        409,
+      )
+    }
+
+    const outcome = await this.options.repo.transact<BasketPlaceOutcome>(current => {
+      if (current.blocked) return { events: [], value: { rows: [], blocked: true } }
+      const events: LedgerEvent[] = []
+      const results: BasketOrderRowResult[] = []
+      let working = current
+      for (const row of inputs) {
+        const requestId = requestIds.get(row.symbol) ?? `${batch}:${row.symbol}`
+        const duplicate = Object.values(working.orders).find(order => order.requestId === requestId)
+        if (duplicate !== undefined) {
+          if (duplicate.qty !== row.qty) {
+            throw new PaperError('INVALID_ARGUMENT', `${row.symbol} 与同批次已提交的数量不一致（原 ${duplicate.qty} 股）`, 400)
+          }
+          results.push(this.basketResultRow(row.symbol, duplicate))
+          continue
+        }
+        const quote = quotes.get(row.symbol)
+        // Pending rows passed the quote pre-check; a gap here is a logic error,
+        // so refuse instead of submitting half a batch.
+        if (quote === undefined) throw new PaperError('QUOTE_UNAVAILABLE', `${row.symbol} 没有可用行情`, 409)
+        const result = submit(
+          working,
+          { symbol: row.symbol, side: 'buy', type: 'market', qty: row.qty, name: quote.name, tradeDate },
+          quote,
+          requestId,
+          now,
+          { matchable, phase },
+        )
+        events.push(...result.events)
+        working = result.state
+        results.push(this.basketResultRow(row.symbol, result.order))
+      }
+      return { events, value: { rows: results } }
+    })
+    if (outcome.value.blocked === true || outcome.state.blocked) throw this.blocked(outcome.state)
+    return { batchId: batch, rows: outcome.value.rows, cashAfterCents: outcome.state.cashCents }
+  }
+
+  /** Shape-level basket checks that must run before any pre-check touches IO. */
+  private basketRows(rows: readonly BasketOrderInput[]): BasketOrderInput[] {
+    if (!Array.isArray(rows) || rows.length < 1 || rows.length > 20) {
+      throw new PaperError('INVALID_ARGUMENT', 'rows 需要 1 到 20 行', 400)
+    }
+    const seen = new Set<string>()
+    const checked: BasketOrderInput[] = []
+    for (const row of rows) {
+      const symbol = typeof row.symbol === 'string' ? row.symbol.trim() : ''
+      if (symbol === '') throw new PaperError('INVALID_ARGUMENT', '证券代码不能为空', 400)
+      if (seen.has(symbol)) throw new PaperError('INVALID_ARGUMENT', `证券代码重复：${symbol}`, 400)
+      seen.add(symbol)
+      if (!Number.isInteger(row.qty) || row.qty <= 0) {
+        throw new PaperError('INVALID_ARGUMENT', `${symbol} 数量必须是正整数`, 400)
+      }
+      if (row.qty % 100 !== 0) throw new PaperError('INVALID_ARGUMENT', `${symbol} 数量必须是 100 股的整数倍`, 400)
+      checked.push({ symbol, qty: row.qty })
+    }
+    return checked
+  }
+
+  private basketResultRow(symbol: string, order: Order | undefined): BasketOrderRowResult {
+    if (order === undefined) return { symbol, error: '订单未写入账本' }
+    return {
+      symbol,
+      order: toOrderView(order),
+      error: order.status === 'rejected' ? order.reason : undefined,
+    }
+  }
+
+  /** A row failed pre-check: the batch is refused with that row's code. */
+  private basketRejection(symbol: string, code: ErrorCode, message: string): PaperError {
+    const status = code.startsWith('INVALID') ? 400 : 409
+    return new PaperError(code, `${symbol}: ${message}`, status)
   }
 
   async cancel(orderId: string): Promise<OrderView> {
