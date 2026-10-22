@@ -383,6 +383,33 @@
       }, 5000)
       return result
     }
+    if (name === 'stock-limit') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('order/place', (payload) => {
+        const draft = payload.draft ?? payload
+        return {
+          id: 'o-limit', requestId: payload.requestId ?? 'r-limit', symbol: draft.symbol,
+          side: draft.side, type: draft.type, qty: draft.qty, limitPrice: draft.limitPrice,
+          status: 'pending', createdAt: ts(), updatedAt: ts(),
+        }
+      })
+      e2e.click(e2e.byText('限价')[0])
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[2], '11.40')
+      const submit = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && !button.disabled ? button : null
+      }, 5000)
+      e2e.click(submit)
+      result.receipt = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('挂单') ? text : null
+      }, 5000)
+      return result
+    }
     if (name === 'cancel-order') {
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
@@ -921,6 +948,33 @@
         return book.includes('RB2611.SHFE') ? book.replace(/\n/g, ' ') : null
       }, 5000)
       result.calls = window.__calls.slice(-10)
+      return result
+    }
+    if (name === 'futures-limit') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('futures/order', (payload) => {
+        const draft = payload.draft
+        return {
+          id: 'f-limit', requestId: payload.requestId, symbol: draft.symbol, name: '螺纹钢2611',
+          side: draft.side, offset: draft.offset, type: draft.type, qty: draft.qty,
+          limitPrice: draft.limitPrice, status: 'pending', createdAt: ts(), updatedAt: ts(),
+        }
+      })
+      e2e.click(e2e.byText('限价')[0])
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '3300')
+      const submit = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && !button.disabled ? button : null
+      }, 5000)
+      e2e.click(submit)
+      result.receipt = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('挂单') ? text : null
+      }, 5000)
       return result
     }
     if (name === 'futures-review') {
