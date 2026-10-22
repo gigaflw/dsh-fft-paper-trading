@@ -95,6 +95,8 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   // ticket falls back to a quote-only request instead of a 0.00 preview.
   assert.ok(source.includes("rpc('market/quote'"), 'an unfinished draft asks for the price alone')
   assert.match(source, /previewBlockReason/)
+  assert.match(source, /searchHits, searchAttempted/)
+  assert.ok(!source.includes("'状态', ''"), 'tables must label the action column')
   assert.match(source, /K 线视图未加载/)
   assert.match(source, /amountFormat/)
   assert.match(source, /order\/preview/, 'preview runs automatically')

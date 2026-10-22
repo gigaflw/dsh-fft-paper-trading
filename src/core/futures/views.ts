@@ -22,7 +22,7 @@ import type {
   FuturesReviewView,
   FuturesSide,
 } from '../../futures-contract.js'
-import { daysBetween } from '../calendar.js'
+import { daysBetween, tradeDateOf } from '../calendar.js'
 import { amountCents, quantizePrice } from './money.js'
 import { computeFuturesFees } from './fees.js'
 import {
@@ -153,7 +153,12 @@ export function toAccountView(state: FuturesAccountState, ledgerPath?: string): 
 }
 
 export function marketStatusAt(tradeDate: string, sessions: DaySessions, nowIso: string): FuturesMarketStatus {
-  const phase = phaseAt(nowIso, tradeDate, sessions)
+  // phaseAt only reads the wall clock; on the evening before a trade date it
+  // would call 20:25 "集合竞价" for tomorrow. Until the state has actually
+  // rolled to today's date the market is simply closed.
+  const phase = tradeDateOf(nowIso) === tradeDate
+    ? phaseAt(nowIso, tradeDate, sessions)
+    : 'closed'
   return {
     phase,
     tradeDate,

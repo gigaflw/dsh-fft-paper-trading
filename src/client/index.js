@@ -512,8 +512,10 @@ window.__ModuleLoader__.load({
         const timer = setInterval(() => {
           tries += 1
           const host = slotRef.current
-          const painted = host !== null
-            && (host.querySelector('canvas, iframe, svg, table') !== null || host.innerText.trim().length > 3)
+          // Only real drawing counts: dsh_kline shows a transient "加载中…"
+          // text before its canvas mounts (and may never mount), so text alone
+          // must not mark the slot as healthy.
+          const painted = host !== null && host.querySelector('canvas, iframe, svg, table, video') !== null
           if (painted) clearInterval(timer)
           else if (tries >= 20) { setSlotFailed(true); clearInterval(timer) }
         }, 300)
@@ -829,7 +831,7 @@ window.__ModuleLoader__.load({
         h('div', null,
           h('div', { className: 'pt-sub' }, '挂单'),
           pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
-            h('thead', null, h('tr', null, ['代码', '方向', '类型', '数量', '限价', '状态', ''].map(label => h('th', { key: label }, label)))),
+            h('thead', null, h('tr', null, ['代码', '方向', '类型', '数量', '限价', '状态', '操作'].map(label => h('th', { key: label }, label)))),
             h('tbody', null, pending.map(order => h('tr', { key: order.id },
               h('td', null, bareSymbol(order.symbol)),
               h('td', null, order.side === 'buy' ? '买' : '卖'),
@@ -1318,6 +1320,9 @@ window.__ModuleLoader__.load({
             .then(result => {
               if (!alive.current || seq !== previewSeq.current) return
               setPreview(result)
+              // Keep the quote for an unfinished draft: switching to 限价 must
+              // not blank the price line while the limit is still being typed.
+              if (result.quote) setSymbolQuote(result.quote)
               setPreviewError('')
               setPreviewState('ready')
             })
@@ -1745,7 +1750,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-sub' }, '挂单'),
           pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
             h('thead', null, h('tr', null,
-              ['合约', '方向', '类型', '手数', '限价', '状态', ''].map(label => h('th', { key: label }, label)),
+              ['合约', '方向', '类型', '手数', '限价', '状态', '操作'].map(label => h('th', { key: label }, label)),
             )),
             h('tbody', null, pending.map(order => h('tr', { key: order.id },
               h('td', null, order.symbol),
@@ -2121,6 +2126,9 @@ window.__ModuleLoader__.load({
             .then(result => {
               if (!alive.current || seq !== previewSeq.current) return
               setPreview(result)
+              // Keep the quote for an unfinished draft: switching to 限价 must
+              // not blank the price line while the limit is still being typed.
+              if (result.quote) setSymbolQuote(result.quote)
               setPreviewError('')
               setPreviewState('ready')
             })
@@ -2326,7 +2334,9 @@ window.__ModuleLoader__.load({
                 }) : null,
                 tab === 'basket' ? h(BasketTab, { account, onDone: refreshAll }) : null,
                 tab === 'market' ? h(MarketTab, {
-                  searchQuery, setSearchQuery, runSearch, searchHits, watchlist, isWatched, toggleWatch,
+                  searchQuery,
+                  setSearchQuery: value => { setSearchQuery(value); setSearchAttempted(false) },
+                  runSearch, searchHits, searchAttempted, watchlist, isWatched, toggleWatch,
                   marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote,
                 }) : null,
                 tab === 'positions' ? h(PositionsTab, {

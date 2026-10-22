@@ -152,12 +152,16 @@ try {
   assert('stock K-line rail renders', stock.kline === true)
   assert('stock book renders', typeof stock.book === 'string' && stock.book.includes('持仓'))
   assert('short symbol keeps the panel mounted', stock.shortSymbolAlive === true, stock.shortSymbolHint ?? '')
+  assert('limit draft keeps the quote', typeof stock.limitQuote === 'string' && stock.limitQuote.includes('现价'), stock.limitQuote ?? '')
+  assert('limit draft blocks an empty price', stock.limitSubmitDisabled === true)
   await shot('stock-trade.png')
 
   // 2. 一揽子
   const basketPreview = await scenario('basket-preview')
   assert('basket preview is shown before confirmation', typeof basketPreview.preview === 'string' && basketPreview.preview.includes('目标权重'), basketPreview.preview ?? '')
   await shot('basket-preview.png')
+  const marketEmpty = await scenario('market-empty-search')
+  assert('empty market search says so', marketEmpty.empty === '没有找到匹配标的', JSON.stringify(marketEmpty))
   const basket = await scenario('basket')
   assert('basket preview has three rows', typeof basket.preview === 'string' && ['600519', '000001', '300750'].every(code => basket.preview.includes(code)), basket.preview ?? '')
   assert('basket preview shows statuses', typeof basket.preview === 'string' && basket.preview.includes('可买') && basket.preview.includes('不足 1 手'))

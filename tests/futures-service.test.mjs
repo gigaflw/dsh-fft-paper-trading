@@ -464,3 +464,15 @@ test('published suffix aliases and lower case resolve to the market symbol', asy
     await close(subject)
   }
 })
+
+test('evening status is closed even though tradeDate already points at tomorrow', async () => {
+  const subject = setup('futures-evening', clockAt(DATE1, 20 * 60 + 25))
+  try {
+    const status = await subject.service.status()
+    assert.equal(status.tradeDate, DATE2)
+    assert.equal(status.phase, 'closed', '20:25 must not read as the next auction')
+    assert.equal(status.canSubmit, false)
+  } finally {
+    await close(subject)
+  }
+})
