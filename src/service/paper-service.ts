@@ -24,8 +24,8 @@ import type {
 } from '../contract.js'
 import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
 import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, type EngineResult } from '../core/engine.js'
-import { addDays, todayTradeDate, tradeDateOf } from '../core/calendar.js'
-import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt } from '../core/session.js'
+import { todayTradeDate, tradeDateOf } from '../core/calendar.js'
+import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt, shanghaiClock } from '../core/session.js'
 import { m2Settings } from '../core/settings.js'
 import { allocateBasket, parseBasketCsv } from '../core/basket.js'
 import { computeFees } from '../core/fees.js'
@@ -366,7 +366,7 @@ export class PaperService {
     if (draft.type === 'limit' && estimatePrice(draft, quote) === null) {
       throw new PaperError('INVALID_ARGUMENT', '限价单必须给出正的限价', 400)
     }
-    return previewOrder(state, draft, quote, state.settings, this.marketStatusAt(state, this.ts()))
+    return previewOrder(state, draft, quote, state.settings, await this.marketStatusAt(state, this.ts()))
   }
 
   async place(draft: OrderDraft, requestId: string = randomUUID()): Promise<OrderView> {
@@ -431,7 +431,7 @@ export class PaperService {
       cashCents,
       settings: state.settings,
     })
-    const session = this.marketStatusAt(state, this.ts())
+    const session = await this.marketStatusAt(state, this.ts())
     const warnings = [...parsed.warnings, ...allocation.warnings]
     // The plan is still readable after the close; the hint is why the client
     // must keep the confirm button disabled.
@@ -742,19 +742,23 @@ export class PaperService {
     return state.settings
   }
 
-  private marketStatusAt(state: AccountState, nowIso: string): MarketStatus {
+  private async marketStatusAt(state: AccountState, nowIso: string): Promise<MarketStatus> {
     const phase = this.phaseFor(state, nowIso)
     return {
       phase,
       tradeDate: state.tradeDate,
       canSubmit: canSubmit(phase, 'limit'),
       canMatch: canMatch(phase),
-      nextBoundary: this.nextBoundaryFor(nowIso),
+      nextBoundary: await this.nextBoundaryFor(nowIso, phase),
     }
   }
 
-  private nextBoundaryFor(nowIso: string): string {
-    const phase = sessionPhaseAt(nowIso)
+  /**
+   * The next wall-clock session start. Closed covers both "before the open"
+   * (today 09:15 is still ahead) and "after the close" (next trading day);
+   * weekends and holidays are skipped through the calendar port.
+   */
+  private async nextBoundaryFor(nowIso: string, phase: SessionPhase): Promise<string> {
     const today = todayTradeDate(this.now())
     const at = (date: string, minutes: number) => isoAtShanghai(date, minutes)
     switch (phase) {
@@ -763,13 +767,19 @@ export class PaperService {
       case 'lunch': return at(today, 13 * 60)
       case 'continuous_pm': return at(today, 14 * 60 + 57)
       case 'auction_close': return at(today, 15 * 60)
-      default: return at(addDays(today, 1), 9 * 60 + 15)
+      default: {
+        const open = 9 * 60 + 15
+        const beforeOpen = shanghaiClock(nowIso).minutes < open
+        const tradingToday = await this.options.calendar.isTradingDay(today)
+        const date = beforeOpen && tradingToday ? today : await this.options.calendar.nextTradingDay(today)
+        return at(date, open)
+      }
     }
   }
 
   async marketStatus(): Promise<MarketStatus> {
     const state = await this.sync()
-    return this.marketStatusAt(state, this.ts())
+    return await this.marketStatusAt(state, this.ts())
   }
 
   async cashFlow(): Promise<CashFlowEntry[]> {

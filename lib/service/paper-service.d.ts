@@ -131,6 +131,11 @@ export declare class PaperService {
     setWatchlist(symbols: string[]): Promise<string[]>;
     settingsView(): Promise<PaperSettings>;
     private marketStatusAt;
+    /**
+     * The next wall-clock session start. Closed covers both "before the open"
+     * (today 09:15 is still ahead) and "after the close" (next trading day);
+     * weekends and holidays are skipped through the calendar port.
+     */
     private nextBoundaryFor;
     marketStatus(): Promise<MarketStatus>;
     cashFlow(): Promise<CashFlowEntry[]>;
