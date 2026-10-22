@@ -67,7 +67,14 @@
     'market/quote': () => ({ state: 'ok', quotes: [quote] }),
     'market/search': query => ({ state: 'ok', hits: query === 'zzzzzz' ? [] : [{ symbol: '600519.XSHG', name: '贵州茅台' }] }),
     'order/preview': () => preview,
-    'order/place': () => ({ id: 'o-1', requestId: 'r-1', symbol: '600519.XSHG', side: 'buy', type: 'market', qty: 100, status: 'filled', createdAt: ts(), updatedAt: ts() }),
+    'order/place': (payload) => {
+      const draft = payload.draft ?? payload
+      return {
+        id: 'o-1', requestId: payload.requestId ?? 'r-1', symbol: draft.symbol, side: draft.side,
+        type: draft.type, qty: draft.qty, status: 'filled', fillPrice: quote.last,
+        createdAt: ts(), updatedAt: ts(), filledAt: ts(),
+      }
+    },
     'tick': () => ({ tradeDate: '2026-10-22', filled: [], expired: [], notices: [], quotes: [] }),
     'market/list': payload => ({
       state: 'ok',
@@ -236,6 +243,36 @@
       result.limitSubmitDisabled = document.querySelector('.pt-ticket-submit')?.disabled ?? null
       e2e.click(e2e.byText('市价')[0])
       await new Promise(done => setTimeout(done, 300))
+      return result
+    }
+    if (name === 'stock-close') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('持仓'))
+      e2e.click(tab)
+      await e2e.wait(() => [...document.querySelectorAll('.pt-main tbody tr')].length >= 2)
+      const rows = [...document.querySelectorAll('.pt-main tbody tr')].map(row => ({
+        text: row.innerText,
+        button: row.querySelector('button'),
+      }))
+      const locked = rows.find(row => row.text.includes('000001'))
+      result.t1Disabled = locked?.button?.disabled ?? null
+      result.t1Title = locked?.button?.title ?? null
+      const sellable = rows.find(row => row.text.includes('600519'))
+      if (sellable?.button) e2e.click(sellable.button)
+      await new Promise(done => setTimeout(done, 500))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      result.side = [...document.querySelectorAll('.pt-ticket-form .pt-seg button')]
+        .find(button => button.getAttribute('data-active') === 'true')?.innerText ?? null
+      result.qty = inputs[1]?.value ?? null
+      const submit = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && !button.disabled ? button : null
+      }, 5000)
+      result.submitLabel = submit?.innerText ?? null
+      if (submit) e2e.click(submit)
+      result.receipt = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('卖出') ? text : null
+      }, 5000)
       return result
     }
     if (name === 'basket' || name === 'basket-preview') {
