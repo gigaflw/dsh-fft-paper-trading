@@ -780,9 +780,9 @@ window.__ModuleLoader__.load({
 
     const marketSessionNote = session => {
       if (!session || session.canMatch) return ''
-      return session.phase === 'auction_close'
-        ? '收盘竞价中，现价为最近一次行情'
-        : '非交易时段，现价为最近一次行情'
+      if (session.phase === 'pre_open') return '集合竞价中，现价为最近一次行情'
+      if (session.phase === 'auction_close') return '收盘竞价中，现价为最近一次行情'
+      return '非交易时段，现价为最近一次行情'
     }
 
     function MarketTab({ searchQuery, setSearchQuery, runSearch, searchHits, searchAttempted, watchlist, isWatched, toggleWatch, marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote, session }) {
