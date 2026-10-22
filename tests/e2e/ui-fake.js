@@ -338,6 +338,8 @@
       const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
       e2e.setInput(inputs[0], 'SH600519')
       result.value = inputs[0].value
+      e2e.setInput(inputs[0], '６００５１９')
+      result.fullWidth = inputs[0].value
       return result
     }
     if (name === 'quote-retry') {
