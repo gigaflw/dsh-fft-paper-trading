@@ -524,6 +524,42 @@
       }, 4000)
       return result
     }
+    if (name === 'basket-race') {
+      const tab = e2e.byText('一揽子')[0]
+      e2e.click(tab)
+      const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
+      const setFile = async (name, text) => {
+        const transfer = new DataTransfer()
+        transfer.items.add(new File([text], name, { type: 'text/csv' }))
+        fileInput.files = transfer.files
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+        await e2e.wait(() => e2e.text('.pt-trade').includes(name))
+      }
+      const oneRow = {
+        symbol: '600519', name: '贵州茅台', weight: 1, targetCents: 10000000, price: 1450.5, qty: 100,
+        amountCents: 14505000, feesCents: 3626, actualWeight: 0.145, status: 'ok',
+      }
+      window.__fake.on('basket/preview', async () => {
+        await new Promise(done => setTimeout(done, 300))
+        return {
+          budgetCents: 100000000, cashCents: 100000000, rows: [oneRow], issues: [], warnings: [],
+          totalAmountCents: 14505000, totalFeesCents: 3626, residualCents: 85495000, cashAfterCents: 85495000,
+          session: { phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true },
+        }
+      })
+      await setFile('a.csv', '代码,权重\n600519,50%\n000001,50%\n300750,0%')
+      await new Promise(done => setTimeout(done, 500))
+      const preview = e2e.byText('预览配股')[0]
+      if (!preview) throw new Error('preview button missing')
+      e2e.click(preview)
+      await new Promise(done => setTimeout(done, 60))
+      await setFile('b.csv', '代码,权重\n600519,100%')
+      await new Promise(done => setTimeout(done, 700))
+      result.rows = document.querySelectorAll('.pt-main table tbody tr').length
+      result.filename = e2e.text('.pt-trade').includes('b.csv')
+      result.confirmDisabled = e2e.byText('确认下单')[0]?.disabled ?? null
+      return result
+    }
     if (name === 'basket-error') {
       const tab = e2e.byText('一揽子')[0]
       if (!tab) throw new Error('basket tab missing')

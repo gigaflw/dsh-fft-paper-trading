@@ -970,6 +970,8 @@ window.__ModuleLoader__.load({
       // the same batchId, otherwise the host would buy the basket twice.
       const [batchId, setBatchId] = useState('')
       const placing = useRef(false)
+      // A preview is only valid for the CSV/budget it was computed from.
+      const previewSeq = useRef(0)
       const nextBatchId = () => typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `basket-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -987,6 +989,8 @@ window.__ModuleLoader__.load({
         // Clear the value so picking the same file again still fires a change.
         event.target.value = ''
         if (!file) return
+        previewSeq.current += 1
+        setBusy(false)
         setError('')
         setPreview(null)
         setResult(null)
@@ -1005,19 +1009,26 @@ window.__ModuleLoader__.load({
           setError('预算需为正数')
           return
         }
+        const seq = ++previewSeq.current
+        const sourceCsv = csv
         setBusy(true)
         setError('')
         setResult(null)
         try {
-          const payload = { csv }
+          const payload = { csv: sourceCsv }
           if (budgetCents !== undefined) payload.budgetCents = budgetCents
-          setPreview(await rpc('basket/preview', payload))
+          const next = await rpc('basket/preview', payload)
+          // A file/budget change while the request was in flight wins.
+          if (seq !== previewSeq.current) return
+          setPreview(next)
           setBatchId(nextBatchId())
         } catch (cause) {
-          setError(errorOf(cause).text)
-          setPreview(null)
+          if (seq === previewSeq.current) {
+            setError(errorOf(cause).text)
+            setPreview(null)
+          }
         } finally {
-          setBusy(false)
+          if (seq === previewSeq.current) setBusy(false)
         }
       }, [csv, budgetCents])
 
@@ -1063,7 +1074,15 @@ window.__ModuleLoader__.load({
             h(Field, { label: '预算（元）' }, h('input', {
               className: 'pt-input', style: { width: 140 }, value: budget, inputMode: 'decimal',
               placeholder: account === null ? '默认可用现金' : `默认可用 ${money(account.cash)}`,
-              onChange: event => setBudget(event.target.value),
+              onChange: event => {
+                previewSeq.current += 1
+                setBusy(false)
+                setBudget(event.target.value)
+                setPreview(null)
+                setResult(null)
+                setBatchId('')
+                setError('')
+              },
             })),
             h('button', {
               className: 'pt-btn pt-btn-primary', onClick: runPreview, disabled: busy || csv.trim() === '',
