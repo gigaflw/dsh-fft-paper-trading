@@ -209,6 +209,8 @@ try {
   assert('a queued order explains that it waits for the next session', typeof cancelOrder.note === 'string' && cancelOrder.note.includes('下一交易时段'), JSON.stringify(cancelOrder.note))
   const ordersTruncation = await scenario('orders-truncation')
   assert('a long order history says it is truncated', typeof ordersTruncation.note === 'string' && ordersTruncation.note.includes('共 31 条'), JSON.stringify(ordersTruncation))
+  const stockReasons = await scenario('stock-reasons')
+  assert('stock keeps its 可卖不足 wording', typeof stockReasons.text === 'string' && stockReasons.text.includes('可卖不足') && !stockReasons.text.includes('可平不足'), JSON.stringify(stockReasons))
   const resetAccount = await scenario('reset-account')
   assert('resetting the stock account reports success', typeof resetAccount.notice === 'string' && resetAccount.notice.includes('账户已重置'), JSON.stringify(resetAccount))
   const basket = await scenario('basket')
