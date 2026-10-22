@@ -79,6 +79,20 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /hasSlot \? null : h\('div', \{ className: 'pt-row'/)
   // K-line identity must not rewrite the ticket when the symbol did not change.
   assert.match(source, /formSymbol\.current/)
+  // The ticket has no manual quote/preview buttons any more.
+  assert.ok(!source.includes('查行情'), 'the quote button must be gone')
+  // An unfinished draft (limit with no price) still shows the price: the
+  // ticket falls back to a quote-only request instead of a 0.00 preview.
+  assert.ok(source.includes("rpc('market/quote'"), 'an unfinished draft asks for the price alone')
+  assert.match(source, /previewBlockReason/)
+  assert.match(source, /order\/preview/, 'preview runs automatically')
+  assert.match(source, /\}, 300\)/, 'preview is debounced by 300 ms')
+  assert.match(source, /输入 6 位代码后自动计算/)
+  assert.match(source, /计算中…/)
+  // The post-submit receipt is rendered from the fill record.
+  assert.match(source, /function ReceiptLine/)
+  assert.match(source, /receipt\.failure/)
+  assert.match(source, /成交后现金/)
   const glyph = panellist.component({ size: 16 })
   assert.ok(glyph, 'glyph did not render')
 })

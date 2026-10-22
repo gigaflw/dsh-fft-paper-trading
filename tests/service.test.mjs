@@ -155,6 +155,13 @@ test('service: preview price, quote and fill price are the same last price', asy
     assert.ok(restingPreview.warnings.some(warning => /挂单等待/.test(warning)), restingPreview.warnings.join('；'))
     const resting = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 11 }, 'preview-3')
     assert.equal(resting.status, 'pending')
+
+    // A limit order without a price is an unfinished draft: the preview must
+    // say so instead of returning a 0.00 order.
+    await assert.rejects(
+      () => service.preview({ symbol: '600519', side: 'buy', type: 'limit', qty: 100 }),
+      /限价单必须给出正的限价/,
+    )
   } finally {
     await rm(home, { recursive: true, force: true })
   }

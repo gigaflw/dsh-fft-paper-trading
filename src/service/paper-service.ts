@@ -23,6 +23,7 @@ import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt } from '../core/sess
 import { m2Settings } from '../core/settings.js'
 import { prevCloseFromBars } from '../core/price-limit.js'
 import { roundPrice } from '../core/money.js'
+import { estimatePrice } from '../core/risk.js'
 import { toAccountView, toFillView, toOrderView, toReview, previewOrder } from '../core/views.js'
 import type { AccountState, LedgerEvent, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
@@ -308,6 +309,13 @@ export class PaperService {
   async preview(draft: OrderDraft): Promise<PreviewView> {
     const state = await this.sync()
     const quote = await this.quoteFor(draft)
+    // A limit order without a usable price is an unfinished draft, not a
+    // 0.00 order; the ticket shows the field it is still missing instead.
+    // (A market order without any quote keeps its warning, so the tool and the
+    // panel can still explain what the user must fill in.)
+    if (draft.type === 'limit' && estimatePrice(draft, quote) === null) {
+      throw new PaperError('INVALID_ARGUMENT', '限价单必须给出正的限价', 400)
+    }
     return previewOrder(state, draft, quote, state.settings, this.marketStatusAt(state, this.ts()))
   }
 

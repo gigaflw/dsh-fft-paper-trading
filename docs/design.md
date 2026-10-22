@@ -43,7 +43,7 @@
 | 交易时段 / 日切 / 收盘开盘快照 | 真实节奏的基础，见 §19.2–19.3 | ○ | v0.2 P0 |
 | 行情时间语义 | `marketTs` + `fetchedAt`，见 §19.3 | ○ | v0.2 P0 |
 | 搜索 / 自选 / 列表 / 分时 / K 线 | FTShare 有数据源，见 §19.4 | ○ | v0.2 P1 |
-| 部分成交 / 涨跌停 / 停牌 | 最新价/OHLC + 参与率上限，见 §19.5 | ○ | v0.2 P1 |
+| 涨跌停 / 停牌 | 见 §19.5 | ○ | v0.2 P1 |
 | 日终 / 隔夜 / 回合 / 资金流水 | 从事件推导，见 §19.6 | ○ | v0.2 P1 |
 | 设置页 | 只读 `settings/get` | ○ | v0.3 写入 |
 | 工具卡 | 预览 / 委托 / 账户 / 复盘卡 | ○ | v0.3 |
@@ -107,10 +107,10 @@ packages/dsh-fft-paper-trading/
     contract.ts              # 跨平面类型、常量、错误码（无运行时依赖）
     core/                    # 纯领域，禁止 IO
       types.ts               # 状态与事件类型
-      money.ts               # 金额（整数分）与滑点
+      money.ts               # 金额（整数分）与价格取整
       fees.ts                # 佣金 / 印花税 / 过户费
       calendar.ts            # 交易日（Asia/Shanghai，工作日兜底）
-      matching.ts            # 市价/限价成交判定与报价时效
+      matching.ts            # 市价/限价成交判定（M2：last 价、全量）
       risk.ts                # 下单前硬校验与价格估计
       settings.ts            # 持久化配置的规范化/迁移（缺失字段回退默认）
       ledger.ts              # 事件应用与账本不变量
@@ -150,7 +150,7 @@ packages/dsh-fft-paper-trading/
 | `core/money` | 金额用整数分；价格按 0.01 取整 | 数字 → 整数/价格 | 浮点累计、IO | 舍入边界 |
 | `core/fees` | 佣金、印花税、过户费 | 金额、方向、配置 → 费用明细 | 读写账户 | 最低佣金、卖出税 |
 | `core/calendar` | 交易日、T+1 解锁 | 时间戳 → 交易日 | 网络调用 | 周末 |
-| `core/matching` | 市价/限价是否成交、成交价、报价时效 | 订单、报价、时间 → 成交判定 | 读账本、读文件 | 滑点、限价保护 |
+| `core/matching` | 市价/限价是否成交、成交价 | 订单、报价 → 成交判定 | 读账本、读文件 | last 价、穿越、无 TTL |
 | `core/risk` | 现金、可卖、手数、金额上限、blocked | 状态 + 订单 → 通过/拒绝码 | 网络、日志 | 各类拒绝路径 |
 | `core/settings` | 持久化配置合并 `DEFAULT_SETTINGS`，拒绝缺字段/非有限值 | 旧 payload → 完整配置 | 读写账本 | 旧账本迁移 |
 | `core/ledger` | 事件类型与不变量 | 状态、事件 → 校验结果 | 持久化 | 现金/数量不变量 |
@@ -269,19 +269,20 @@ interface AccountState {
 
 | 项 | 规则 |
 | --- | --- |
-| 报价 | `bid / ask / last / prevClose / ts`；缺 bid/ask 用 last 兜底 |
-| 滑点 | 买入 `ask × (1 + bps)`，卖出 `bid × (1 - bps)`，默认 5 bps |
-| 市价单 | 立即全量成交；报价缺失或超过 TTL（默认 30 秒）拒绝 |
-| 限价买 | `ask ≤ limit` 成交，成交价 `min(limit, ask × (1 + bps))` |
-| 限价卖 | `bid ≥ limit` 成交，成交价 `max(limit, bid × (1 - bps))` |
-| 部分成交 | v0.1 不做；一次全量 |
-| 有效期 | 当日有效；v0.1 在下一交易日首次 tick 过期，v0.2 改为 15:00 过期（§19.2） |
+| 报价 | `last` 是唯一可成交价；`bid/ask` 不依赖 |
+| 成交价 | 判定所用报价的 `last`（0.01 取整），无滑点 |
+| 市价单 | 连续竞价立即全量成交，永远不会挂单 |
+| 限价买 | `last ≤ limit` 立即全成，否则挂单，每次 tick 用新报价重判 |
+| 限价卖 | `last ≥ limit` 立即全成，否则挂单 |
+| 成交量 | 不限量，一次吃满剩余；`fillModel` 默认 `unlimited` |
+| 行情门槛 | 只要 `last > 0` 就能成交，没有 TTL |
+| 有效期 | 当日有效；15:00 未成交过期 |
 | 手数 | 买入 100 的整数倍；卖出不超过可卖，可零股 |
 | 费用 | 佣金 `max(金额 × 0.025%, 5 元)`；印花税卖出 0.05%；过户费双向 0.001% |
 | T+1 | 买入当日 `available = 0`；下一交易日 `day.closed` 解锁 |
 | 涨跌停 | 未做；`risk` 已留 `maxOrderNotionalCents` 单笔上限 |
 
-> 实测 FTShare 不返回 bid/ask，v0.1 适配器用 last 兜底，因此实际成交价等价于按 last 计算；v0.2 显式改为 last/OHLC（§19.5），不再保留 spread 语义。
+> 完整的 M2 规则与「什么时候会有挂单」见 §19.5。旧账本（< v3）重放时把 `slippageBps` / `fillModel` 钉成 `0` / `unlimited`。
 
 `tick` 的顺序：跨日 → 写 `day.closed` 并过期挂单 → 刷新持仓最新价 → 逐笔判断限价单 → 资金/持仓不足则撤单并给 notice。
 
@@ -422,12 +423,14 @@ v0.1 只读：`settings/get` 返回开户/重置时写进账本的配置；没�
 | `minCommissionCents` | 500（5 元） |
 | `stampDutyRate` | 0.0005 |
 | `transferFeeRate` | 0.00001 |
-| `slippageBps` | 5 |
+| `slippageBps` | 0（保留字段，不再生效） |
 | `enableT1` | true |
-| `quoteTtlSec` | 30 |
+| `quoteTtlSec` | 30（保留字段，不再参与判定） |
 | `maxOrderNotionalCents` | 0（关闭） |
+| `maxParticipationRate` | 0.10（保留字段，不再参与判定） |
+| `fillModel` | `unlimited` |
 
-`account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段（如旧账本没有 `maxParticipationRate` / `fillModel`）回退默认值，非有限值也被拒绝。这样旧账本不需要单独的版本迁移表即可继续成交。
+`account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段回退默认值，非有限值也被拒绝。`ledgerVersion < 3` 的旧账本再由 `m2Settings` 钉成 `slippageBps: 0`、`fillModel: 'unlimited'`（旧版本没有设置入口），见 §19.5。
 
 写设置的做法见 §14.3：新增 `account.settings` 事件，随账本重放；`contract.ts` 的 `DEFAULT_SETTINGS` 只给新账户默认值。
 FTShare API Key 由全局设置服务解析，本插件不读、不展示、不修改。
@@ -501,16 +504,16 @@ $DSH_HOME/paper-trading/
 
 ## 15 测试策略
 
-当前 36 个用例（`pnpm test`，构建后跑 `node --test`）：
+当前 41 个用例（`pnpm test`，构建后跑 `node --test`）：
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `core.test.mjs` | 费用（最低佣金/印花税）、撮合（滑点/限价）、风控（手数/现金/T+1）、引擎成交与重放、限价挂单与 tick 成交 |
-| `service.test.mjs` | 买入 → 隔日解锁 → 卖出 → 复盘 → 重置（含备份）、幂等、无行情时的降级 |
+| `core.test.mjs` | 费用（最低佣金/印花税）、撮合（last 价/穿越/无 TTL）、风控（手数/现金/T+1）、引擎成交与重放、限价挂单与 tick 成交、收盘过期、旧账本 M2 迁移、fillQty 满额 |
+| `service.test.mjs` | 买入 → 隔日解锁 → 卖出 → 复盘 → 重置（含备份）、幂等、无行情时的降级、预览价=行情价=成交价、并发 tick 不重复成交、市价单永不挂单 |
 | `rpc.test.mjs` | envelope、preview/place、未知 endpoint |
 | `store.test.mjs` | JSONL 追加、坏尾行隔离 |
 | `adapter.test.mjs` | 代码规范化、分组摊平、日 K 排序 |
-| `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点 |
+| `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点、无「查行情」按钮、防抖预览与成交回报 |
 | `wiring.test.mjs` | 没有 `ftshareData` 时路由与 8 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
 | `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、旧 settings 迁移、重置健壮性、日 K 补 `prevClose` |
 | `scheduler.test.mjs` | 假时钟周期调用、非重叠、start/stop 幂等、异常转 warning |
@@ -522,7 +525,7 @@ $DSH_HOME/paper-trading/
 | 版本 | 内容 |
 | --- | --- |
 | v0.1（已落地） | 左侧栏面板（交易/持仓/订单/复盘）+ 8 个工具 + 事件账本 + 权益曲线 |
-| v0.2（P0+P1，见 §19） | 交易时段/日切/收盘开盘快照、行情时间语义、搜索/自选/列表/分时/K 线、部分成交/涨跌停/停牌、日终/隔夜/回合/资金流水 |
+| v0.2（P0+P1，见 §19） | 交易时段/日切/收盘开盘快照、行情时间语义、M2 撮合、搜索/自选/列表/分时/K 线、涨跌停/停牌、日终/隔夜/回合/资金流水 |
 | v0.3 | 工具卡、设置写入、止损/条件单、多账户、通知、导入导出 |
 | 另议 | 保证金 / 卖空 / 强平（两融模拟，属产品范围变更） |
 
@@ -530,14 +533,14 @@ $DSH_HOME/paper-trading/
 
 | 风险 | 影响 | 处理 |
 | --- | --- | --- |
-| FTShare 不返回 bid/ask（已实测） | 成交价只能用 last，不能模拟 spread | 适配器不填买卖价；撮合用 last/OHLC + 滑点（§19.3、§19.5） |
+| FTShare 不返回 bid/ask（已实测） | 成交价只能用 last，不能模拟 spread | 适配器不填买卖价；撮合固定用 last（§19.5） |
 | 每次 MCP 调用新建会话 | 首包延迟偏高 | 报价缓存（v0.2）；tick 合并请求 |
-| 无 L1/L2 盘口（已实测） | 只能做「最新价 + 参与率」撮合 | 不显示盘口、不伪造深度；明确 `volume-share` 假设（§19.5） |
+| 无 L1/L2 盘口（已实测） | 只能做「最新价全量」撮合 | 不显示盘口、不伪造深度；M2 不设成交量上限（§19.5） |
 | 列表排序不可靠（已实测） | 无法直接做全市场涨幅榜 | `order_by` 只验证到升序；P1 不做涨幅榜，不依赖未确认的 `filter` 语法 |
-| 收盘后探针看不到盘中效果 | 分钟 bar 在盘中是部分完成还是含当前分钟未知 | 交易时段内复验一次，再固化 TTL 与 `marketTs` 口径（§19.9） |
+| 收盘后探针看不到盘中效果 | 分钟 bar 在盘中是部分完成还是含当前分钟未知 | 交易时段内复验一次；`marketTs` 只展示，不设 TTL（§19.5） |
 | 宿主休眠/退出错过收盘 | 快照延迟、T+1 解锁晚 | 宿主 `PaperScheduler` 周期 `advanceTo(now)` 幂等补算；离线不补成交（§19.2、§19.7） |
 | 涨跌停/ST 比例随规则变化 | 拒单错误 | 板块比例集中配置，实现前按交易所现行规则复核 |
-| 部分成交依赖分钟成交量 | 参与率假设影响真实感 | 可配置参与率；无成交量时退回全量并标记 `unlimited` |
+| 撮合过于简化 | 与真实成交有差距 | 产品明确选 M2：last 价全量成交，不为真实感额外请求分钟量（§19.5） |
 | 开源许可 | 复制 LGPL/GPL 代码会污染许可 | 只借架构与规则，不复制代码（§19.10） |
 | 公司行为不处理 | 长期成本失真 | README 写明；v0.3 另议 |
 | 客户端单文件 | 页面增多后难维护 | 先按页签拆函数；过 1000 行再引打包器 |
@@ -549,7 +552,7 @@ $DSH_HOME/paper-trading/
 | --- | --- | --- |
 | D1 | 事件账本用 JSONL | 数据量小、可 diff、确定性重放 |
 | D2 | 宿主定时器驱动 tick，前端轮询只作补充 | 面板关掉也要撮合与结算；`advanceTo` 幂等，漏拍可补算 |
-| D3 | 不做部分成交与止损单 | 规则简单可验证 |
+| D3 | 不做部分成交与止损单 | 规则简单可验证；M2 一次吃满剩余 |
 | D4 | 单账户、单币种 | 范围控制 |
 | D5 | 自绘 SVG 图表 | 避免引图表库与跨插件耦合 |
 | D6 | 独立子包 | 边界清楚，可独立发版 |
@@ -562,10 +565,10 @@ $DSH_HOME/paper-trading/
 | D13 | 存储与行情都以端口注入 service | 换后端/换数据源不动业务；测试用假端口即可 |
 | D14 | 重置也走 `append` 与对账 | 破坏性操作同样受不变量保护；备份先于写入 |
 | D15 | 交易日历来自 FTShare，时段表内置，集合竞价单独建模 | 节假日会变、时段是规则；日历库都不建模竞价（§19.2） |
-| D16 | 行情用 `marketTs` + `fetchedAt` 两个时间戳 | 取数时间不能代表行情时间，否则盘后仍会成交（§19.3） |
+| D16 | 行情用 `marketTs` + `fetchedAt` 两个时间戳 | 展示用行情时间；成交由时段门禁把关，M2 不设 TTL（§19.5） |
 | D17 | 收盘 15:00 写快照，交易日次日 09:30 切换 | 自然日 00:00 切日会半夜解锁 T+1、写错快照（§19.2） |
 | D18 | 离线期间不补成交，只补收盘快照 | 补成交会造出用户没看见的成交；保守假设可解释（§19.2） |
-| D19 | 只做最新价/OHLC + 参与率上限的部分成交 | 没有买卖价与深度数据，不伪造盘口；部分成交必须可重放（§19.5） |
+| D19 | 只做最新价全量成交（M2） | 没有买卖价与深度数据，不伪造盘口；产品明确不为真实感加戏（§19.5） |
 | D20 | 日终/隔夜/回合/流水全部从事件推导 | 避免第二套账本，报表与持仓现金天然一致（§19.6） |
 | D21 | 不引入 Nautilus/Lean 运行时 | LGPL/Apache 之外还有语言与数据适配成本；只借模型边界（§19.10） |
 
@@ -586,7 +589,7 @@ $DSH_HOME/paper-trading/
 **P1（随后，故事的体验）**
 
 - 搜索/自选/全市场列表/分时/K 线；
-- 部分成交、涨跌停、停牌；
+- 涨跌停、停牌；
 - 日终/隔夜/跳空/回合统计/资金流水；
 - 委托备注，用于复盘「为什么选这个标的」。
 
@@ -652,7 +655,7 @@ interface Quote {
   bid?: number
   ask?: number
   prevClose?: number
-  /** 行情时间：bar/trade 的时间；取不到时为 null，表示不可用于成交。 */
+  /** 行情时间：bar/trade 的时间；M2 只用于展示，不参与成交判定。 */
   marketTs: string | null
   /** 取数时间：只用于展示延迟与排障。 */
   fetchedAt: string
@@ -662,7 +665,7 @@ interface Quote {
 
 - 适配器从分钟/日 K 的 bar 时间取 `marketTs`；`ft_v4_stock_realtime_day_kline` 用当日 bar 的结束时间；
 - `ft_v4_stock_realtime_minute_kline` 的 `ts_millis` 是 bar 的**收盘时间**，`ts_millis_open` 是开盘时间；实测最后一根为 15:00，首根 09:30，没有 09:15–09:25 竞价 bar；
-- `quoteFresh` = `session.canMatch` && `marketTs != null` && `now - marketTs <= quoteTtlSec` && `marketTs` 属于当前交易日；**不能用 `fetchedAt` 判新鲜**；
+- M2 没有行情 TTL：`last > 0` 即可成交，时段仍由 `sessionPhaseAt` 把关；`marketTs` 只用于展示；
 - 收盘后估值可以用最后收盘价，但成交判定必须 `canMatch=false`。
 
 **收盘价与开盘价**
@@ -694,7 +697,7 @@ type DayClosed = {
 ```
 
 - 事件 `ts` 写边界时间（09:30 / 15:00），`payload.recordedAt` 写实际补算时间；两者分开，重放与展示都不混淆；
-- 账本版本 `PAPER_LEDGER_VERSION` 从 1 升到 2；新账户在 `account.opened` 的 payload 写 `ledgerVersion: 2`，旧日志缺这个字段按 1 处理；
+- 账本版本 `PAPER_LEDGER_VERSION` 从 1 升到 2（`day.opened`），M2 再升到 3；新账户在 `account.opened` 的 payload 写当前版本，旧日志缺这个字段按 1 处理；
 - v1 日志没有 `day.opened`，重放时按旧语义在 `day.closed` 解锁；v2 才按开盘解锁，保证老账户可读。
 
 ### 19.4 行情面（P1）
@@ -745,7 +748,7 @@ interface MarketListResult {
 
 - `SymbolHit { symbol, name, exchange }`；
 - 搜索/列表/分钟都要按 `DataState` 四态归一，缺数据不抛错；
-- **没有 L1/L2**：界面只展示最新价、涨跌幅、成交量额，不展示盘口；撮合只用最新价/OHLC，不伪造 spread；
+- **没有 L1/L2**：界面只展示最新价、涨跌幅、成交量额，不展示盘口；撮合只用最新价，不伪造 spread；
 - 自选不是账本：`$DSH_HOME/paper-trading/watchlist.json`，600 权限、原子写；交易账户重置不影响自选。
 
 **客户端**
@@ -754,14 +757,51 @@ interface MarketListResult {
 - 不做全市场「涨幅榜」：上游 `order_by` 不能可靠降序；要做得本地全量拉取（约 12 次 500 条）并缓存，P1 先不做，避免用错误排序误导用户；
 - 点击标的同时刷新报价并回填交易页；
 - 分时与日 K 复用纯 SVG；分时用 `ft_v4_stock_realtime_minute_kline`，日 K 用 `ft_v1_stock_candlesticks`；
-- 轮询：页面可见时 3 秒刷新当前标的报价，隐藏时停；切换标的后立即拉一次；
+- 报价只随交易页输入变化（300ms 防抖）由 `order/preview` 带回，页面不单独轮询报价；
 - 客户端文件预计超过 1000 行：按 settings 的 tsdown 方案拆 `src/client/` 多文件，不手写拼接。
 
-### 19.5 撮合真实性（P1）
+### 19.5 撮合模型 M2（不做更真实）
 
 **规则顺序（固定，便于测试与解释）**
 
-1. 时段门禁（§19.2）→ 2. 停牌 → 3. 涨跌停 → 4. 手数/资金/持仓 → 5. 成交价与部分成交 → 6. 费用与 T+1。
+1. 时段门禁（§19.2）→ 2. 停牌 → 3. 涨跌停 → 4. 手数/资金/持仓 → 5. 成交价与数量 → 6. 费用与 T+1。
+
+**成交价**
+
+- 成交价 = 本次判定所用报价的 `last`，按 0.01 取整，**无滑点**；
+- `slippageBps` 字段保留兼容，读取与撮合都忽略，默认 0；
+- FTShare 没有买卖价，不能用 spread 定价；`bid/ask` 不参与任何判定。
+
+**数量**
+
+- 一次成交吃满剩余数量，**永不产生 `partially_filled`**（类型保留，只为重放旧账本）；
+- `fillModel` 默认 `unlimited`；不再按分钟成交量设上限，place/tick 都不请求分钟接口；
+- `maxParticipationRate` 保留兼容，不再参与计算；
+- 成交 ID 确定性：`fill-<orderId>-<n>`，同一订单顺序固定，重放一致。
+
+**行情门槛**
+
+- 没有 TTL：只要 `last > 0` 就能成交；时段仍由 `sessionPhaseAt` 把关，非交易时段不撮合；
+- `quoteTtlSec` 保留兼容，不再参与判定；
+- 预览、行情行、成交价必须是同一次判定里的同一次报价：`order/preview` 把本次抓到的 `quote` 一起返回，面板直接用它渲染行情行。
+- 预览的「预估成交价」= 这张单在本次报价下能成交的价：市价单取 `last`；限价单取 `min(限价, last)`（买）/ `max(限价, last)`（卖）。穿越时它就等于 `last`（与成交价一致），未穿越时它等于限价（买入的上限成本 / 卖出的下限收入），并给出「现价 X 未到限价 Y，委托将挂单等待」的提示；资金校验与「最多可买」也按这个价算，挂着的 10.00 买单不会被按 11.29 收费。
+
+**什么时候会有挂单（就这两种）**
+
+| 时段 | 市价单 | 限价单 |
+| --- | --- | --- |
+| 连续竞价（09:30–11:30、13:00–14:57） | 立即全成 | 已穿越（买 `last ≤ limit`、卖 `last ≥ limit`）立即全成；未穿越挂单，每次 tick（宿主 5s）用新报价重判，穿越即全成 |
+| 非连续竞价（09:15–09:30、午休、14:57–15:00、收盘后） | 拒绝（市价不可提交） | 委托进 `queued`，进入连续竞价后的第一次判定按上一条处理 |
+| 收盘时仍未成交 | — | 当日过期（`expired`） |
+
+因此只有「限价单价格没到」和「非连续竞价时段」会产生挂单；**市价单在任何时段都不会挂单**。
+
+**账本迁移**
+
+- `PAPER_LEDGER_VERSION` = 3：v2 引入 `day.opened`，v3 钉住 M2；
+- 重放 `ledgerVersion < 3` 的 `account.opened` 时强制 `slippageBps: 0`、`fillModel: 'unlimited'`；旧版本没有设置入口，用户没设过这些值；
+- `account.reset` 不带版本号，重放时同样钉住；
+- 新账本默认就是 0 / unlimited。
 
 **涨跌停**
 
@@ -777,7 +817,7 @@ interface MarketListResult {
 
 - 价格按 0.01 取整；买单高于涨停价、卖单低于跌停价 → `PRICE_LIMIT`；
 - 涨停价买入、跌停价卖出默认不成交（封死假设）；可选接 `ft_v2_stock_minute_seal` 判断封单，未接时按 `high == low == 涨停/跌停` 判一字板；
-- 跌停价买入、涨停价卖出允许（对手方有流动性），但受参与率上限约束；
+- 跌停价买入、涨停价卖出允许（对手方有流动性）；
 - `prevClose` 缺失时用上一交易日日 K 收盘；两者都没有则不设涨跌停，标 `priceLimitSource: 'unknown'`；
 - 当日已触板的股票可直接用 `ft_v1_limit_list` 的 `limit_up_price/limit_down_price`（实测字段）校准；封死判断用 `limit_up_seal_value`、开板次数用 `limit_up_break_count`，比 `high == low` 更可靠。
 
@@ -786,32 +826,14 @@ interface MarketListResult {
 - 优先用 `ft_v1_suspension_list`（实测当日返回全量停牌，含全天/临停/原因）；拿不到列表时才看日 K 成交量 0 或 `ft_v1_daec_stocks.status == 'Suspended'`；完全取不到数据是 `QUOTE_UNAVAILABLE`，不能混同；
 - 停牌期间拒单；持仓按最后收盘价估值，不产生成交。
 
-**部分成交**
-
-- 新增设置 `maxParticipationRate`（默认 0.10）与 `fillModel: 'volume-share' | 'unlimited'`；
-- `volume-share`：单次可成交数量 = `min(剩余, floor(本根分钟成交量 × 参与率))`；买入再向下取 100 的整数倍，小于 100 股则不成交；
-- 一根 bar 内可多次成交；订单状态 `partially_filled`，剩余继续挂；可撤剩余；
-- 没有分钟成交量时退回 `unlimited` 并在成交事件标 `fillModel: 'unlimited'`，界面提示「未按成交量约束」；
-- 参与率或成交量非有限（旧配置/脏数据）时按 **不限量** 处理并保证成交数量为整数：取 0 会让挂单永久卡住，取不限量才与「无成交量」的既有回退一致；`normalizeSettings` 让该分支在正常重放下不可达；
-- 成交 ID 确定性：`fill-<orderId>-<n>`；同一 bar + 同一订单顺序固定，重放一致。
-
-**成交价**
-
-- 市价（taker）：按最新价 `last` 加/减滑点；FTShare 没有买卖价，不能用 spread 定价；
-- 限价（taker）：穿价时按限价与对手价中更优者；
-- 限价（maker）：bar 的低价 ≤ 买价 / 高价 ≥ 卖价才成交，按限价；
-- 撮合优先用分钟 bar 的 OHLC 判定限价是否触达，没有分钟 bar 时才退回最新价；bar 内路径按 `open → high → low → close`（可配置），只用于判定触达，不重建逐笔；
-- 集合竞价：开盘按开盘价、收盘按收盘价，只判是否穿越，不做连续撮合；
-- 不模拟队列位置（没有逐笔数据）；同一价格的多笔订单按 `acceptedAt` 顺序成交，作为可解释的近似。
-
 **状态机**
 
 ```
 提交 ──时段/风控拒绝──▶ rejected
-  ├─非撮合阶段限价──▶ queued ──开盘/进入连续竞价──▶ pending
-  └─撮合阶段──▶ pending ──部分成交──▶ partially_filled ──▶ filled
-                     ├──撤单/收盘过期──▶ canceled / expired
-                     └──资金/持仓不足──▶ canceled
+  ├─连续竞价 市价 / 已穿越限价──▶ filled
+  ├─连续竞价 未穿越限价──▶ pending ──tick 穿越──▶ filled
+  │                          └──撤单/收盘──▶ canceled / expired
+  └─非连续时段限价──▶ queued ──进入连续竞价──▶ pending
 ```
 
 ### 19.6 复盘、流水与报告（P1）
@@ -829,7 +851,7 @@ interface MarketListResult {
 ```
 src/core/session.ts          # 阶段、门禁、下一边界（纯函数）
 src/core/price-limit.ts      # 板块比例、涨跌停价
-src/core/fills.ts            # 参与率、成交序列、部分成交
+src/core/fills.ts            # 成交序列与费用（M2 全量，无部分成交）
 src/core/reports.ts          # 日终、隔夜、回合
 src/data/trading-calendar-port.ts
 src/data/ftshare-trading-calendar.ts
@@ -850,8 +872,8 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 - `OrderView` 增加 `filledQty/remainingQty/avgFillPrice/note`；
 - `PriceLimit { upper, lower, ratio, source }`；
 - `DayReport`、`CashFlowEntry`、`RoundTrip`、`SymbolHit`；
-- 事件：新增 `day.opened`、`order.partially_filled`（payload 带本次 `fill`）；扩展 `day.closed`、`order.submitted`（阶段、备注）、`order.filled`（`fillId`、`barTs`、`liquidity`、`fillModel`）；
-- 账本版本 2，回放兼容 v1。
+- 事件：新增 `day.opened`；`order.partially_filled` 只用于重放旧账本，新撮合不再写；扩展 `day.closed`、`order.submitted`（阶段、备注）、`order.filled`（`fillModel`）；
+- 账本版本 3（M2），回放兼容 v1/v2。
 
 **RPC**
 
@@ -882,7 +904,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 - K 线高度 `clamp(420px, 100vh - 250px, 720px)`；未安装 dsh_kline 时回退内置 SVG；
 - 左工作区窄于 760px 时，下单表单与预览改为上下排列；
 - 行情页只保留搜索/列表；K 线不再属于某个 tab；会话状态徽标、下单按钮禁用原因、ticket 备注；
-- 复盘页日终/隔夜/回合/流水；部分成交显示已成交/剩余；
+- 复盘页日终/隔夜/回合/流水；
 - 文件拆分方案见 §19.4。
 
 ### 19.9 测试与验收
@@ -899,7 +921,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 | 板块筛选 | `ft_v2_stock_list_filter` 的 `board`：`star/chi_next/bjse/xshg/xshe/main`；返回 `board=sh/sz/sh_star/sz_chi_next/bj` | 涨跌停比例按 board 映射 |
 | 停牌 | `ft_v1_suspension_list` 当日返回全量停牌（全天/临停/原因） | 停牌判定优先用它，不看成交量猜 |
 | 涨跌停池 | `ft_v1_limit_list` 支持 `up/down/up_break`，含涨跌停价、封单金额、开板时间 | 触板/封死判定用它校准 |
-| 实时分钟 K | 241 根（09:30–11:30、13:00–15:00）；`ts_millis` 是 bar 收盘时间；无 09:15–09:25 竞价 bar；volume 为股数；收盘后返回全日 | 首根 09:30 可用；`marketTs` 取 `ts_millis`；参与率用股数 |
+| 实时分钟 K | 241 根（09:30–11:30、13:00–15:00）；`ts_millis` 是 bar 收盘时间；无 09:15–09:25 竞价 bar；volume 为股数；收盘后返回全日 | 首根 09:30 可用；`marketTs` 取 `ts_millis`；成交量只用于展示 |
 | 日 K | 收盘后含当日 bar（close 1309.69） | 收盘快照取日 K close |
 | 分时 | `ft_v4_daec_history_prices` 241 条，含 `price/avg_price/volume/turnover` | 分时图直接用 |
 | 市场快照 | `ft_v1_daec_market_snapshot` 返回 `status=closed` 与涨跌分布 | 可作辅助展示，不作为时段依据 |
@@ -911,23 +933,23 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 **单元**
 
 - 时段：节假日、午休、集合竞价、收盘边界、下一交易日；
-- 行情时间：`marketTs` 缺失/过期/跨日；盘后报价不可成交；
+- 行情：`marketTs` 只展示；`last ≤ 0` 不可成交；盘后受时段门禁不可成交；
 - 涨跌停：主板/ST/创业板/北交所、舍入、越界拒单、一字板；
-- 部分成交：参与率、100 股取整、多次成交、剩余撤销、重放一致；
+- M2：市价 `last` 全成、限价穿越即全成、未穿越挂单、收盘过期、无 TTL、旧账本迁移成 0/unlimited；
 - 日切：15:00 快照、09:30 T+1、跳空、跨多日补算、离线不补成交；
 - 报表：日终/隔夜/回合/流水与持仓现金对账。
 
 **集成**
 
 - 用假时钟 + 假日历 + 固定行情重放用户故事 8 步；
-- 重启续跑；无行情降级；断网/服务缺失；账本 v1 → v2 回放。
+- 重启续跑；无行情降级；断网/服务缺失；账本 v1/v2 → v3 回放。
 
 **验收（对应用户故事）**
 
 1. 15:30 市价单拒绝，限价单 `queued`；次日 09:30 按开盘价判定；
 2. 15:00 快照用收盘价；T+1 次日 09:30 才解锁；
 3. 离线跨日不产生成交，只补快照；
-4. 部分成交可重放，剩余可撤；
+4. 限价未穿越才挂单，收盘过期；市价单从不挂单；
 5. 涨停买入/跌停卖出/停牌有明确拒绝码；
 6. 搜索、自选、分时、日 K 可用；界面不显示盘口（数据源没有），只显示最新价；
 7. 日终、隔夜、回合、流水与账本一致，可导出。
@@ -954,7 +976,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 | exchange_calendars | XSHG 09:30–11:30 / 13:00–15:00 与预计算节假日，可作为对照测试 | 不引入 Python；它不建模集合竞价 | Apache-2.0 |
 | openctp | 接口契约分层、仿真/实盘环境切换 | CTP 期货规则不适用 A 股现货 | 见原调研 |
 
-**本仓自己实现**：时段门禁、日终/开盘快照、涨跌停、参与率部分成交、日终/隔夜/回合/流水。理由是产品参考已经给了目标，实现机制再借开源项目的模型边界；不引运行时、数据源已固定、账本必须可重放。
+**本仓自己实现**：时段门禁、日终/开盘快照、涨跌停、M2 全量成交、日终/隔夜/回合/流水。理由是产品参考已经给了目标，实现机制再借开源项目的模型边界；不引运行时、数据源已固定、账本必须可重放。
 
 ### 19.12 K 线视图接入（dsh_kline slot）
 
@@ -979,22 +1001,22 @@ paper-trading main 注册
 - L2/L3 盘口与逐档撮合（无数据源）；
 - 止损/条件单/算法单（P2）；
 - 工具卡、设置写入（v0.3，与「真实节奏」无关）；
-- **挂单冻结资金（原 P2）**：现状是「可用现金不减、多笔委托可叠加，成交时才因资金不足静默撤单」。要修干净需要在订单上引入每笔委托的资金/持仓预留，并在 submit / 部分成交 / 撤单 / 过期 / 重放上对称维护，再把「可用/冻结」暴露到 `AccountView` 与持仓表；这属于账本字段变更，不适合混进本轮修复批次。结论：**本轮不做**，列为下一批独立改造，届时同时补不变量与重放用例。
+- **挂单冻结资金（原 P2）**：现状是「可用现金不减、多笔委托可叠加，成交时才因资金不足静默撤单」。要修干净需要在订单上引入每笔委托的资金/持仓预留，并在 submit / 撤单 / 过期 / 重放上对称维护，再把「可用/冻结」暴露到 `AccountView` 与持仓表；这属于账本字段变更，不适合混进本轮修复批次。结论：**本轮不做**，列为下一批独立改造，届时同时补不变量与重放用例。
 - 多账户、分红送转、通知（v0.3）；
 - 时间加速/快进（永远不做）。
 
 ## 附录 A：错误码与状态机
 
-> 下面是 v0.1 的状态机；v0.2 增加 `queued` 与 `partially_filled`，见 §19.5。
+> M2 状态机见 §19.5；`partially_filled` 只为重放旧账本保留。
 
-订单状态：`queued → pending → partially_filled → filled`，以及 `canceled / rejected / expired`；只有 `pending` / `partially_filled` 能被 `tick` 改变，`queued` 在 `day.opened` 释放。
+订单状态：`queued → pending → filled`，以及 `canceled / rejected / expired`；只有 `pending` 能被 `tick` 改变，`queued` 在进入连续竞价后释放。
 
 ```
-提交 ──风控拒绝──▶ rejected
-  │
-  ├─连续竞价──▶ pending ──tick 命中──▶ partially_filled ──▶ filled
-  │                 └──撤单/收盘──▶ canceled / expired
-  └─非连续时段──▶ queued ──day.opened──▶ pending
+提交 ──风控/时段拒绝──▶ rejected
+  ├─连续竞价 市价 / 已穿越限价──▶ filled
+  ├─连续竞价 未穿越限价──▶ pending ──tick 穿越──▶ filled
+  │                          └──撤单/收盘──▶ canceled / expired
+  └─非连续时段限价──▶ queued ──进入连续竞价──▶ pending
 ```
 
 ![图 3 · 报单生命周期](figures/fig-3.png)
