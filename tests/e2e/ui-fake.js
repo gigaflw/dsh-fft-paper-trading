@@ -852,10 +852,34 @@
       }, 4000)
       return result
     }
+    if (name === 'stock-limit-band') {
+      window.__fake.on('order/preview', (payload) => ({
+        ...preview,
+        symbol: '600519.XSHG', side: 'buy', type: 'limit', qty: 100,
+        price: Number(payload.limitPrice) || 2000, amountCents: 20000000,
+        commissionCents: 60, stampCents: 0, transferCents: 200, totalFeesCents: 260,
+        cashAfterCents: 50000000, availableQty: 0, maxBuyQty: 0,
+        quote: { ...quote, last: 1318, marketTs: ts() },
+        priceLimit: { upper: 1600, lower: 1200, ratio: 0.1, source: 'prev-close' },
+        warnings: ['价格超出涨跌停范围 1200.00–1600.00'],
+      }))
+      e2e.click(e2e.byText('买入')[0])
+      e2e.click(e2e.byText('限价')[0])
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '100')
+      e2e.setInput(inputs[2], '2000')
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('涨跌停') ? button.title : null
+      }, 4000)
+      return result
+    }
     if (name === 'stock-no-quote') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
       await new Promise(done => setTimeout(done, 500))
+      e2e.click(e2e.byText('市价')[0])
       const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
       if (tradeTab) e2e.click(tradeTab)
       await new Promise(done => setTimeout(done, 300))
@@ -1121,6 +1145,29 @@
         const text = document.querySelector('.pt-inner')?.innerText ?? ''
         return text.includes('期货账户已重置') ? text : null
       }, 4000)
+      return result
+    }
+    if (name === 'futures-limit-band') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      const payload = {
+        symbol: 'CU2611.SHFE', side: 'long', offset: 'open', type: 'limit', qty: 1, price: 3500, multiplier: 5,
+        amountCents: 1750000, marginCents: 175000, feesCents: 500, cashAfterCents: 99000000,
+        equityAfter: 100000000, riskRatioAfter: 0.01, maxOpenQty: 10, availableCloseQty: 0,
+        limit: { symbol: 'CU2611.SHFE', upper: 3400, lower: 3000, source: 'limit' },
+        quote: { ...futuresQuote, symbol: 'CU2611.SHFE', last: 3300 },
+        session: { phase: 'trading', tradeDate: '2026-10-22', canSubmit: true, canMatch: true },
+        warnings: ['价格超出涨跌停区间 3000–3400'],
+      }
+      window.__fake.on('futures/preview', () => payload)
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '3500')
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('涨跌停') ? button.title : null
+      }, 4000)
+      window.__fake.on('futures/preview', futuresPreview)
       return result
     }
     if (name === 'futures-review') {
