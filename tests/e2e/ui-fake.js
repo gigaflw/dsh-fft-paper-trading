@@ -453,6 +453,20 @@
       }, 4000)
       return result
     }
+    if (name === 'orders-truncation') {
+      window.__fake.on('list/orders', () => Array.from({ length: 31 }, (_, index) => ({
+        id: `hist-${index}`, requestId: `r-hist-${index}`, symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        qty: 100, limitPrice: 10, status: 'filled', fillPrice: 10, createdAt: ts(), updatedAt: ts(),
+      })))
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
+      e2e.click(tab)
+      result.note = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('共 31 条'))
+        return node ? node.innerText.trim() : null
+      }, 4000)
+      window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
+      return result
+    }
     if (name === 'reset-account') {
       window.confirm = () => true
       const resetAccount = {
