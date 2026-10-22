@@ -976,7 +976,7 @@ window.__ModuleLoader__.load({
      * the quantities that reach the ledger. All state is local: leaving the tab
      * unmounts the panel and clears the import.
      */
-    function BasketTab({ account, onDone }) {
+    function BasketTab({ account, onDone, resetNonce }) {
       const [csv, setCsv] = useState('')
       const [fileName, setFileName] = useState('')
       const [budget, setBudget] = useState('')
@@ -990,6 +990,15 @@ window.__ModuleLoader__.load({
       const placing = useRef(false)
       // A preview is only valid for the CSV/budget it was computed from.
       const previewSeq = useRef(0)
+      // A reset changes the cash the preview was based on: drop it.
+      useEffect(() => {
+        previewSeq.current += 1
+        setBusy(false)
+        setPreview(null)
+        setResult(null)
+        setBatchId('')
+        setError('')
+      }, [resetNonce])
       const nextBatchId = () => typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `basket-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -1944,6 +1953,7 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
+      const [resetNonce, setResetNonce] = useState(0)
       const submitting = useRef(false)
       const [preview, setPreview] = useState(null)
       const [previewState, setPreviewState] = useState('idle')
@@ -2346,6 +2356,7 @@ window.__ModuleLoader__.load({
           await loadAll(true)
           await loadReviewDetail()
           setPreviewNonce(value => value + 1)
+          setResetNonce(value => value + 1)
           setNotice('账户已重置')
         } catch (cause) {
           setError(errorOf(cause))
@@ -2466,7 +2477,7 @@ window.__ModuleLoader__.load({
                   onCancel: cancel,
                   onSell: sellPosition,
                 }) : null,
-                tab === 'basket' ? h(BasketTab, { account, onDone: refreshAll }) : null,
+                tab === 'basket' ? h(BasketTab, { account, onDone: refreshAll, resetNonce }) : null,
                 tab === 'market' ? h(MarketTab, {
                   searchQuery,
                   setSearchQuery: value => { setSearchQuery(value); setSearchAttempted(false) },
