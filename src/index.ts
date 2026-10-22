@@ -17,6 +17,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import { registerFuturesTools } from './agent/futures-tools.js'
 import { registerPaperTools, type ToolsLike } from './agent/tools.js'
 import { FtshareMarketData, type FtshareDataLike } from './data/ftshare-market-data.js'
+import { FtshareFuturesMarketData } from './data/futures-market-data.js'
 import { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
 import type { MarketDataPort } from './data/market-data-port.js'
 import type { TradingCalendarPort } from './data/trading-calendar-port.js'
@@ -43,6 +44,7 @@ export { createPaperRoute } from './service/route.js'
 export { PaperScheduler } from './service/scheduler.js'
 export { AccountRepo } from './store/repo.js'
 export { FtshareMarketData } from './data/ftshare-market-data.js'
+export { FtshareFuturesMarketData } from './data/futures-market-data.js'
 export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
 export { WeekdayTradingCalendar } from './data/trading-calendar-port.js'
 export { UnavailableMarketData } from './data/unavailable-market-data.js'
@@ -139,12 +141,15 @@ export function apply(ctx: Context): void {
     const service = scope.get('ftshareData') as unknown as FtshareDataLike
     const adapter = new FtshareMarketData(service)
     const calendarAdapter = new FtshareTradingCalendar(service)
+    const futuresAdapter = new FtshareFuturesMarketData(service)
     market = adapter
     calendar = calendarAdapter
+    futuresMarket = futuresAdapter
     scope.effect(
       () => () => {
         if (market === adapter) market = new UnavailableMarketData()
         if (calendar === calendarAdapter) calendar = new WeekdayTradingCalendar()
+        if (futuresMarket === futuresAdapter) futuresMarket = new UnavailableFuturesMarketData()
       },
       'ft-paper-trading: FTShare adapter',
     )
