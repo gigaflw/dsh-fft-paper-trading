@@ -213,7 +213,9 @@ export function previewOrder(input: PreviewInput): FuturesPreviewView {
   const name = input.contract?.name ?? position?.name
   const last = isPositive(input.quote?.last) ? quantizePrice(input.quote.last, tickSize) : undefined
   const limitPrice = isPositive(input.draft.limitPrice) ? quantizePrice(input.draft.limitPrice, tickSize) : undefined
-  const manual = isPositive(input.draft.price) ? quantizePrice(input.draft.price, tickSize) : undefined
+  // The manual reference price is the degraded-close fallback only; opens
+  // always need a live quote so no price is invented.
+  const manual = offset === 'close' && isPositive(input.draft.price) ? quantizePrice(input.draft.price, tickSize) : undefined
   const buy = tradeSideOf(offset, side) === 'buy'
   const warnings = [...(input.warnings ?? [])]
   const session = marketStatusAt(state.tradeDate, input.sessions, input.nowIso)

@@ -14,6 +14,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-tools'
+import { registerFuturesTools } from './agent/futures-tools.js'
 import { registerPaperTools, type ToolsLike } from './agent/tools.js'
 import { FtshareMarketData, type FtshareDataLike } from './data/ftshare-market-data.js'
 import { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
@@ -21,14 +22,19 @@ import type { MarketDataPort } from './data/market-data-port.js'
 import type { TradingCalendarPort } from './data/trading-calendar-port.js'
 import { WeekdayTradingCalendar } from './data/trading-calendar-port.js'
 import { UnavailableMarketData } from './data/unavailable-market-data.js'
+import { FuturesService } from './service/futures-service.js'
+import { createFuturesRpcHandler } from './service/futures-rpc.js'
 import { PaperService } from './service/paper-service.js'
 import { createPaperRoute, type HostConnectionLike } from './service/route.js'
-import { createPaperRpcHandler } from './service/rpc.js'
+import { createPaperRpcHandler, type PaperRpcHandler } from './service/rpc.js'
 import { PaperScheduler } from './service/scheduler.js'
 import { AccountRepo } from './store/repo.js'
+import { FuturesRepo } from './store/futures-repo.js'
 import { resolveDshHome } from './store/paths.js'
 import { WatchlistStore } from './store/watchlist.js'
 import { DEFAULT_ACCOUNT_ID } from './contract.js'
+import { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js'
+import type { FuturesMarketDataPort } from './data/futures-market-data-port.js'
 
 export * from './contract.js'
 export { PaperService } from './service/paper-service.js'
@@ -40,6 +46,12 @@ export { FtshareMarketData } from './data/ftshare-market-data.js'
 export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
 export { WeekdayTradingCalendar } from './data/trading-calendar-port.js'
 export { UnavailableMarketData } from './data/unavailable-market-data.js'
+export * from './futures-contract.js'
+export { FuturesService } from './service/futures-service.js'
+export { FuturesError } from './service/futures-service.js'
+export { createFuturesRpcHandler } from './service/futures-rpc.js'
+export { FuturesRepo } from './store/futures-repo.js'
+export { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js'
 
 export const name = '@ft/dsh-fft-paper-trading'
 
@@ -67,7 +79,40 @@ export function apply(ctx: Context): void {
   }
 
   const service = new PaperService({ repo, data, calendar, watchlist, logger })
-  const handler = createPaperRpcHandler(service)
+  const paperHandler = createPaperRpcHandler(service)
+
+  // Futures: separate ledger, separate service, same route. The market-data
+  // port stays on the degraded stand-in until the FTShare futures adapter is
+  // wired in; the ledger and the tools must work without it.
+  let futuresMarket: FuturesMarketDataPort = new UnavailableFuturesMarketData()
+  const futuresRepo = new FuturesRepo({ home, logger })
+  const futuresCalendar: TradingCalendarPort = {
+    get source() {
+      return calendar.source
+    },
+    isTradingDay: date => calendar.isTradingDay(date),
+    nextTradingDay: date => calendar.nextTradingDay(date),
+    tradingDays: (from, to) => calendar.tradingDays(from, to),
+  }
+  const futuresService = new FuturesService({
+    repo: futuresRepo,
+    data: {
+      contracts: refresh => futuresMarket.contracts(refresh),
+      quotes: symbols => futuresMarket.quotes(symbols),
+      limits: symbols => futuresMarket.limits(symbols),
+      settle: symbols => futuresMarket.settle(symbols),
+      closes: (symbols, date) => futuresMarket.closes(symbols, date),
+    },
+    calendar: futuresCalendar,
+    logger,
+  })
+  const futuresHandler = createFuturesRpcHandler(futuresService)
+  // `futures/*` goes to the futures handler; every other endpoint keeps the
+  // stock handler, so the browser half needs one route only.
+  const handler: PaperRpcHandler = (endpoint, payload, signal) =>
+    endpoint.startsWith('futures/')
+      ? futuresHandler(endpoint, payload, signal)
+      : paperHandler(endpoint, payload, signal)
 
   // Matching and day settlement must not depend on the panel being open: the
   // host fiber drives `tick` even while the browser half is unmounted.
@@ -78,6 +123,16 @@ export function apply(ctx: Context): void {
       return () => scheduler.stop()
     },
     'ft-paper-trading: matching scheduler',
+  )
+  // Futures settlement must also run while the panel is closed: the 15:30
+  // roll and force liquidation are driven from the host fiber.
+  const futuresScheduler = new PaperScheduler({ logger, tick: () => futuresService.tick() })
+  ctx.effect(
+    () => {
+      futuresScheduler.start()
+      return () => futuresScheduler.stop()
+    },
+    'ft-paper-trading: futures scheduler',
   )
 
   ctx.inject(['ftshareData'], scope => {
@@ -104,6 +159,8 @@ export function apply(ctx: Context): void {
   })
 
   ctx.inject(['tools'], scope => {
-    registerPaperTools(scope.get('tools') as unknown as ToolsLike, service)
+    const tools = scope.get('tools') as unknown as ToolsLike
+    registerPaperTools(tools, service)
+    registerFuturesTools(tools, futuresService)
   })
 }
