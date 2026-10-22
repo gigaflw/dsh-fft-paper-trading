@@ -179,6 +179,8 @@ try {
   assert('open ticket re-prices on the polling tick', typeof liveStock.quote === 'string' && liveStock.quote.includes('1,500.00'), JSON.stringify(liveStock))
   const barsFail = await scenario('bars-fail')
   assert('K-line data failure is shown in the card', typeof barsFail.hint === 'string', JSON.stringify(barsFail))
+  const barsRace = await scenario('bars-race')
+  assert('a stale daily-bar response cannot blank the minute chart', barsRace.chart === true, JSON.stringify(barsRace))
   const quoteRetry = await scenario('quote-retry')
   assert('failed quote is visible and refresh recovers it', typeof quoteRetry.error === 'string' && typeof quoteRetry.quote === 'string' && quoteRetry.quote.includes('现价'), JSON.stringify(quoteRetry))
   const stockClose = await scenario('stock-close')

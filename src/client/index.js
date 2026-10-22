@@ -1934,6 +1934,7 @@ window.__ModuleLoader__.load({
       const [marketBoard, setMarketBoard] = useState('main')
       const [bars, setBars] = useState([])
       const [barError, setBarError] = useState('')
+      const barsSeq = useRef(0)
       const [barInterval, setBarInterval] = useState('day')
       const [daily, setDaily] = useState([])
       const [cashFlow, setCashFlow] = useState([])
@@ -2031,6 +2032,7 @@ window.__ModuleLoader__.load({
       }, [tick])
 
       const loadBars = useCallback(async (symbol = form.symbol) => {
+        const seq = ++barsSeq.current
         if (symbol.trim().length < 6) {
           // Do not leave the previous symbol's candles under a new title.
           if (alive.current) { setBars([]); setBarError('') }
@@ -2038,7 +2040,7 @@ window.__ModuleLoader__.load({
         }
         try {
           const result = await rpc('market/bars', { symbol: symbol.trim(), interval: barInterval, limit: 80 })
-          if (!alive.current) return
+          if (!alive.current || seq !== barsSeq.current) return
           if (result.state === 'ok') {
             setBars(result.bars ?? [])
             setBarError('')
@@ -2047,7 +2049,7 @@ window.__ModuleLoader__.load({
             setBarError(result.notice ?? 'K 线数据暂不可用')
           }
         } catch (cause) {
-          if (!alive.current) return
+          if (!alive.current || seq !== barsSeq.current) return
           setBars([])
           setBarError('K 线数据暂不可用')
           setError(errorOf(cause))
