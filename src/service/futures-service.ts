@@ -72,6 +72,23 @@ import type { FuturesStore } from '../store/futures-repo.js'
 const SYMBOL_BATCH = 20
 const MAX_CONTRACTS = 500
 
+/** Table/CTP suffix aliases agents may send; the host stores market suffixes. */
+const SYMBOL_SUFFIX: Record<string, string> = {
+  SHFE: 'SHFE', SHF: 'SHFE', INE: 'INE', DCE: 'DCE',
+  CZCE: 'CZCE', CZC: 'CZCE', ZCE: 'CZCE',
+  CFFEX: 'CFFEX', CFE: 'CFFEX', CFX: 'CFFEX',
+  GFEX: 'GFEX', GFE: 'GFEX',
+}
+
+/** Accept any published suffix (and lower case); store the market-data form. */
+export function normalizeFuturesSymbol(raw: string): string {
+  const text = String(raw ?? '').trim().toUpperCase()
+  const dot = text.lastIndexOf('.')
+  if (dot <= 0 || dot === text.length - 1) return text
+  const suffix = SYMBOL_SUFFIX[text.slice(dot + 1)]
+  return suffix === undefined ? text : `${text.slice(0, dot)}.${suffix}`
+}
+
 export type FuturesServiceErrorCode =
   | 'INSUFFICIENT_MARGIN'
   | 'INSUFFICIENT_POSITION'
@@ -534,7 +551,7 @@ export class FuturesService {
   }
 
   async quote(symbols: readonly string[]): Promise<FuturesQuotesResult> {
-    const cleaned = symbols.map(symbol => symbol.trim()).filter(symbol => symbol !== '')
+    const cleaned = [...new Set(symbols.map(normalizeFuturesSymbol).filter(symbol => symbol !== ''))]
     const result = await this.fetchQuoteMap(cleaned)
     const cache = await this.ensureContracts(todayTradeDate(this.now()))
     const quotes = cleaned.flatMap(symbol => {
@@ -582,10 +599,11 @@ export class FuturesService {
     }
   }
 
-  async preview(draft: FuturesDraft): Promise<FuturesPreviewView> {
-    this.assertLotQty(draft.qty)
+  async preview(input: FuturesDraft): Promise<FuturesPreviewView> {
+    this.assertLotQty(input.qty)
+    const draft = { ...input, symbol: normalizeFuturesSymbol(input.symbol) }
     const state = await this.sync()
-    const symbol = typeof draft.symbol === 'string' ? draft.symbol.trim() : ''
+    const symbol = draft.symbol
     const data = await this.symbolData(state, symbol, this.ts())
     return previewOrder({
       state,
@@ -601,13 +619,14 @@ export class FuturesService {
     })
   }
 
-  async place(draft: FuturesDraft, requestId: string = randomUUID()): Promise<FuturesOrderView> {
+  async place(input: FuturesDraft, requestId: string = randomUUID()): Promise<FuturesOrderView> {
     const state = await this.sync()
     if (state.blocked) throw this.blocked(state)
     // Reject a bad lot before it reaches the ledger: a rejected order with
     // qty <= 0 used to trip the replay invariant and lock the whole account.
-    this.assertLotQty(draft.qty)
-    const symbol = typeof draft.symbol === 'string' ? draft.symbol.trim() : ''
+    this.assertLotQty(input.qty)
+    const draft = { ...input, symbol: normalizeFuturesSymbol(input.symbol) }
+    const symbol = draft.symbol
     const data = await this.symbolData(state, symbol, this.ts())
     const nowIso = this.ts()
     const phase = phaseAt(nowIso, state.tradeDate, data.sessions)
@@ -634,7 +653,7 @@ export class FuturesService {
       if (duplicate === undefined) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在', 404)
       const limitPrice = typeof draft.limitPrice === 'number' ? draft.limitPrice : undefined
       const price = typeof draft.price === 'number' ? draft.price : undefined
-      if (duplicate.symbol !== draft.symbol.trim() || duplicate.side !== draft.side
+      if (duplicate.symbol !== draft.symbol || duplicate.side !== draft.side
         || duplicate.offset !== draft.offset || duplicate.type !== draft.type || duplicate.qty !== draft.qty
         || duplicate.limitPrice !== limitPrice || duplicate.price !== price) {
         throw new FuturesError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用', 409)
