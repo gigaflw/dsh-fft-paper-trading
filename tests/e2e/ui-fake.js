@@ -1051,6 +1051,19 @@
       result.submitTitle = submit?.title ?? null
       return result
     }
+    if (name === 'slot-identity') {
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await new Promise(done => setTimeout(done, 500))
+      window.__remount('identity')
+      await new Promise(done => setTimeout(done, 600))
+      result.symbol = document.querySelector('.pt-ticket-form input')?.value ?? null
+      result.notice = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('已从 K 线选择'))
+        return node ? node.innerText.trim() : null
+      }, 3000)
+      return result
+    }
     if (name === 'slot-fallback') {
       window.__remount('empty')
       const stockButton = e2e.byText('股票')[0]
@@ -1279,10 +1292,16 @@
     window.__mainComponent = main.component
     window.__root = ReactDOM.createRoot(document.getElementById('root'))
     window.__root.render(React.createElement(main.component, { renderSlot: () => null }))
+    function IdentitySlot({ onIdentity }) {
+      React.useEffect(() => { onIdentity?.('000001', '平安银行') }, [])
+      return React.createElement('div', { className: 'dsh-kline-native-host' })
+    }
     window.__remount = slotMode => {
       const renderSlot = slotMode === 'empty'
         ? () => React.createElement('div', { className: 'dsh-kline-native-host' })
-        : () => null
+        : slotMode === 'identity'
+          ? (name, props) => React.createElement(IdentitySlot, props)
+          : () => null
       window.__root.render(React.createElement(main.component, { renderSlot }))
     }
     window.__registrations = registrations

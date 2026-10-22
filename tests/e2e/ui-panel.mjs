@@ -280,6 +280,8 @@ try {
   assert('a locked account offers export and copy', lockedAccount.exportButton === 1 && lockedAccount.copyButton === 1, JSON.stringify(lockedAccount))
   const futuresLocked = await scenario('futures-locked')
   assert('a locked futures account has the same recovery affordances', typeof futuresLocked.blocked === 'string' && futuresLocked.blocked.includes('期货账本校验失败') && futuresLocked.exportButton === 1 && futuresLocked.copyButton === 1 && typeof futuresLocked.copyNotice === 'string' && futuresLocked.copyNotice.includes('账本路径') && futuresLocked.submitDisabled === true && futuresLocked.submitTitle === '账户已锁定', JSON.stringify(futuresLocked))
+  const slotIdentity = await scenario('slot-identity')
+  assert('a K-line selection fills the ticket symbol', slotIdentity.symbol === '000001' && typeof slotIdentity.notice === 'string' && slotIdentity.notice.includes('平安银行'), JSON.stringify(slotIdentity))
   const slotFallback = await scenario('slot-fallback')
   assert('empty K-line slot shows a loading hint first', typeof slotFallback.loadingHint === 'string' && slotFallback.loadingHint.includes('K 线加载中'), slotFallback.loadingHint ?? '')
   assert('empty K-line slot falls back to the built-in chart', slotFallback.chart === true && slotFallback.panelAlive === true, JSON.stringify(slotFallback))
