@@ -549,7 +549,10 @@
         { date: '2026-10-21', equity: 98000, dayPnl: -2000, fees: 5.2, closeSource: 'daily' },
         { date: '2026-10-22', equity: 101000, dayPnl: 3000, fees: 7.1, closeSource: 'last' },
       ])
-      window.__fake.on('cash/flow', () => [{ ts: '2026-10-21T02:00:00.000Z', type: 'buy', amount: -145050, balance: 0 }])
+      window.__fake.on('cash/flow', () => [
+        { ts: '2026-10-21T01:00:00.000Z', type: 'open', amount: 100000, balance: 100000 },
+        { ts: '2026-10-21T02:00:00.000Z', type: 'buy', amount: -145050, balance: 0 },
+      ])
       window.__fake.on('review/roundtrips', () => [
         { symbol: '600519.XSHG', qty: 100, cost: 1450.5, proceeds: 1400, pnl: -5050, holdingDays: 2 },
       ])
@@ -570,6 +573,7 @@
       result.tables = [...document.querySelectorAll('.pt-main table')].map(table => table.querySelectorAll('tbody tr').length)
       result.negative = [...document.querySelectorAll('.pt-main td, .pt-main .pt-stat-value')]
         .filter(node => node.className.includes('pt-down')).map(node => node.innerText).slice(0, 3)
+      result.initial = e2e.text('.pt-main').includes('初始资金')
       result.truncation = [...document.querySelectorAll('.pt-main .pt-note')]
         .map(node => node.innerText).find(text => text.includes('仅显示最近 30 条')) ?? null
       return result
