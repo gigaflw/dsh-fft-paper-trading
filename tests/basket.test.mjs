@@ -219,3 +219,10 @@ test('basket: accepts exchange prefixes like SH600519', () => {
   assert.equal(parsed.issues.length, 0)
   assert.deepEqual(parsed.rows.map(row => row.symbol), ['600519', '000001'])
 })
+
+
+test('basket: accepts quoted cells from an Excel export', () => {
+  const parsed = parseBasketCsv('"代码","权重"\n"SH600519","30%"\n"000001","70%"')
+  assert.equal(parsed.issues.length, 0)
+  assert.deepEqual(parsed.rows.map(row => row.symbol), ['600519', '000001'])
+})
