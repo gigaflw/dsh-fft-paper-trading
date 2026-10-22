@@ -297,6 +297,16 @@ test('service: next boundary is today before the open and skips the weekend afte
     assert.equal(pre.phase, 'closed')
     assert.equal(pre.nextBoundary, at('2026-10-23', '09:15').toISOString())
 
+    now.current = at('2026-10-23', '09:20')
+    const preOpen = await service.marketStatus()
+    assert.equal(preOpen.phase, 'pre_open')
+    assert.equal(preOpen.nextBoundary, at('2026-10-23', '09:30').toISOString())
+
+    now.current = at('2026-10-23', '14:57')
+    const auction = await service.marketStatus()
+    assert.equal(auction.phase, 'auction_close')
+    assert.equal(auction.nextBoundary, at('2026-10-23', '15:00').toISOString())
+
     now.current = at('2026-10-23', '16:00')
     const after = await service.marketStatus()
     assert.equal(after.nextBoundary, at('2026-10-26', '09:15').toISOString())
@@ -304,6 +314,11 @@ test('service: next boundary is today before the open and skips the weekend afte
     now.current = at('2026-10-24', '08:00')
     const weekend = await service.marketStatus()
     assert.equal(weekend.nextBoundary, at('2026-10-26', '09:15').toISOString())
+
+    now.current = at('2026-10-24', '09:20')
+    const weekendAuction = await service.marketStatus()
+    assert.equal(weekendAuction.phase, 'closed')
+    assert.equal(weekendAuction.nextBoundary, at('2026-10-26', '09:15').toISOString())
   } finally {
     await rm(home, { recursive: true, force: true })
   }
