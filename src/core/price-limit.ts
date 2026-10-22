@@ -1,4 +1,5 @@
-import type { PriceLimit } from '../contract.js'
+import type { Bar, PriceLimit } from '../contract.js'
+import { tradeDateOf } from './calendar.js'
 import { roundPrice } from './money.js'
 
 /** Board ratio from the symbol prefix / ST marker; configurable in one place. */
@@ -25,4 +26,20 @@ export function priceLimitFor(symbol: string, name: string | undefined, prevClos
 export function isWithinLimit(price: number, limit: PriceLimit | undefined): boolean {
   if (limit === undefined) return true
   return price >= limit.lower && price <= limit.upper
+}
+
+/**
+ * Previous close from a daily-bar series.
+ *
+ * FTShare keeps today's (possibly partial) bar in the series after the open, so
+ * only bars before the current trade date qualify. A missing series leaves the
+ * limit unknown, which the risk check treats as "no limit" rather than guessing.
+ */
+export function prevCloseFromBars(bars: readonly Bar[], today: string): number | undefined {
+  let previous: number | undefined
+  for (const bar of bars) {
+    if (tradeDateOf(bar.time) >= today) continue
+    if (Number.isFinite(bar.close) && bar.close > 0) previous = bar.close
+  }
+  return previous
 }

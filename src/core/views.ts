@@ -102,6 +102,22 @@ export function toAccountView(state: AccountState): AccountView {
   }
 }
 
+/** Largest 100-share lot affordable at `price`, fees and minimum commission included. */
+export function maxBuyQtyFor(cashCents: number, price: number, settings: PaperSettings): number {
+  if (!Number.isFinite(cashCents) || cashCents <= 0) return 0
+  if (!Number.isFinite(price) || price <= 0) return 0
+  const perShare = price * (1 + settings.commissionRate + settings.transferFeeRate)
+  if (!Number.isFinite(perShare) || perShare <= 0) return 0
+  let lots = Math.floor(cashCents / (perShare * 100))
+  // The minimum commission can make one more lot unaffordable; walk down.
+  while (lots > 0) {
+    const amount = amountCents(price, lots * 100)
+    if (amount + computeFees(amount, 'buy', settings).totalCents <= cashCents) break
+    lots -= 1
+  }
+  return Math.max(0, lots * 100)
+}
+
 export function previewOrder(
   state: AccountState,
   draft: OrderDraft,
@@ -125,9 +141,11 @@ export function previewOrder(
     const available = state.positions[draft.symbol]?.available ?? 0
     if (available < draft.qty) warnings.push(`可卖不足：可卖 ${available} 股`)
   }
-  const maxBuyQty = price > 0
-    ? Math.floor(state.cashCents / (price * 100 * (1 + settings.commissionRate + settings.transferFeeRate)) / 100) * 100
-    : 0
+  const maxBuyQty = draft.side === 'buy' ? maxBuyQtyFor(state.cashCents, price, settings) : 0
+  const cashAfterCents = draft.side === 'buy' ? state.cashCents - amount - fees.totalCents : state.cashCents + amount - fees.totalCents
+  if (draft.side === 'buy' && cashAfterCents < 0) {
+    warnings.push(`可用资金不足：最多可买 ${maxBuyQty} 股`)
+  }
   return {
     symbol: draft.symbol,
     side: draft.side,
@@ -139,9 +157,9 @@ export function previewOrder(
     stampCents: fees.stampCents,
     transferCents: fees.transferCents,
     totalFeesCents: fees.totalCents,
-    cashAfterCents: draft.side === 'buy' ? state.cashCents - amount - fees.totalCents : state.cashCents + amount - fees.totalCents,
+    cashAfterCents,
     availableQty: state.positions[draft.symbol]?.available ?? 0,
-    maxBuyQty: Math.max(0, maxBuyQty),
+    maxBuyQty,
     quote: quote ?? undefined,
     priceLimit,
     session,

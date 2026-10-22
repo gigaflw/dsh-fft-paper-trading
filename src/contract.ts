@@ -266,6 +266,17 @@ export interface WatchlistView {
   symbols: string[]
 }
 
+/** `account/export`: the raw ledger file, so a locked account can be inspected. */
+export interface LedgerExport {
+  /** Absolute path of `events.jsonl`. */
+  path: string
+  /** False when no ledger file exists yet. */
+  exists: boolean
+  /** Raw JSONL text; omitted when `exists` is false. */
+  content?: string
+  notice?: string
+}
+
 export interface RoundTrip {
   symbol: string
   name?: string

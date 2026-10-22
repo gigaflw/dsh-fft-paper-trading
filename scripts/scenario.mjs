@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PaperService } from '../lib/service/paper-service.js'
 import { AccountRepo } from '../lib/store/repo.js'
+import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
 
 const DAY1 = new Date('2026-10-19T02:00:00.000Z')
 const DAY2 = new Date('2026-10-20T02:00:00.000Z')
@@ -20,7 +21,7 @@ const data = {
 const home = join(process.cwd(), 'tmp', 'paper-trading-scenario', String(Date.now()))
 let now = DAY1
 const repo = new AccountRepo({ home, accountId: 'default' })
-const service = new PaperService({ repo, data, now: () => now })
+const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
 
 try {
   console.log('账户', await service.account())

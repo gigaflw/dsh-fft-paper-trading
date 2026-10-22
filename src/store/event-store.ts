@@ -1,4 +1,4 @@
-import { appendFile, copyFile, mkdir, open, readFile } from 'node:fs/promises'
+import { copyFile, mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { LedgerEvent } from '../core/types.js'
 
@@ -11,6 +11,11 @@ export interface ReadResult {
 /** Append-only JSONL store. Every append is flushed with fsync. */
 export class EventStore {
   constructor(private readonly file: string) {}
+
+  /** Absolute path of the ledger file, for export and diagnostics. */
+  get filePath(): string {
+    return this.file
+  }
 
   private async ensureDir(): Promise<void> {
     await mkdir(dirname(this.file), { recursive: true, mode: 0o700 })
@@ -51,6 +56,40 @@ export class EventStore {
       }
     }
     return { events, skipped }
+  }
+
+  /**
+   * Replace the whole file atomically: write a sibling temp file, fsync it and
+   * rename over the target. A crash leaves either the old or the new ledger,
+   * never a half-written one.
+   */
+  async replace(events: readonly LedgerEvent[]): Promise<void> {
+    await this.ensureDir()
+    const payload = events.length === 0 ? '' : `${events.map(event => JSON.stringify(event)).join('\n')}\n`
+    const temp = `${this.file}.tmp-${process.pid}-${Date.now()}`
+    try {
+      const handle = await open(temp, 'w', 0o600)
+      try {
+        await handle.writeFile(payload, 'utf8')
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      await rename(temp, this.file)
+    } catch (error) {
+      await unlink(temp).catch(() => {})
+      throw error
+    }
+  }
+
+  /** Raw file text; `null` when the ledger has not been created yet. */
+  async readText(): Promise<string | null> {
+    try {
+      return await readFile(this.file, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw error
+    }
   }
 
   async backup(destination: string): Promise<boolean> {
