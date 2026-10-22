@@ -90,6 +90,7 @@ export function toOrderView(order: FuturesOrder): FuturesOrderView {
     limitPrice: order.limitPrice,
     status: order.status,
     reason: order.reason,
+    note: order.note,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
     filledAt: order.filledAt,

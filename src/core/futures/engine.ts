@@ -177,6 +177,7 @@ export function submit(
     limitPrice: typeof draft.limitPrice === 'number' ? draft.limitPrice : undefined,
     price: typeof draft.price === 'number' ? draft.price : undefined,
     status: 'pending',
+    note: typeof draft.note === 'string' && draft.note.trim() !== '' ? draft.note.trim() : undefined,
     createdAt: ts,
     updatedAt: ts,
     tradeDate: input.tradeDate,

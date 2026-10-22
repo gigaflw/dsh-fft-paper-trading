@@ -359,6 +359,7 @@ window.__ModuleLoader__.load({
       .pt-book-scroll { flex:1 1 auto; min-height:0; overflow:auto; }
       .pt-book-empty { display:flex; align-items:center; justify-content:center; min-height:84px; }
       .pt-table-wrap { overflow-x:auto; min-width:0; }
+      .pt-note-cell { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .pt-table { width:100%; border-collapse:collapse; font-size:12px; min-width:0; }
       .pt-table th { text-align:left; font-weight:500; color:var(--dsw-alias-label-secondary, #49525f);
         font-size:11px; letter-spacing:.04em; padding:6px 7px;
@@ -875,7 +876,7 @@ window.__ModuleLoader__.load({
         h('div', null,
           h('div', { className: 'pt-sub' }, '挂单'),
           pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
-            h('thead', null, h('tr', null, ['代码', '方向', '类型', '数量', '限价', '状态', '操作'].map(label => h('th', { key: label }, label)))),
+            h('thead', null, h('tr', null, ['代码', '方向', '类型', '数量', '限价', '状态', '备注', '操作'].map(label => h('th', { key: label }, label)))),
             h('tbody', null, pending.map(order => h('tr', { key: order.id },
               h('td', null, bareSymbol(order.symbol)),
               h('td', null, order.side === 'buy' ? '买' : '卖'),
@@ -883,6 +884,7 @@ window.__ModuleLoader__.load({
               h('td', null, count(order.qty)),
               h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
               h('td', null, STATUS_TEXT[order.status] ?? order.status),
+              h('td', { className: 'pt-note-cell', title: order.note ?? undefined }, order.note ?? ''),
               h('td', null, h('button', { className: 'pt-btn', onClick: () => onCancel(order.id), disabled: busy }, '撤单')),
             ))),
           ),
@@ -893,7 +895,7 @@ window.__ModuleLoader__.load({
         h('div', null,
           h('div', { className: 'pt-sub' }, '历史'),
           history.length === 0 ? h('div', { className: 'pt-empty' }, '无历史订单') : h(Table, null,
-            h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '限价', '状态', '成交价', '原因'].map(label => h('th', { key: label }, label)))),
+            h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '限价', '状态', '成交价', '原因', '备注'].map(label => h('th', { key: label }, label)))),
             h('tbody', null, history.slice(0, 30).map(order => h('tr', { key: order.id },
               h('td', null, dateTime(order.createdAt)),
               h('td', null, bareSymbol(order.symbol)),
@@ -903,6 +905,7 @@ window.__ModuleLoader__.load({
               h('td', null, STATUS_TEXT[order.status] ?? order.status),
               h('td', null, order.fillPrice === undefined ? '—' : money(order.fillPrice)),
               h('td', { title: order.reason ?? undefined }, reasonText(order.reason)),
+              h('td', { className: 'pt-note-cell', title: order.note ?? undefined }, order.note ?? ''),
             ))),
           ),
           history.length > 30 ? h('div', { className: 'pt-note' }, `仅显示最近 30 条，共 ${history.length} 条`) : null,
@@ -1865,7 +1868,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-sub' }, '挂单'),
           pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
             h('thead', null, h('tr', null,
-              ['合约', '方向', '类型', '手数', '限价', '状态', '操作'].map(label => h('th', { key: label }, label)),
+              ['合约', '方向', '类型', '手数', '限价', '状态', '备注', '操作'].map(label => h('th', { key: label }, label)),
             )),
             h('tbody', null, pending.map(order => h('tr', { key: order.id },
               h('td', null, order.symbol),
@@ -1874,6 +1877,7 @@ window.__ModuleLoader__.load({
               h('td', null, count(order.qty)),
               h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
               h('td', null, FUTURES_STATUS_TEXT[order.status] ?? order.status),
+              h('td', { className: 'pt-note-cell', title: order.note ?? undefined }, order.note ?? ''),
               h('td', null, h('button', { className: 'pt-btn', onClick: () => onCancel(order.id), disabled: busy }, '撤单')),
             ))),
           ),
@@ -1885,7 +1889,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-sub' }, '历史'),
           history.length === 0 ? h('div', { className: 'pt-empty' }, '无历史订单') : h(Table, null,
             h('thead', null, h('tr', null,
-              ['时间', '合约', '方向', '类型', '手数', '限价', '状态', '成交价', '原因'].map(label => h('th', { key: label }, label)),
+              ['时间', '合约', '方向', '类型', '手数', '限价', '状态', '成交价', '原因', '备注'].map(label => h('th', { key: label }, label)),
             )),
             h('tbody', null, history.slice(0, 30).map(order => h('tr', { key: order.id },
               h('td', null, dateTime(order.createdAt)),
@@ -1897,6 +1901,7 @@ window.__ModuleLoader__.load({
               h('td', null, FUTURES_STATUS_TEXT[order.status] ?? order.status),
               h('td', null, order.fillPrice === undefined ? '—' : money(order.fillPrice)),
               h('td', { title: order.reason ?? undefined }, reasonText(order.reason, 'futures')),
+              h('td', { className: 'pt-note-cell', title: order.note ?? undefined }, order.note ?? ''),
             ))),
           ),
           history.length > 30 ? h('div', { className: 'pt-note' }, `仅显示最近 30 条，共 ${history.length} 条`) : null,
