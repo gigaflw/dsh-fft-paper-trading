@@ -1019,6 +1019,34 @@
       window.__fake.on('market/status', () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }))
       return result
     }
+    if (name === 'stock-preopen') {
+      window.__fake.on('order/preview', (payload) => ({
+        ...preview,
+        symbol: '600519.XSHG', side: 'buy', type: 'limit', qty: 100, price: 10.5,
+        amountCents: 105000, commissionCents: 5, stampCents: 0, transferCents: 1,
+        totalFeesCents: 6, cashAfterCents: 90000000, availableQty: 0, maxBuyQty: 900,
+        quote: { ...quote, status: 'trading', last: 10.5, marketTs: ts() },
+        warnings: [],
+      }))
+      window.__fake.on('market/status', () => ({ phase: 'pre_open', tradeDate: '2026-10-23', canSubmit: true, canMatch: false }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      await new Promise(done => setTimeout(done, 300))
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      e2e.click(e2e.byText('限价')[0])
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '100')
+      e2e.setInput(inputs[2], '10.5')
+      await new Promise(done => setTimeout(done, 500))
+      const submit = document.querySelector('.pt-ticket-submit')
+      result.enabled = submit ? !submit.disabled : null
+      result.title = submit?.title ?? null
+      result.header = e2e.text('.pt-sub')
+      window.__fake.on('market/status', () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }))
+      return result
+    }
     if (name === 'review-race2') {
       window.__remount('none')
       await new Promise(done => setTimeout(done, 600))
