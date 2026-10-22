@@ -169,6 +169,8 @@ try {
   assert('watchlist removes again', Array.isArray(marketWatch.removed) && marketWatch.removed.length === 0, JSON.stringify(marketWatch))
   const marketEmpty = await scenario('market-empty-search')
   assert('empty market search says so', marketEmpty.empty === '没有找到匹配标的', JSON.stringify(marketEmpty))
+  const quoteRetry = await scenario('quote-retry')
+  assert('failed quote is visible and refresh recovers it', typeof quoteRetry.error === 'string' && typeof quoteRetry.quote === 'string' && quoteRetry.quote.includes('现价'), JSON.stringify(quoteRetry))
   const stockClose = await scenario('stock-close')
   assert('T+1-locked position explains the disabled sell', stockClose.t1Disabled === true && typeof stockClose.t1Title === 'string' && stockClose.t1Title.includes('T+1'), JSON.stringify(stockClose))
   assert('selling a position fills and submits the ticket', stockClose.side === '卖出' && stockClose.qty === '100' && stockClose.submitLabel === '卖出' && typeof stockClose.receipt === 'string' && stockClose.receipt.includes('卖出'), JSON.stringify(stockClose))
