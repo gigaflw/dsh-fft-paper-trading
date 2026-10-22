@@ -168,6 +168,7 @@ try {
   assert('a rolled ledger date is labeled as the next trading day', typeof nextTradeDate.sub === 'string' && nextTradeDate.sub.includes('下一交易日'), JSON.stringify(nextTradeDate))
   const basketPreview = await scenario('basket-preview')
   assert('basket preview is shown before confirmation', typeof basketPreview.preview === 'string' && basketPreview.preview.includes('目标权重'), basketPreview.preview ?? '')
+  assert('basket codes drop the exchange suffix', typeof basketPreview.preview === 'string' && basketPreview.preview.includes('600519') && !basketPreview.preview.includes('.XSHG'), basketPreview.preview ?? '')
   await shot('basket-preview.png')
   const reviewData = await scenario('review-data')
   assert('review renders stats, chart and all four tables', Array.isArray(reviewData.stats) && reviewData.stats.some(text => text.includes('成交笔数')) && reviewData.chart === true && Array.isArray(reviewData.tables) && reviewData.tables.filter(count => count > 0).length >= 4, JSON.stringify(reviewData))
