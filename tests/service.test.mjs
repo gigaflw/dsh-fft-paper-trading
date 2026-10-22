@@ -542,3 +542,22 @@ test('service: upstream adapter internals are not exposed in data notices', asyn
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('service: stock order notes survive ledger replay', async () => {
+  const home = makeHome('note-replay')
+  const data = makeData()
+  let now = DAY1
+  const calendar = new WeekdayTradingCalendar()
+  const service = new PaperService({ repo: new AccountRepo({ home, accountId: 'default' }), data, calendar, now: () => now })
+  try {
+    setQuote(data, 10, DAY1_ISO)
+    await service.account()
+    const placed = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100, note: '股票备注' })
+    assert.equal(placed.note, '股票备注')
+    const reopened = new PaperService({ repo: new AccountRepo({ home, accountId: 'default' }), data, calendar, now: () => now })
+    const orders = await reopened.orders()
+    assert.equal(orders.find(order => order.id === placed.id).note, '股票备注')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
