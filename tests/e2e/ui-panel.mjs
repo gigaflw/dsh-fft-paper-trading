@@ -217,7 +217,7 @@ try {
   assert('a resting limit order shows the pending receipt', typeof stockLimit.receipt === 'string' && stockLimit.receipt.includes('挂单') && stockLimit.receipt.includes('11.40'), JSON.stringify(stockLimit))
   const cancelOrder = await scenario('cancel-order')
   const cancelStale = await scenario('cancel-stale')
-  assert('cancelling an already-ended order resyncs without an error', typeof cancelStale.note === 'string' && cancelStale.note.includes('订单已结束') && cancelStale.error === null, JSON.stringify(cancelStale))
+  assert('cancelling an already-ended order resyncs without an error', typeof cancelStale.note === 'string' && cancelStale.note.includes('订单已结束') && cancelStale.error === null && cancelStale.error2 === null, JSON.stringify(cancelStale))
   assert('cancelling a pending order clears the table', typeof cancelOrder.empty === 'string' && cancelOrder.empty.includes('无挂单'), JSON.stringify(cancelOrder))
   assert('a queued order explains that it waits for the next session', typeof cancelOrder.note === 'string' && cancelOrder.note.includes('下一交易时段'), JSON.stringify(cancelOrder.note))
   const ordersTruncation = await scenario('orders-truncation')
