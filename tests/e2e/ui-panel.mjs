@@ -200,6 +200,8 @@ try {
   assert('basket error keeps the panel mounted', basketError.panelAlive === true)
 
   // 3. 期货
+  const basketRace = await scenario('basket-race')
+  assert('a stale basket preview is discarded after a new file', basketRace.rows === 0 && basketRace.filename === true, JSON.stringify(basketRace))
   const switched = await scenario('futures-switch')
   assert('futures switch renders the account', typeof switched.head === 'string' && switched.head.includes('期货 ·'), switched.head ?? '')
   assert('futures stats labels', Array.isArray(switched.stats) && switched.stats.some(text => text.includes('总权益')) && switched.stats.some(text => text.includes('风险度')), JSON.stringify(switched.stats))
