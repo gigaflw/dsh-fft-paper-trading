@@ -288,6 +288,9 @@
       return result
     }
     if (name === 'live-futures') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 400))
       window.__futuresLast = 3300
       result.rail = await e2e.wait(() => {
         const text = document.querySelector('.pt-futures-rail')?.innerText ?? ''
@@ -399,9 +402,10 @@
       window.__fake.on('review/roundtrips', () => [
         { symbol: '600519.XSHG', qty: 100, cost: 1450.5, proceeds: 1400, pnl: -5050, holdingDays: 2 },
       ])
-      window.__fake.on('list/trades', () => [
-        { id: 't1', ts: '2026-10-21T03:00:00.000Z', symbol: '600519.XSHG', side: 'sell', qty: 100, price: 1400, amountCents: 14000000, feesCents: 500 },
-      ])
+      window.__fake.on('list/trades', () => Array.from({ length: 31 }, (_, index) => ({
+        id: `t${index}`, ts: '2026-10-21T03:00:00.000Z', symbol: '600519.XSHG', side: 'sell', qty: 100,
+        price: 1400, amountCents: 14000000, feesCents: 500,
+      })))
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
       e2e.click(tab)
       await e2e.wait(() => document.querySelector('.pt-chart-wrap'))
@@ -415,6 +419,30 @@
       result.tables = [...document.querySelectorAll('.pt-main table')].map(table => table.querySelectorAll('tbody tr').length)
       result.negative = [...document.querySelectorAll('.pt-main td, .pt-main .pt-stat-value')]
         .filter(node => node.className.includes('pt-down')).map(node => node.innerText).slice(0, 3)
+      result.truncation = [...document.querySelectorAll('.pt-main .pt-note')]
+        .map(node => node.innerText).find(text => text.includes('仅显示最近 30 条')) ?? null
+      return result
+    }
+    if (name === 'market-retry') {
+      let attempts = 0
+      const rows = [
+        { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+        { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+      ]
+      window.__fake.on('market/list', () => {
+        attempts += 1
+        return attempts === 1 ? { __error: { code: 'INTERNAL', message: '行情源暂时不可用' } } : { state: 'ok', page: 1, quotes: rows }
+      })
+      const tab = e2e.byText('行情')[0]
+      e2e.click(tab)
+      result.error = await e2e.wait(() => document.querySelector('.pt-error')?.innerText ?? null, 4000)
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.rows = await e2e.wait(() => {
+        const found = document.querySelectorAll('.pt-main tbody tr').length
+        return found === 2 ? found : null
+      }, 4000)
+      result.errorAfter = document.querySelector('.pt-error')?.innerText ?? null
       return result
     }
     if (name === 'market-watch') {
@@ -550,6 +578,15 @@
         return book.includes('RB2611.SHFE') ? book.replace(/\n/g, ' ') : null
       }, 5000)
       result.calls = window.__calls.slice(-10)
+      return result
+    }
+    if (name === 'futures-review') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
+      if (tab) e2e.click(tab)
+      result.body = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('分品种统计') ? text : null
+      }, 4000)
       return result
     }
     if (name === 'futures-close') {
