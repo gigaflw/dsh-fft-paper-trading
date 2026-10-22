@@ -201,6 +201,7 @@ test('browser bundle: futures account switch, four tabs and the futures endpoint
   assert.match(source, /FUTURES_TABS = \['trade', 'positions', 'orders', 'review'\]/)
   const futuresScope = sliceBetween('function FuturesDashboard', 'function StockDashboard')
   assert.ok(!futuresScope.includes('KlinePane'), 'the futures half must not render a K-line')
+  assert.ok(!futuresScope.includes('setSymbolQuote'), 'the futures half must not touch the stock quote state')
   assert.ok(!futuresScope.includes("'market', '行情'"), 'the futures half must not render a market page')
   // Futures vocabulary and ticket gates.
   for (const text of ['开多', '开空', '平多', '平空', '手数', '风险度', '保证金占用', '涨停', '跌停', '平仓']) {
