@@ -172,6 +172,7 @@ try {
   assert('market list renders and next is disabled on a short page', marketWatch.rows === 2 && marketWatch.nextDisabled === true, JSON.stringify(marketWatch))
   assert('watchlist adds and filters the market list', Array.isArray(marketWatch.added) && marketWatch.added.length === 1 && marketWatch.filteredRows === 1, JSON.stringify(marketWatch))
   assert('watchlist removes again', Array.isArray(marketWatch.removed) && marketWatch.removed.length === 0, JSON.stringify(marketWatch))
+  assert('an empty watch filter shows guidance', typeof marketWatch.empty === 'string' && marketWatch.empty.includes('还没有自选'), JSON.stringify(marketWatch))
   const watchConcurrent = await scenario('watch-concurrent')
   assert('two quick star clicks keep both favourites', Array.isArray(watchConcurrent.symbols) && watchConcurrent.symbols.length === 2, JSON.stringify(watchConcurrent))
   const searchRace = await scenario('search-race')

@@ -512,6 +512,10 @@
       await e2e.wait(() => window.__watchSymbols?.length === 0)
       result.removed = window.__watchSymbols.slice()
       result.calls = (window.__watchCalls ?? []).map(list => list.join(','))
+      result.empty = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-empty')].find(el => el.innerText.includes('还没有自选'))
+        return node ? node.innerText.trim() : null
+      }, 3000)
       return result
     }
     if (name === 'watch-concurrent') {
