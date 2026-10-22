@@ -226,6 +226,8 @@ try {
   const futuresClose = await scenario('futures-close')
   assert('closing from the book fills a close ticket', futuresClose.hasClose === true && typeof futuresClose.ticket === 'string' && futuresClose.ticket.includes('平多') && futuresClose.qty === '1', JSON.stringify(futuresClose))
   assert('close ticket submits and reports the fill', typeof futuresClose.receipt === 'string' && futuresClose.receipt.includes('平') && futuresClose.receipt.includes('成交'), JSON.stringify(futuresClose))
+  const quoteRace = await scenario('futures-quote-race')
+  assert('a stale futures quote cannot paint over the new contract', typeof quoteRace.rail === 'string' && quoteRace.rail.includes('70,000.00') && !quoteRace.rail.includes('3,200.00'), JSON.stringify(quoteRace))
   const slotFallback = await scenario('slot-fallback')
   assert('empty K-line slot shows a loading hint first', typeof slotFallback.loadingHint === 'string' && slotFallback.loadingHint.includes('K 线加载中'), slotFallback.loadingHint ?? '')
   assert('empty K-line slot falls back to the built-in chart', slotFallback.chart === true && slotFallback.panelAlive === true, JSON.stringify(slotFallback))

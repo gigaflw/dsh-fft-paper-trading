@@ -1176,6 +1176,7 @@ window.__ModuleLoader__.load({
       const [contract, setContract] = useState(null)
       const [quote, setQuote] = useState(null)
       const [quoteNotice, setQuoteNotice] = useState('')
+      const quoteSeq = useRef(0)
       const [preview, setPreview] = useState(null)
       const [previewState, setPreviewState] = useState('idle')
       const [previewError, setPreviewError] = useState('')
@@ -1228,13 +1229,16 @@ window.__ModuleLoader__.load({
       }, [tab, loadReview])
 
       const fetchQuote = useCallback(async symbol => {
+        const seq = ++quoteSeq.current
         try {
           const result = await rpc('futures/quote', { symbols: [symbol] })
-          if (!alive.current) return
+          // A slower quote for a previously selected contract must not paint
+          // over the one the user is looking at now.
+          if (!alive.current || seq !== quoteSeq.current) return
           setQuote(result.quotes[0] ?? null)
           setQuoteNotice(result.quotes.length === 0 ? (result.notice ?? '取不到行情，可手填参考价') : '')
         } catch {
-          if (!alive.current) return
+          if (!alive.current || seq !== quoteSeq.current) return
           setQuote(null)
           setQuoteNotice('取不到行情，可手填参考价')
         }
