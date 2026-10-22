@@ -13,6 +13,9 @@ import { UnavailableMarketData } from '../lib/data/unavailable-market-data.js'
 import { replayFutures } from '../lib/core/futures/replay.js'
 import { verify as verifyFuturesAccount } from '../lib/core/futures/ledger.js'
 import { SYMBOL, DATE1, DATE2, AM, LUNCH, PM, SETTLEMENT, clockAt, makeHome, makeFakeData, draft, cents } from './futures-fixtures.mjs'
+import { CONTRACT } from './futures-fixtures.mjs'
+
+const SETTLE_FEE_RATE = { feePerLotCents: 0, closeTodayFeePerLotCents: 0, longMarginRate: 0.09 }
 
 function setup(name, at = clockAt(DATE1, AM)) {
   const home = makeHome(name)
@@ -472,6 +475,47 @@ test('evening status is closed even though tradeDate already points at tomorrow'
     assert.equal(status.tradeDate, DATE2)
     assert.equal(status.phase, 'closed', '20:25 must not read as the next auction')
     assert.equal(status.canSubmit, false)
+  } finally {
+    await close(subject)
+  }
+})
+
+test('ad-valorem fees use the exchange-specific upstream rate unit', async () => {
+  const subject = setup('futures-fee-unit')
+  try {
+    const dce = {
+      ...CONTRACT, symbol: 'I2611.DCE', name: '铁矿石', product: 'i', exchange: 'DCE',
+      multiplier: 100, tickSize: 0.5, marginRate: 0.05, deListDate: '2026-11-30',
+    }
+    const ine = {
+      ...CONTRACT, symbol: 'BC2611.INE', name: '国际铜', product: 'bc', exchange: 'INE',
+      multiplier: 5, tickSize: 10, marginRate: 0.1, deListDate: '2026-11-30',
+    }
+    // All contracts must be in the same index: ensureContracts caches per day.
+    subject.data.contractList = [{ ...CONTRACT }, dce, ine]
+    subject.data.quoteMap.set(ine.symbol, { symbol: ine.symbol, last: 96370, preSettlement: 96000 })
+    subject.data.limitMap.set(ine.symbol, { symbol: ine.symbol, upper: 101000, lower: 91000, marginRate: 0.1, source: 'limit' })
+    subject.data.settleMap.set(ine.symbol, { ...SETTLE_FEE_RATE, symbol: ine.symbol, feeRate: 10, longMarginRate: 0.1 })
+    subject.data.quoteMap.set(dce.symbol, { symbol: dce.symbol, last: 675, preSettlement: 678 })
+    subject.data.limitMap.set(dce.symbol, { symbol: dce.symbol, upper: 728.5, lower: 646.5, marginRate: 0.05, source: 'limit' })
+    subject.data.settleMap.set(SYMBOL, { ...SETTLE_FEE_RATE, symbol: SYMBOL, feeRate: 0.1, closeTodayFee: 0.05 })
+    subject.data.settleMap.set(dce.symbol, { ...SETTLE_FEE_RATE, symbol: dce.symbol, feeRate: 1, closeTodayFee: 1.4, longMarginRate: 0.05 })
+
+    // SHFE publishes per-mille: 0.1 means 0.1‰ of notional.
+    const rb = await subject.service.preview(draft())
+    assert.equal(rb.feesCents, 320, JSON.stringify({ fees: rb.feesCents, warnings: rb.warnings }))
+    assert.match(rb.warnings.join('；'), /3\.20 元\/手/)
+
+    // DCE publishes per-10,000: 1 means 1‱ of notional.
+    const preview = await subject.service.preview(draft({ symbol: dce.symbol }))
+    assert.equal(preview.feesCents, 675, JSON.stringify({ fees: preview.feesCents, warnings: preview.warnings }))
+    assert.match(preview.warnings.join('；'), /6\.75 元\/手/)
+
+    // INE can publish a yuan/lot close-today value in the rate field; a rate of
+    // 10 would mean 1% of notional, so it must be rejected, not inflated.
+    const guarded = await subject.service.preview(draft({ symbol: ine.symbol }))
+    assert.equal(guarded.feesCents, 0, JSON.stringify({ fees: guarded.feesCents, warnings: guarded.warnings }))
+    assert.match(guarded.warnings.join('；'), /费率单位异常/)
   } finally {
     await close(subject)
   }
