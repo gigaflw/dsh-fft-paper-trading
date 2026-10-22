@@ -2,14 +2,26 @@ import { copyFile, mkdir, open, readFile, rename, unlink } from 'node:fs/promise
 import { dirname } from 'node:path'
 import type { LedgerEvent } from '../core/types.js'
 
-export interface ReadResult {
-  events: LedgerEvent[]
+export interface ReadResult<T> {
+  events: T[]
   /** Malformed tail lines that were dropped (a killed process can leave one). */
   skipped: number
 }
 
-/** Append-only JSONL store. Every append is flushed with fsync. */
-export class EventStore {
+/** The only fields the store needs; both the stock and futures ledgers satisfy it. */
+export interface StoredLedgerEvent {
+  seq: number
+  type: string
+}
+
+/**
+ * Append-only JSONL store. Every append is flushed with fsync.
+ *
+ * Generic over the event union so the stock and futures ledgers share the
+ * atomic write/read/backup implementation without sharing an event schema.
+ * The default parameter keeps every existing stock call site unchanged.
+ */
+export class EventStore<T extends StoredLedgerEvent = LedgerEvent> {
   constructor(private readonly file: string) {}
 
   /** Absolute path of the ledger file, for export and diagnostics. */
@@ -21,7 +33,7 @@ export class EventStore {
     await mkdir(dirname(this.file), { recursive: true, mode: 0o700 })
   }
 
-  async append(events: readonly LedgerEvent[]): Promise<void> {
+  async append(events: readonly T[]): Promise<void> {
     if (events.length === 0) return
     await this.ensureDir()
     const payload = `${events.map(event => JSON.stringify(event)).join('\n')}\n`
@@ -34,7 +46,7 @@ export class EventStore {
     }
   }
 
-  async readAll(): Promise<ReadResult> {
+  async readAll(): Promise<ReadResult<T>> {
     let content: string
     try {
       content = await readFile(this.file, 'utf8')
@@ -42,13 +54,13 @@ export class EventStore {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { events: [], skipped: 0 }
       throw error
     }
-    const events: LedgerEvent[] = []
+    const events: T[] = []
     let skipped = 0
     for (const line of content.split('\n')) {
       const trimmed = line.trim()
       if (trimmed === '') continue
       try {
-        const parsed = JSON.parse(trimmed) as LedgerEvent
+        const parsed = JSON.parse(trimmed) as T
         if (typeof parsed?.type === 'string' && typeof parsed?.seq === 'number') events.push(parsed)
         else skipped += 1
       } catch {
@@ -63,7 +75,7 @@ export class EventStore {
    * rename over the target. A crash leaves either the old or the new ledger,
    * never a half-written one.
    */
-  async replace(events: readonly LedgerEvent[]): Promise<void> {
+  async replace(events: readonly T[]): Promise<void> {
     await this.ensureDir()
     const payload = events.length === 0 ? '' : `${events.map(event => JSON.stringify(event)).join('\n')}\n`
     const temp = `${this.file}.tmp-${process.pid}-${Date.now()}`
