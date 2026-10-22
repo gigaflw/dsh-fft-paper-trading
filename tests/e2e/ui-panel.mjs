@@ -182,6 +182,8 @@ try {
   assert('market failure is visible and 刷新 retries it', typeof marketRetry.error === 'string' && marketRetry.rows === 2 && marketRetry.errorAfter === null, JSON.stringify(marketRetry))
   const marketBoard = await scenario('market-board')
   assert('switching the board reloads page 1 for it', marketBoard.call?.board === 'star' && marketBoard.call?.page === 1 && typeof marketBoard.text === 'string', JSON.stringify(marketBoard))
+  const marketStale = await scenario('market-stale-note')
+  assert('a stale market list shows its notice', typeof marketStale.note === 'string' && marketStale.note.includes('缓存'), JSON.stringify(marketStale))
   const marketAdopt = await scenario('market-adopt')
   assert('clicking a market row fills the ticket', marketAdopt.tab === '交易' && marketAdopt.symbol === '600519', JSON.stringify(marketAdopt))
   const marketWatch = await scenario('market-watch')
@@ -269,6 +271,8 @@ try {
 
   const futuresPositionsClose = await scenario('futures-positions-close')
   assert('closing from the positions tab fills a close ticket', futuresPositionsClose.tab === '交易' && futuresPositionsClose.direction === '平多' && futuresPositionsClose.qty === '1', JSON.stringify(futuresPositionsClose))
+  const futuresContractStale = await scenario('futures-contract-stale')
+  assert('a stale contract index shows its notice', typeof futuresContractStale.note === 'string' && futuresContractStale.note.includes('缓存'), JSON.stringify(futuresContractStale))
   const futuresSearchRace = await scenario('futures-search-race')
   assert('a stale contract search cannot overwrite the latest', typeof futuresSearchRace.results === 'string' && futuresSearchRace.results.includes('CU2611') && !futuresSearchRace.results.includes('RB2611'), JSON.stringify(futuresSearchRace))
   const futuresPlaceRetry = await scenario('futures-place-retry')

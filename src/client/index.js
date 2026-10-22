@@ -831,6 +831,9 @@ window.__ModuleLoader__.load({
           marketSessionNote(session) !== ''
             ? h('div', { className: 'pt-note' }, marketSessionNote(session))
             : null,
+          marketList !== null && marketList.quotes.length > 0 && marketList.notice
+            ? h('div', { className: 'pt-note' }, marketList.notice)
+            : null,
           marketList === null ? h('div', { className: 'pt-empty' }, '加载行情…')
             : marketList.quotes.length === 0 ? h('div', { className: 'pt-empty' }, marketList.notice ?? '没有行情')
               : visibleQuotes.length === 0
@@ -1700,6 +1703,9 @@ window.__ModuleLoader__.load({
             h('button', { className: 'pt-btn', onClick: () => searchContracts(), disabled: searching }, searching ? '搜索中…' : '搜索'),
             h('button', { className: 'pt-btn', onClick: () => searchContracts(true), disabled: searching, title: '重新拉取合约列表' }, '刷新合约'),
           ),
+          contracts !== null && contracts.length > 0 && contractNotice !== ''
+            ? h('div', { className: 'pt-note' }, contractNotice)
+            : null,
           contracts === null
             ? h('div', { className: 'pt-note' }, contract !== null ? `已选 ${contract.symbol} ${contract.name ?? ''}` : '输入代码搜索合约')
             : contracts.length === 0
