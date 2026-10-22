@@ -172,6 +172,7 @@ try {
   const reviewData = await scenario('review-data')
   assert('review renders stats, chart and all four tables', Array.isArray(reviewData.stats) && reviewData.stats.some(text => text.includes('成交笔数')) && reviewData.chart === true && Array.isArray(reviewData.tables) && reviewData.tables.filter(count => count > 0).length >= 4, JSON.stringify(reviewData))
   assert('a long trade list says it is truncated', typeof reviewData.truncation === 'string' && reviewData.truncation.includes('31'), JSON.stringify(reviewData.truncation))
+  assert('the cash-flow genesis reads as initial cash, not 开户', reviewData.initial === true, JSON.stringify(reviewData.initial))
   assert('review marks losses with the down tone', Array.isArray(reviewData.negative) && reviewData.negative.some(text => text.includes('-1,234.56')), JSON.stringify(reviewData.negative))
   const marketRetry = await scenario('market-retry')
   assert('market failure is visible and 刷新 retries it', typeof marketRetry.error === 'string' && marketRetry.rows === 2 && marketRetry.errorAfter === null, JSON.stringify(marketRetry))
