@@ -63,7 +63,15 @@
     'account/get': () => stockAccount,
     'account/export': () => ({ path: '/tmp/paper-trading/events.jsonl', exists: true, content: '{"type":"account.opened"}\n' }),
     'account/reset': () => stockAccount,
-    'list/orders': () => stockOrders,
+    'list/orders': () => window.__pendingOrders ?? stockOrders,
+    'order/cancel': (payload) => {
+      window.__pendingOrders = []
+      return {
+        id: payload.orderId, requestId: 'r-cancel', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        qty: 100, limitPrice: 11.4, status: 'canceled', reason: '手动撤单',
+        createdAt: ts(), updatedAt: ts(),
+      }
+    },
     'list/trades': () => stockTrades,
     'review/get': () => ({ equityCurve: [], maxDrawdownPct: 0, tradeCount: 0, buyCount: 0, sellCount: 0, totalFees: 0, realizedPnl: 0, days: 0 }),
     'market/status': () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }),
@@ -373,6 +381,42 @@
         const text = document.querySelector('.pt-receipt')?.innerText ?? null
         return text !== null && text.includes('卖出') ? text : null
       }, 5000)
+      return result
+    }
+    if (name === 'cancel-order') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
+      e2e.click(tab)
+      window.__pendingOrders = [{
+        id: 'o-cancel', requestId: 'r-pending', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        qty: 100, limitPrice: 11.4, status: 'pending', createdAt: ts(), updatedAt: ts(),
+      }]
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      const cancel = await e2e.wait(() => e2e.byText('撤单')[0] ?? null, 4000)
+      e2e.click(cancel)
+      result.empty = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('无挂单') ? text : null
+      }, 4000)
+      return result
+    }
+    if (name === 'reset-account') {
+      window.confirm = () => true
+      const resetAccount = {
+        accountId: 'default', currency: 'CNY', initialCash: 1000000, cash: 1000000,
+        marketValue: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
+        tradeDate: '2026-10-22', blocked: false, positions: [], settings: {},
+      }
+      window.__fake.on('account/get', () => resetAccount)
+      window.__fake.on('account/reset', () => resetAccount)
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (tab) e2e.click(tab)
+      const reset = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '重置')
+      if (reset) e2e.click(reset)
+      result.notice = await e2e.wait(() => {
+        const text = document.querySelector('.pt-inner')?.innerText ?? ''
+        return text.includes('账户已重置') ? text : null
+      }, 4000)
       return result
     }
     if (name === 'basket' || name === 'basket-preview') {
