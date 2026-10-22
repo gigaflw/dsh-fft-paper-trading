@@ -21,8 +21,14 @@ test('wiring: route and tools attach without the market-data service', async () 
 
   const tools = []
   const routes = []
+  const effects = []
   const ctx = {
     logger: () => ({ warn() {} }),
+    effect(callback, label) {
+      const dispose = callback()
+      effects.push({ label, dispose })
+      return dispose
+    },
     inject(dependencies, callback) {
       if (dependencies.includes('connection')) {
         callback({
@@ -42,6 +48,7 @@ test('wiring: route and tools attach without the market-data service', async () 
 
     assert.deepEqual(tools.map(tool => tool.name).sort(), TOOL_NAMES)
     assert.equal(routes.length, 1)
+    assert.ok(effects.some(effect => effect.label === 'ft-paper-trading: matching scheduler'), 'host scheduler must start with the row')
 
     const call = async (endpoint, payload) => {
       const response = await routes[0].fetch(new Request('http://127.0.0.1/api/ft-paper-trading', {
