@@ -68,8 +68,20 @@
     'order/preview': () => preview,
     'order/place': () => ({ id: 'o-1', requestId: 'r-1', symbol: '600519.XSHG', side: 'buy', type: 'market', qty: 100, status: 'filled', createdAt: ts(), updatedAt: ts() }),
     'tick': () => ({ tradeDate: '2026-10-22', filled: [], expired: [], notices: [], quotes: [] }),
-    'watchlist/get': () => ({ symbols: [] }),
-    'watchlist/set': payload => ({ symbols: payload.symbols }),
+    'market/list': payload => ({
+      state: 'ok',
+      page: payload.page ?? 1,
+      quotes: [
+        { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+        { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+      ],
+    }),
+    'watchlist/get': () => ({ symbols: window.__watchSymbols ?? [] }),
+    'watchlist/set': payload => {
+      window.__watchSymbols = payload.symbols
+      window.__watchCalls = [...(window.__watchCalls ?? []), payload.symbols]
+      return { symbols: payload.symbols }
+    },
 
     // --- basket -------------------------------------------------------------
     'basket/preview': (payload) => {
@@ -279,6 +291,60 @@
       result.head = e2e.text('.pt-head')
       result.root = e2e.text('.pt-root').slice(0, 300)
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
+      return result
+    }
+    if (name === 'review-data') {
+      window.__fake.on('review/get', () => ({
+        equityCurve: [
+          { date: '2026-10-20', equity: 100000 },
+          { date: '2026-10-21', equity: 98000 },
+          { date: '2026-10-22', equity: 101000 },
+        ],
+        maxDrawdownPct: 0.02, tradeCount: 4, buyCount: 2, sellCount: 2,
+        totalFees: 12.34, realizedPnl: -1234.56, days: 2,
+      }))
+      window.__fake.on('review/daily', () => [
+        { date: '2026-10-21', equity: 98000, dayPnl: -2000, fees: 5.2, closeSource: 'daily' },
+        { date: '2026-10-22', equity: 101000, dayPnl: 3000, fees: 7.1, closeSource: 'last' },
+      ])
+      window.__fake.on('cash/flow', () => [{ ts: '2026-10-21T02:00:00.000Z', type: 'buy', amount: -145050, balance: 0 }])
+      window.__fake.on('review/roundtrips', () => [
+        { symbol: '600519.XSHG', qty: 100, cost: 1450.5, proceeds: 1400, pnl: -5050, holdingDays: 2 },
+      ])
+      window.__fake.on('list/trades', () => [
+        { id: 't1', ts: '2026-10-21T03:00:00.000Z', symbol: '600519.XSHG', side: 'sell', qty: 100, price: 1400, amountCents: 14000000, feesCents: 500 },
+      ])
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
+      e2e.click(tab)
+      await e2e.wait(() => document.querySelector('.pt-chart-wrap'))
+      // The panel loaded review data on mount (empty); a period switch forces
+      // a refetch against the overrides.
+      const period = e2e.byText('7天')[0]
+      if (period) e2e.click(period)
+      await e2e.wait(() => document.querySelector('.pt-chart-wrap svg'))
+      result.stats = [...document.querySelectorAll('.pt-stat')].map(item => item.innerText)
+      result.chart = Boolean(document.querySelector('.pt-chart-wrap svg'))
+      result.tables = [...document.querySelectorAll('.pt-main table')].map(table => table.querySelectorAll('tbody tr').length)
+      result.negative = [...document.querySelectorAll('.pt-main td, .pt-main .pt-stat-value')]
+        .filter(node => node.className.includes('pt-down')).map(node => node.innerText).slice(0, 3)
+      return result
+    }
+    if (name === 'market-watch') {
+      const tab = e2e.byText('行情')[0]
+      e2e.click(tab)
+      await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length === 2)
+      result.rows = document.querySelectorAll('.pt-main tbody tr').length
+      result.nextDisabled = e2e.byText('下一页')[0]?.disabled
+      e2e.click(e2e.byText('☆')[0])
+      await e2e.wait(() => window.__watchSymbols?.length === 1)
+      result.added = window.__watchSymbols.slice()
+      e2e.click(e2e.byText('只看自选')[0])
+      await new Promise(done => setTimeout(done, 400))
+      result.filteredRows = document.querySelectorAll('.pt-main tbody tr').length
+      e2e.click(e2e.byText('★')[0])
+      await e2e.wait(() => window.__watchSymbols?.length === 0)
+      result.removed = window.__watchSymbols.slice()
+      result.calls = (window.__watchCalls ?? []).map(list => list.join(','))
       return result
     }
     if (name === 'market-empty-search') {
