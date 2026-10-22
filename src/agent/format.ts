@@ -9,6 +9,11 @@ export function renderAccount(account: AccountView): string {
     `账户 ${account.accountId} · ${account.tradeDate}${account.blocked ? ' · 已锁定' : ''}`,
     `总资产 ${money(account.equity * 100)} · 现金 ${money(account.cash * 100)} · 盈亏 ${account.pnl >= 0 ? '+' : ''}${account.pnl.toFixed(2)} (${(account.pnlPct * 100).toFixed(2)}%)`,
   ]
+  if (account.blocked) {
+    lines.push(`锁定原因：${account.blockedReason ?? '未记录'}`)
+    if (account.ledgerPath !== undefined) lines.push(`账本：${account.ledgerPath}`)
+    lines.push('修复后需完全退出并重开 DSH；也可 paper_account reset=true, confirm=true（会先备份）')
+  }
   if (account.positions.length === 0) lines.push('无持仓')
   else {
     lines.push('持仓：')

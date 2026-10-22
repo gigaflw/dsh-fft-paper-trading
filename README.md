@@ -40,7 +40,8 @@ dsh plugin add /Users/ben/workspace/dsh/dsh-fft-paper-trading
 ## 数据
 
 `$DSH_HOME/paper-trading/default/events.jsonl`（一行一事件，0600 权限）。重置会先备份到同目录
-`backups/`，再把账本原子重写为单条 genesis；账户锁定时可用面板横幅的「导出账本」取出原文与路径。
+`backups/`，再把账本原子重写为单条 genesis。账户锁定时横幅直接显示失败原因与账本绝对路径，
+可「导出账本」或「复制路径」；Agent 侧用 `paper_export` 取同一组信息（只读）。
 
 ## 开发
 

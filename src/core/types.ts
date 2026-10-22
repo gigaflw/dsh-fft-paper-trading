@@ -106,6 +106,8 @@ export interface AccountState {
   /** Last date whose day.opened event was applied. */
   lastOpenedDate: string
   blocked: boolean
+  /** Reason recorded by the last `ledger.violation`; survives replay. */
+  blockedReason?: string
   lastSeq: number
   createdAt: string
   dayEquity: DayPoint[]
