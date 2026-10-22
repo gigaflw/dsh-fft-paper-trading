@@ -111,6 +111,16 @@ test('browser bundle: the page surface fills the column, only the content is cap
   assert.ok(inner, 'inner layout rule missing')
   assert.ok(!inner[0].includes('max-width'), 'the inner column must use the full width')
   assert.match(css, /\.pt-workspace \{[^}]*grid-template-columns/)
+  // The K-line rail sets the row height, so the left column fills the same
+  // bottom edge instead of leaving an empty bottom-left corner.
+  assert.match(css, /\.pt-workspace \{[^}]*align-items:stretch/)
+  assert.match(css, /\.pt-tab-body \{[^}]*flex:1 1 auto/)
+  assert.match(css, /\.pt-trade-book \{[^}]*flex:1 1 auto/)
+  // One ticket card: an aligned two-column form grid plus an in-card preview.
+  assert.match(css, /\.pt-ticket \{[^}]*grid-template-columns:minmax\(0, 1fr\) minmax\(230px, 300px\)/)
+  assert.match(css, /\.pt-ticket-form \{[^}]*grid-template-columns:repeat\(2, minmax\(0, 1fr\)\)/)
+  assert.match(source, /function TradeBook/)
+  assert.ok(!source.includes('pt-trade-grid'), 'the loose two-card trade grid must be gone')
   assert.match(css, /\.pt-kline-rail \{[^}]*position:sticky/)
   assert.match(css, /\.pt-kline-body \{[^}]*clamp\(420px/)
   assert.match(css, /\.pt-table-wrap \{ overflow-x:auto/)
@@ -118,7 +128,7 @@ test('browser bundle: the page surface fills the column, only the content is cap
   // Breakpoints follow the panel width (container queries), not the window.
   assert.match(css, /\.pt-root \{[^}]*container:paper-panel \/ inline-size/)
   assert.match(css, /\.pt-main \{[^}]*container:paper-main \/ inline-size/)
-  for (const [name, width] of [['paper-main', '760px'], ['paper-panel', '1100px'], ['paper-panel', '760px'], ['paper-panel', '520px']]) {
+  for (const [name, width] of [['paper-main', '640px'], ['paper-panel', '1100px'], ['paper-panel', '760px'], ['paper-panel', '520px']]) {
     assert.ok(css.includes(`@container ${name} (max-width: ${width})`), `missing ${name} breakpoint ${width}`)
   }
 })
