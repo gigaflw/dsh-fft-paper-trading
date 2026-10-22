@@ -924,6 +924,24 @@
       }, 4000)
       return result
     }
+    if (name === 'stock-suspended') {
+      window.__fake.on('order/preview', (payload) => ({
+        ...preview,
+        symbol: '600519.XSHG', side: 'buy', type: 'market', qty: 100,
+        price: 1318, amountCents: 13180000, commissionCents: 39, stampCents: 0, transferCents: 13,
+        totalFeesCents: 52, cashAfterCents: 80000000, availableQty: 0, maxBuyQty: 0,
+        quote: { ...quote, status: 'suspended', last: 1318, marketTs: ts() },
+        warnings: ['停牌，暂不可交易'],
+      }))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[0], '600519')
+      e2e.setInput(inputs[1], '100')
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('停牌') ? button.title : null
+      }, 4000)
+      return result
+    }
     if (name === 'review-race2') {
       window.__remount('none')
       await new Promise(done => setTimeout(done, 600))
