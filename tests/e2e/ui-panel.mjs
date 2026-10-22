@@ -202,6 +202,9 @@ try {
   const futuresCalls = await evaluate('window.__calls.filter(item => item.startsWith("futures/"))')
   assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
 
+  const futuresClose = await scenario('futures-close')
+  assert('closing from the book fills a close ticket', futuresClose.hasClose === true && typeof futuresClose.ticket === 'string' && futuresClose.ticket.includes('平多') && futuresClose.qty === '1', JSON.stringify(futuresClose))
+  assert('close ticket submits and reports the fill', typeof futuresClose.receipt === 'string' && futuresClose.receipt.includes('平') && futuresClose.receipt.includes('成交'), JSON.stringify(futuresClose))
   const slotFallback = await scenario('slot-fallback')
   assert('empty K-line slot shows a loading hint first', typeof slotFallback.loadingHint === 'string' && slotFallback.loadingHint.includes('K 线加载中'), slotFallback.loadingHint ?? '')
   assert('empty K-line slot falls back to the built-in chart', slotFallback.chart === true && slotFallback.panelAlive === true, JSON.stringify(slotFallback))

@@ -47,7 +47,8 @@
       cashAfterCents: futuresState.account.cash * 100 - marginCents - feesCents,
       equityAfter: futuresState.account.equity * 100,
       riskRatioAfter: (futuresState.account.margin * 100 + marginCents) / (futuresState.account.equity * 100),
-      maxOpenQty: 28, availableCloseQty: 0,
+      maxOpenQty: 28,
+      availableCloseQty: draft.offset === 'close' ? (futuresState.positions.find(item => item.symbol === draft.symbol && item.side === draft.side)?.qty ?? 0) : 0,
       limit: { symbol: draft.symbol, upper: 3400, lower: 2900, ratio: 0.1, source: 'limit' },
       quote: futuresQuote, session: futuresStatus, warnings: [],
     }
@@ -462,6 +463,25 @@
         return book.includes('RB2611.SHFE') ? book.replace(/\n/g, ' ') : null
       }, 5000)
       result.calls = window.__calls.slice(-10)
+      return result
+    }
+    if (name === 'futures-close') {
+      const closeButton = [...document.querySelectorAll('.pt-trade-book button')].find(button => button.innerText === '平仓')
+      result.hasClose = Boolean(closeButton)
+      if (closeButton) e2e.click(closeButton)
+      await new Promise(done => setTimeout(done, 600))
+      result.ticket = e2e.text('.pt-ticket-form')
+      result.qty = document.querySelector('.pt-ticket-form input')?.value ?? null
+      const submit = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && !button.disabled ? button : null
+      }, 5000).catch(() => null)
+      result.submitDisabled = submit === null
+      if (submit) e2e.click(submit)
+      result.receipt = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('平') ? text : null
+      }, 5000)
       return result
     }
     throw new Error('unknown scenario: ' + name)

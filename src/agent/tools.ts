@@ -43,10 +43,18 @@ const parameters = {
 } as const satisfies ParameterSchemaSpec
 
 function draftOf(args: Record<string, unknown>): OrderDraft {
+  // Never coerce an unknown side/type to a default: a model sending "hold"
+  // or "sell " must get an error, not an unexpected buy.
+  if (args.side !== 'buy' && args.side !== 'sell') {
+    throw new PaperError('INVALID_ARGUMENT', 'side 必须是 buy 或 sell')
+  }
+  if (args.type !== 'market' && args.type !== 'limit') {
+    throw new PaperError('INVALID_ARGUMENT', 'type 必须是 market 或 limit')
+  }
   return {
     symbol: String(args.symbol ?? ''),
-    side: args.side === 'sell' ? 'sell' : 'buy',
-    type: args.type === 'limit' ? 'limit' : 'market',
+    side: args.side,
+    type: args.type,
     qty: Number(args.qty ?? 0),
     limitPrice: typeof args.limitPrice === 'number' ? args.limitPrice : undefined,
     price: typeof args.price === 'number' ? args.price : undefined,
