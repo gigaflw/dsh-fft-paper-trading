@@ -18,12 +18,12 @@ A 股模拟盘：查行情、预览成本、下单、持仓、复盘。账本是
 
 ## 数据
 
-`$DSH_HOME/paper-trading/default/events.jsonl`（一行一事件，0600 权限）。重置会先备份到同目录 `backups/`。
+`$DSH_HOME/paper-trading/default/events.jsonl`（一行一事件，0600 权限）。重置会先备份到同目录 `backups/`，再把账本原子重写为单条 genesis；账户锁定时可用面板横幅的「导出账本」取出原文与路径。
 
 ## 开发
 
 ```bash
 pnpm build     # tsc + 浏览器半
-pnpm test      # 14 个用例：费用/撮合/风控/重放/服务/存储/装配
+pnpm test      # 36 个用例：费用/撮合/风控/重放/服务/存储/并发/调度/装配
 node scripts/scenario.mjs
 ```
