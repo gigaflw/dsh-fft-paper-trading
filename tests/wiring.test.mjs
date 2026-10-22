@@ -7,6 +7,8 @@ import { apply } from '../lib/index.js'
 const TOOL_NAMES = [
   'paper_account', 'paper_cancel', 'paper_export', 'paper_market', 'paper_order', 'paper_preview',
   'paper_quote', 'paper_review', 'paper_status', 'paper_tick',
+  'futures_account', 'futures_cancel', 'futures_contracts', 'futures_order', 'futures_positions',
+  'futures_preview', 'futures_quote', 'futures_review',
 ]
 
 /**
@@ -46,7 +48,7 @@ test('wiring: route and tools attach without the market-data service', async () 
   try {
     apply(ctx)
 
-    assert.deepEqual(tools.map(tool => tool.name).sort(), TOOL_NAMES)
+    assert.deepEqual(tools.map(tool => tool.name).sort(), [...TOOL_NAMES].sort())
     assert.equal(routes.length, 1)
     assert.ok(effects.some(effect => effect.label === 'ft-paper-trading: matching scheduler'), 'host scheduler must start with the row')
 
@@ -79,6 +81,12 @@ test('wiring: route and tools attach without the market-data service', async () 
     assert.equal(preview.ok, true)
     assert.equal(preview.value.quote, undefined)
     assert.ok(preview.value.warnings.length > 0)
+
+    const futures = await call('futures/account/get')
+    assert.equal(futures.ok, true)
+    assert.equal(futures.value.initialCash, 1_000_000)
+    assert.match(futures.value.ledgerPath ?? '', /futures[/\\]events\.jsonl$/, 'the futures account has its own ledger')
+    assert.ok(effects.some(effect => effect.label === 'ft-paper-trading: futures scheduler'), 'futures settlement scheduler must start too')
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome

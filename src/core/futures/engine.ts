@@ -207,7 +207,7 @@ export function submit(
     return reject('INVALID_ARGUMENT', '限价单必须给出正的限价')
   }
   if (order.price !== undefined && order.price <= 0) return reject('INVALID_ARGUMENT', '参考价必须为正')
-  if (order.price !== undefined && order.type !== 'market') {
+  if (order.price !== undefined && (order.type !== 'market' || offset !== 'close')) {
     return reject('INVALID_ARGUMENT', '参考价只用于市价平仓')
   }
   if (!canTrade(input.phase)) return reject('SESSION_CLOSED', '当前非期货日盘连续交易时段，不接受委托')
