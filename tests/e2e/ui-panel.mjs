@@ -151,6 +151,7 @@ try {
   assert('stock ticket keeps the aligned form grid', stock.ticketFields?.length === 7, JSON.stringify(stock.ticketFields))
   assert('stock K-line rail renders', stock.kline === true)
   assert('stock book renders', typeof stock.book === 'string' && stock.book.includes('持仓'))
+  assert('short symbol keeps the panel mounted', stock.shortSymbolAlive === true, stock.shortSymbolHint ?? '')
   await shot('stock-trade.png')
 
   // 2. 一揽子
@@ -185,6 +186,10 @@ try {
   await shot('futures-position.png')
   const futuresCalls = await evaluate('window.__calls.filter(item => item.startsWith("futures/"))')
   assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
+
+  const slotFallback = await scenario('slot-fallback')
+  assert('empty K-line slot falls back to the built-in chart', slotFallback.chart === true && slotFallback.panelAlive === true, JSON.stringify(slotFallback))
+  assert('empty K-line slot explains and offers a retry', typeof slotFallback.hint === 'string' && slotFallback.hint.includes('K 线视图未加载') && slotFallback.retryButton === true, JSON.stringify(slotFallback))
 
   const exceptions = consoleLines.filter(line => line.startsWith('EXCEPTION'))
   assert('no page exceptions', exceptions.length === 0, exceptions.join(' | '))

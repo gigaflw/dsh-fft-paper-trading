@@ -75,6 +75,12 @@ export declare class PaperService {
     private quoteFor;
     private withPrevClose;
     private prevCloseFor;
+    /**
+     * Session clock that also respects the calendar. `sessionPhaseAt` only knows
+     * wall time, so a weekend/holiday would otherwise look like continuous
+     * trading and match orders against Friday's prices.
+     */
+    private phaseFor;
     private orderDateFor;
     preview(draft: OrderDraft): Promise<PreviewView>;
     place(draft: OrderDraft, requestId?: string): Promise<OrderView>;

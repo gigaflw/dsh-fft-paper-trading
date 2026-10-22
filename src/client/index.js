@@ -35,12 +35,14 @@ window.__ModuleLoader__.load({
     })
 
     const isFiniteNumber = value => typeof value === 'number' && Number.isFinite(value)
-    const money = value => isFiniteNumber(value) ? value.toFixed(2) : '—'
-    const cents = value => isFiniteNumber(value) ? (value / 100).toFixed(2) : '—'
+    // Amounts read as money: group thousands and always show two decimals.
+    const amountFormat = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const money = value => isFiniteNumber(value) ? amountFormat.format(value) : '—'
+    const cents = value => isFiniteNumber(value) ? amountFormat.format(value / 100) : '—'
     const pct = value => isFiniteNumber(value) ? `${(value * 100).toFixed(2)}%` : '—'
     const signed = value => {
       if (!isFiniteNumber(value)) return '—'
-      return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
+      return `${value >= 0 ? '+' : ''}${amountFormat.format(value)}`
     }
     const count = value => isFiniteNumber(value) ? String(Math.round(value)) : '—'
     const toDate = value => {
@@ -223,7 +225,7 @@ window.__ModuleLoader__.load({
         font-size:var(--dsh-content-font-size-secondary, 13px); line-height:1.5; container:paper-panel / inline-size; }
       .pt-inner { display:flex; flex-direction:column; gap:10px; box-sizing:border-box;
         width:100%; margin:0 auto;
-        padding:calc(28px + var(--dsh-frame-top-clearance, 0px)) clamp(16px, 2.2vw, 40px) 32px; }
+        padding:calc(28px + var(--dsh-frame-top-clearance, 0px)) clamp(16px, 2.2vw, 40px) 24px; }
       .pt-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;
         padding-bottom:8px; border-bottom:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.12)); }
       .pt-title { font-size:16px; font-weight:500; letter-spacing:-.01em; margin:0; }
@@ -400,7 +402,7 @@ window.__ModuleLoader__.load({
     }
 
     /** A label/value row inside the `.pt-preview` cards. */
-    const previewRow = (label, value) => h('div', null, h('span', null, label), h('span', null, value))
+    const previewRow = (label, value, tone) => h('div', null, h('span', null, label), h('span', { className: tone || undefined }, value))
 
     /** One cell of the compact `.pt-stats` strip. */
     const statCell = (label, value, tone) => h('div', { className: 'pt-stat' },
@@ -493,6 +495,27 @@ window.__ModuleLoader__.load({
         : null
       const hasSlot = slot !== null && slot !== undefined && slot !== false
         && !(Array.isArray(slot) && slot.length === 0)
+      // A registered slot can still render an empty host (no data, failed
+      // mount). Poll it briefly; if nothing shows up, fall back to the built-in
+      // chart instead of leaving 35% of the panel blank.
+      const [slotFailed, setSlotFailed] = useState(false)
+      const [slotNonce, setSlotNonce] = useState(0)
+      const slotRef = useRef(null)
+      useEffect(() => {
+        if (!hasSlot) return undefined
+        setSlotFailed(false)
+        let tries = 0
+        const timer = setInterval(() => {
+          tries += 1
+          const host = slotRef.current
+          const painted = host !== null
+            && (host.querySelector('canvas, iframe, svg, table') !== null || host.innerText.trim().length > 3)
+          if (painted) clearInterval(timer)
+          else if (tries >= 20) { setSlotFailed(true); clearInterval(timer) }
+        }, 300)
+        return () => clearInterval(timer)
+      }, [hasSlot, symbol, slotNonce])
+      const showFallback = !hasSlot || slotFailed
       return h('aside', { className: 'pt-kline-rail', 'aria-label': 'K线' },
         h('div', { className: 'pt-card pt-kline-card' },
           h('div', { className: 'pt-kline-head' },
@@ -500,19 +523,29 @@ window.__ModuleLoader__.load({
               h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${bareSymbol(symbol) || '—'} K线`),
               h('div', { className: 'pt-note' }, quote ? `${symbolText(quote)} · 现价 ${money(quote.last)}` : '等待行情'),
             ),
-            hasSlot ? null : h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
+            showFallback ? h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
               h('div', { className: 'pt-seg' },
                 [['day', '日K'], ['minute', '分时']].map(([key, label]) =>
                   h('button', { key, 'data-active': interval === key, onClick: () => onInterval(key) }, label),
                 ),
               ),
               h('button', { className: 'pt-btn', onClick: onRefresh }, '刷新'),
-            ),
+            ) : null,
           ),
           h('div', { className: 'pt-kline-body' },
-            hasSlot ? h('div', { className: 'pt-kline-slot' }, slot) : h(PriceChart, { bars, interval }),
+            showFallback
+              ? h(PriceChart, { bars, interval })
+              : h('div', { className: 'pt-kline-slot', ref: slotRef, key: slotNonce }, slot),
           ),
-          hasSlot ? null : h('div', { className: 'pt-note pt-kline-hint' }, '安装或升级 dsh_kline 后显示完整 K 线；当前为内置简图。'),
+          showFallback ? h('div', { className: 'pt-note pt-kline-hint' },
+            slotFailed
+              ? 'K 线视图未加载，当前为内置简图。'
+              : '安装或升级 dsh_kline 后显示完整 K 线；当前为内置简图。',
+            slotFailed ? h('button', {
+              className: 'pt-btn', style: { marginLeft: 8 },
+              onClick: () => { setSlotFailed(false); setSlotNonce(value => value + 1) },
+            }, '重试 K 线') : null,
+          ) : null,
         ),
       )
     }
@@ -569,7 +602,7 @@ window.__ModuleLoader__.load({
                   ? h('div', { className: 'pt-quote' },
                     h('span', null, symbolText(quote)),
                     h('span', null, `现价 ${money(quote.last)}`),
-                    h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : `行情 ${clockTime(quote.marketTs)}`),
+                    h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : `更新 ${clockTime(quote.marketTs)}`),
                     h('span', { className: 'pt-note' }, `来源 ${quoteSourceText(quote)}`),
                   )
                   : h('div', { className: 'pt-note' }, quoteHint),
@@ -637,7 +670,7 @@ window.__ModuleLoader__.load({
               : h(Table, null,
                 h('thead', null, h('tr', null,
                   ['代码', '名称', '数量', '可卖', '成本', '现价', '浮盈亏'].map(label => h('th', { key: label }, label)),
-                  h('th', null, ''),
+                  h('th', null, '操作'),
                 )),
                 h('tbody', null, positions.map(position => h('tr', { key: position.symbol },
                   h('td', null, bareSymbol(position.symbol)),
@@ -657,7 +690,7 @@ window.__ModuleLoader__.load({
               : h(Table, null,
                 h('thead', null, h('tr', null,
                   ['代码', '方向', '类型', '数量', '限价', '状态'].map(label => h('th', { key: label }, label)),
-                  h('th', null, ''),
+                  h('th', null, '操作'),
                 )),
                 h('tbody', null, pending.map(order => h('tr', { key: order.id },
                   h('td', null, bareSymbol(order.symbol)),
@@ -705,7 +738,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function MarketTab({ searchQuery, setSearchQuery, runSearch, searchHits, watchlist, isWatched, toggleWatch, marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote }) {
+    function MarketTab({ searchQuery, setSearchQuery, runSearch, searchHits, searchAttempted, watchlist, isWatched, toggleWatch, marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote }) {
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
         h('div', { className: 'pt-card' },
           h('div', { className: 'pt-card-title' }, '搜索标的'),
@@ -726,7 +759,7 @@ window.__ModuleLoader__.load({
               }, `${bareSymbol(hit.symbol)} ${hit.name ?? ''}`),
               h('button', { className: 'pt-btn', onClick: () => toggleWatch(hit.symbol) }, isWatched(hit.symbol) ? '已自选' : '加自选'),
             )),
-          ) : null,
+          ) : searchAttempted ? h('div', { className: 'pt-empty', style: { marginTop: 8 } }, '没有找到匹配标的') : null,
         ),
         h('div', { className: 'pt-card' },
           h('div', { className: 'pt-row' },
@@ -740,7 +773,7 @@ window.__ModuleLoader__.load({
           marketList === null ? h('div', { className: 'pt-empty' }, '加载行情…')
             : marketList.quotes.length === 0 ? h('div', { className: 'pt-empty' }, marketList.notice ?? '没有行情')
               : h(Table, null,
-                h('thead', null, h('tr', null, ['代码', '名称', '现价', '涨跌幅', '状态', '自选'].map(label => h('th', { key: label }, label)))),
+                h('thead', null, h('tr', null, ['代码', '名称', '现价', '涨跌幅', '自选'].map(label => h('th', { key: label }, label)))),
                 h('tbody', null, marketList.quotes.filter(item => !watchOnly || isWatched(item.symbol)).slice(0, 50).map(item => {
                   const change = item.prevClose && item.prevClose > 0 ? (item.last - item.prevClose) / item.prevClose : null
                   return h('tr', {
@@ -751,7 +784,6 @@ window.__ModuleLoader__.load({
                     h('td', null, item.name ?? '—'),
                     h('td', null, money(item.last)),
                     h('td', { className: change !== null && change < 0 ? 'pt-down' : 'pt-up' }, change === null ? '—' : pct(change)),
-                    h('td', null, item.status ?? '—'),
                     h('td', null, h('button', { className: 'pt-btn', onClick: event => { event.stopPropagation(); void toggleWatch(item.symbol) } }, isWatched(item.symbol) ? '★' : '☆')),
                   )
                 })),
@@ -765,7 +797,7 @@ window.__ModuleLoader__.load({
       return h(Table, null,
         h('thead', null, h('tr', null,
           ['代码', '名称', '数量', '可卖', '成本', '现价', '浮盈亏'].map(label => h('th', { key: label }, label)),
-          h('th', null, ''),
+          h('th', null, '操作'),
         )),
         h('tbody', null, positions.map(position => h('tr', { key: position.symbol },
           h('td', null, bareSymbol(position.symbol)),
@@ -1008,6 +1040,7 @@ window.__ModuleLoader__.load({
             })),
             h('button', {
               className: 'pt-btn pt-btn-primary', onClick: runPreview, disabled: busy || csv.trim() === '',
+              title: csv.trim() === '' ? '请先选择 CSV 文件' : undefined,
             }, busy ? '预览中…' : '预览配股'),
           ),
           h('div', { className: 'pt-note' }, '两列「代码,权重」，最多 20 只；仅连续竞价时段可下单'),
@@ -1200,6 +1233,7 @@ window.__ModuleLoader__.load({
 
       const selectContract = useCallback(next => {
         setContract(next)
+        setContracts(null)
         setQuote(null)
         setQuoteNotice('')
         setPreview(null)
@@ -1305,6 +1339,7 @@ window.__ModuleLoader__.load({
         if (status !== null && status.canSubmit === false) return '当前时段不可下单'
         if (form.type === 'market' && status !== null && status.canMatch === false) return '当前时段不能市价成交'
         if (form.offset === 'close' && preview !== null && qty > preview.availableCloseQty) return '可平手数不足'
+        if (form.offset === 'open' && preview !== null && preview.cashAfterCents < 0) return '保证金不足'
         return ''
       }, [account, contract, form, status, preview])
 
@@ -1538,12 +1573,17 @@ window.__ModuleLoader__.load({
                 value: form.qty, min: 1, step: 1,
                 onChange: value => setForm(prev => ({ ...prev, qty: value })),
               })),
-              h(Field, { label: form.type === 'limit' ? '限价' : '参考价（可选）' }, h(DebouncedNumber, {
-                value: form.type === 'limit' ? form.limitPrice : form.price, min: 0, step: 0.01,
-                onChange: value => setForm(prev => prev.type === 'limit'
-                  ? { ...prev, limitPrice: value }
-                  : { ...prev, price: value }),
-              })),
+              form.type === 'limit'
+                ? h(Field, { label: '限价' }, h(DebouncedNumber, {
+                  value: form.limitPrice, min: 0, step: 0.01,
+                  onChange: value => setForm(prev => ({ ...prev, limitPrice: value })),
+                }))
+                : form.offset === 'close'
+                  ? h(Field, { label: '参考价（可选）' }, h(DebouncedNumber, {
+                    value: form.price, min: 0, step: 0.01,
+                    onChange: value => setForm(prev => ({ ...prev, price: value })),
+                  }))
+                  : h(Field, { label: '价格' }, h('div', { className: 'pt-note', style: { padding: '6px 0' } }, '按最新价成交')),
               h(Field, { label: '备注（复盘用）', span: true }, h('input', {
                 className: 'pt-input', value: form.note, maxLength: 120,
                 onChange: event => setForm(prev => ({ ...prev, note: event.target.value })),
@@ -1557,13 +1597,12 @@ window.__ModuleLoader__.load({
                 previewRow('保证金', cents(preview.marginCents)),
                 previewRow('手续费', cents(preview.feesCents)),
                 previewRow('成交后现金', cents(preview.cashAfterCents)),
-                previewRow('风险度', pct(preview.riskRatioAfter)),
+                previewRow('风险度', pct(preview.riskRatioAfter), preview.riskRatioAfter >= (account.settings?.warnRiskRatio ?? 0.8) ? 'pt-risk-high' : undefined),
                 form.offset === 'open'
                   ? previewRow('最多可开', `${count(preview.maxOpenQty)} 手`)
                   : previewRow('平仓可平', `${count(preview.availableCloseQty)} 手`),
-                previewRow('涨跌停', preview.limit
-                  ? `${money(preview.limit.upper)} / ${money(preview.limit.lower)}`
-                  : '—'),
+                previewRow('涨停', preview.limit ? money(preview.limit.upper) : '—'),
+                previewRow('跌停', preview.limit ? money(preview.limit.lower) : '—'),
                 previewState === 'loading' ? h('div', { className: 'pt-note' }, '计算中…') : null,
                 preview.warnings.length > 0 ? h('div', { className: 'pt-warn' }, preview.warnings.join('；')) : null,
                 previewState === 'error' && previewError !== '' ? h('div', { className: 'pt-warn' }, previewError) : null,
@@ -1606,7 +1645,7 @@ window.__ModuleLoader__.load({
               : h(Table, null,
                 h('thead', null, h('tr', null,
                   ['合约', '方向', '手数', '今仓', '均价', '最新价', '浮盈亏'].map(label => h('th', { key: label }, label)),
-                  h('th', null, ''),
+                  h('th', null, '操作'),
                 )),
                 h('tbody', null, positions.map(position => h('tr', { key: `${position.symbol}-${position.side}` },
                   h('td', null, position.symbol),
@@ -1626,7 +1665,7 @@ window.__ModuleLoader__.load({
               : h(Table, null,
                 h('thead', null, h('tr', null,
                   ['合约', '方向', '类型', '手数', '限价', '状态'].map(label => h('th', { key: label }, label)),
-                  h('th', null, ''),
+                  h('th', null, '操作'),
                 )),
                 h('tbody', null, pending.map(order => h('tr', { key: order.id },
                   h('td', null, order.symbol),
@@ -1666,11 +1705,11 @@ window.__ModuleLoader__.load({
     }
 
     function FuturesPositionsTab({ positions, onClose }) {
-      if (positions.length === 0) return h('div', { className: 'pt-empty' }, '无持仓')
+      if (positions.length === 0) return h('div', { className: 'pt-empty' }, '无持仓 · 开仓成交后自动显示')
       return h(Table, null,
         h('thead', null, h('tr', null,
           ['合约', '方向', '手数', '今仓', '均价', '最新价', '浮盈亏', '保证金', '到期日'].map(label => h('th', { key: label }, label)),
-          h('th', null, ''),
+          h('th', null, '操作'),
         )),
         h('tbody', null, positions.map(position => h('tr', { key: `${position.symbol}-${position.side}` },
           h('td', null, position.symbol),
@@ -1776,8 +1815,12 @@ window.__ModuleLoader__.load({
               previewRow('最小变动', money(contract.tickSize)),
               previewRow('保证金率', pct(contract.marginRate)),
               previewRow('到期日', contract.deListDate ?? '—'),
-              previewRow('涨跌停', limit === null ? '—' : `${money(limit.upper)} / ${money(limit.lower)}`),
-              previewRow('最新价', quote === null ? '—' : money(quote.last)),
+              previewRow('涨停', limit === null ? '—' : money(limit.upper)),
+              previewRow('跌停', limit === null ? '—' : money(limit.lower)),
+              previewRow('最新价', quote === null ? '—' : money(quote.last),
+                quote !== null && quote.preSettlement !== undefined && quote.last !== quote.preSettlement
+                  ? (quote.last > quote.preSettlement ? 'pt-up' : 'pt-down')
+                  : undefined),
               previewRow('昨结', quote === null || quote.preSettlement === undefined ? '—' : money(quote.preSettlement)),
             ),
         ),
@@ -1816,10 +1859,14 @@ window.__ModuleLoader__.load({
       const [previewError, setPreviewError] = useState('')
       const [previewNonce, setPreviewNonce] = useState(0)
       const [quoteError, setQuoteError] = useState('')
+      // Quote for an unfinished draft (symbol known, qty/limit still missing).
+      // A complete draft gets its quote from the preview response instead.
+      const [symbolQuote, setSymbolQuote] = useState(null)
       const [receipt, setReceipt] = useState(null)
       const [session, setSession] = useState(null)
       const [searchQuery, setSearchQuery] = useState('')
       const [searchHits, setSearchHits] = useState([])
+      const [searchAttempted, setSearchAttempted] = useState(false)
       const [marketList, setMarketList] = useState(null)
       const [marketBoard, setMarketBoard] = useState('main')
       const [bars, setBars] = useState([])
@@ -1921,7 +1968,8 @@ window.__ModuleLoader__.load({
       }, [form.symbol, barInterval])
 
       const runSearch = useCallback(async () => {
-        if (!searchQuery.trim()) return
+        if (!searchQuery.trim()) { setSearchAttempted(false); return }
+        setSearchAttempted(true)
         try {
           setSearchHits(await rpc('market/search', { query: searchQuery.trim(), limit: 12 }))
         } catch (cause) {
@@ -2027,7 +2075,7 @@ window.__ModuleLoader__.load({
           setPreviewError('')
           if (current.symbol.length < 6) {
             quoteSymbol.current = ''
-            setQuote(null)
+            setSymbolQuote(null)
             setQuoteError('')
             return
           }
@@ -2037,11 +2085,12 @@ window.__ModuleLoader__.load({
               .then(result => {
                 if (!alive.current || seq !== previewSeq.current) return
                 quoteSymbol.current = current.symbol
-                setQuote(result.quotes[0] ?? null)
+                setSymbolQuote(result.quotes[0] ?? null)
                 setQuoteError(result.quotes[0] ? '' : (result.notice ?? '没有查到行情'))
               })
               .catch(cause => {
                 if (!alive.current || seq !== previewSeq.current) return
+                setSymbolQuote(null)
                 setQuoteError(errorOf(cause).text)
               })
           }, 300)
@@ -2175,11 +2224,12 @@ window.__ModuleLoader__.load({
         const qty = Number(form.qty)
         if (!Number.isInteger(qty) || qty <= 0) return '数量需为正整数'
         if (form.side === 'buy' && qty % 100 !== 0) return '买入需 100 股整数倍'
+        if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
         if (form.type === 'market' && session !== null && !session.canMatch) return '当前时段不能市价成交'
         return ''
       }, [blocked, form, session])
 
-      const quote = preview ? preview.quote ?? null : null
+      const quote = preview ? preview.quote ?? null : symbolQuote
       const pending = useMemo(() => orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled'), [orders])
       const history = useMemo(() => orders.filter(order => order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled'), [orders])
       const positions = account?.positions ?? []

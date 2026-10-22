@@ -197,3 +197,18 @@ test('basket allocate: cashAfterCents follows the batch cost', () => {
   assert.equal(plan.cashAfterCents, 8_000_000 - plan.totalAmountCents - plan.totalFeesCents)
   assert.equal(plan.residualCents, 5_000_000 - plan.totalAmountCents - plan.totalFeesCents)
 })
+
+test('basket allocate: a row trimmed to zero lots carries no fees', () => {
+  const plan = allocate(
+    [{ symbol: '600519', weight: 0.5 }, { symbol: '000001', weight: 0.5 }],
+    [quote('600519', 10), quote('000001', 10)],
+    200_100,
+  )
+  const zero = plan.rows.find(row => row.status === 'zero_lot')
+  assert.ok(zero, JSON.stringify(plan.rows))
+  assert.equal(zero.qty, 0)
+  assert.equal(zero.amountCents, 0)
+  assert.equal(zero.feesCents, 0, 'zero-lot rows must not pay the minimum commission')
+  assert.equal(plan.totalFeesCents, plan.rows.reduce((sum, row) => sum + row.feesCents, 0))
+  assert.equal(plan.residualCents, plan.budgetCents - plan.totalAmountCents - plan.totalFeesCents)
+})

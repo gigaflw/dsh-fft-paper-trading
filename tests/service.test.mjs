@@ -105,6 +105,34 @@ test('service: buy, T+1 block, next-day sell, review and reset', async () => {
   }
 })
 
+test('service: a weekend is closed for matching and market orders', async () => {
+  const home = makeHome('weekend')
+  const data = makeData()
+  const now = new Date('2026-10-24T02:00:00.000Z') // Saturday 10:00 Asia/Shanghai
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
+  try {
+    await service.account()
+    setQuote(data, 10, now.toISOString())
+    const status = await service.marketStatus()
+    assert.equal(status.phase, 'closed')
+    assert.equal(status.canMatch, false, 'a weekend must never match')
+    await assert.rejects(
+      () => service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 }),
+      error => error.code === 'SESSION_CLOSED',
+    )
+
+    // A limit order queued for the next trading day must not fill over the weekend.
+    const queued = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 11 })
+    assert.equal(queued.status, 'queued')
+    setQuote(data, 10, now.toISOString())
+    const tick = await service.tick()
+    assert.equal(tick.filled.length, 0, 'weekend tick must not fill')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('service: idempotent request returns the same order', async () => {
   const home = makeHome('idem')
   const data = makeData()

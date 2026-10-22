@@ -140,7 +140,12 @@ export function previewOrder(
   if (priceLimit !== undefined && checked > 0 && (checked < priceLimit.lower || checked > priceLimit.upper)) {
     warnings.push(`价格超出涨跌停范围 ${priceLimit.lower.toFixed(2)}–${priceLimit.upper.toFixed(2)}`)
   }
-  if (session !== undefined && !session.canMatch) warnings.push('当前时段不能连续成交，委托将排队')
+  if (session !== undefined && !session.canMatch) {
+    warnings.push(draft.type === 'limit'
+      ? '当前时段不能连续成交，委托将排队'
+      : '当前时段不能市价成交，请改用限价或等开盘')
+  }
+  if (quote !== null && quote.status === 'suspended') warnings.push('标的停牌，暂不能成交')
   // A limit that the last price has not reached cannot fill now: say so, and
   // note that the amount above is the order's worst case, not its fill.
   if (draft.type === 'limit' && quote !== null && draft.limitPrice !== undefined && draft.limitPrice > 0

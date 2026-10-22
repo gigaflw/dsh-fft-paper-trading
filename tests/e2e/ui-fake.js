@@ -197,6 +197,15 @@
       result.ticketFields = [...document.querySelectorAll('.pt-ticket-form > *')].map(el => el.className)
       result.book = e2e.text('.pt-trade-book').replace(/\n/g, ' ')
       result.kline = Boolean(document.querySelector('.pt-kline-body'))
+      // An unfinished draft triggers the quote-only path; a removed state setter
+      // here used to throw and unmount the whole panel.
+      const symbolInput = document.querySelector('.pt-ticket-form input.pt-input')
+      e2e.setInput(symbolInput, '600')
+      await new Promise(done => setTimeout(done, 500))
+      result.shortSymbolAlive = Boolean(document.querySelector('.pt-root'))
+      result.shortSymbolHint = e2e.text('.pt-ticket-form')
+      e2e.setInput(symbolInput, '600519')
+      await new Promise(done => setTimeout(done, 500))
       return result
     }
     if (name === 'basket' || name === 'basket-preview') {
@@ -251,6 +260,20 @@
       result.head = e2e.text('.pt-head')
       result.root = e2e.text('.pt-root').slice(0, 300)
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
+      return result
+    }
+    if (name === 'slot-fallback') {
+      window.__remount('empty')
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await e2e.wait(() => document.querySelector('.pt-kline-rail'))
+      await new Promise(done => setTimeout(done, 7500))
+      result.panelAlive = Boolean(document.querySelector('.pt-root'))
+      result.chart = Boolean(document.querySelector('.pt-kline-body .pt-chart'))
+      result.hint = e2e.text('.pt-kline-hint')
+      result.retryButton = Boolean(e2e.byText('重试 K 线')[0])
+      window.__remount('none')
+      await new Promise(done => setTimeout(done, 500))
       return result
     }
     if (name === 'futures-switch') {
@@ -318,7 +341,15 @@
     exportsObject.apply(ctx)
     const main = registrations.find(item => item.options.name === 'main')
     if (!main) throw new Error('main registration missing')
-    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(main.component, { renderSlot: () => null }))
+    window.__mainComponent = main.component
+    window.__root = ReactDOM.createRoot(document.getElementById('root'))
+    window.__root.render(React.createElement(main.component, { renderSlot: () => null }))
+    window.__remount = slotMode => {
+      const renderSlot = slotMode === 'empty'
+        ? () => React.createElement('div', { className: 'dsh-kline-native-host' })
+        : () => null
+      window.__root.render(React.createElement(main.component, { renderSlot }))
+    }
     window.__registrations = registrations
   }
 

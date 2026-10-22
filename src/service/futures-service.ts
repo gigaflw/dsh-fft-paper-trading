@@ -576,7 +576,14 @@ export class FuturesService {
 
   // ---------------------------------------------------------------- writing --
 
+  private assertLotQty(qty: number): void {
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new FuturesError('INVALID_ARGUMENT', '手数必须是正整数', 400)
+    }
+  }
+
   async preview(draft: FuturesDraft): Promise<FuturesPreviewView> {
+    this.assertLotQty(draft.qty)
     const state = await this.sync()
     const symbol = typeof draft.symbol === 'string' ? draft.symbol.trim() : ''
     const data = await this.symbolData(state, symbol, this.ts())
@@ -597,6 +604,9 @@ export class FuturesService {
   async place(draft: FuturesDraft, requestId: string = randomUUID()): Promise<FuturesOrderView> {
     const state = await this.sync()
     if (state.blocked) throw this.blocked(state)
+    // Reject a bad lot before it reaches the ledger: a rejected order with
+    // qty <= 0 used to trip the replay invariant and lock the whole account.
+    this.assertLotQty(draft.qty)
     const symbol = typeof draft.symbol === 'string' ? draft.symbol.trim() : ''
     const data = await this.symbolData(state, symbol, this.ts())
     const nowIso = this.ts()
@@ -622,8 +632,11 @@ export class FuturesService {
     if (outcome.value.duplicateId !== undefined) {
       const duplicate = outcome.state.orders[outcome.value.duplicateId]
       if (duplicate === undefined) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在', 404)
-      if (duplicate.symbol !== draft.symbol || duplicate.side !== draft.side
-        || duplicate.offset !== draft.offset || duplicate.type !== draft.type || duplicate.qty !== draft.qty) {
+      const limitPrice = typeof draft.limitPrice === 'number' ? draft.limitPrice : undefined
+      const price = typeof draft.price === 'number' ? draft.price : undefined
+      if (duplicate.symbol !== draft.symbol.trim() || duplicate.side !== draft.side
+        || duplicate.offset !== draft.offset || duplicate.type !== draft.type || duplicate.qty !== draft.qty
+        || duplicate.limitPrice !== limitPrice || duplicate.price !== price) {
         throw new FuturesError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用', 409)
       }
       return toOrderView(duplicate)
