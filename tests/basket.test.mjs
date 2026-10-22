@@ -212,3 +212,10 @@ test('basket allocate: a row trimmed to zero lots carries no fees', () => {
   assert.equal(plan.totalFeesCents, plan.rows.reduce((sum, row) => sum + row.feesCents, 0))
   assert.equal(plan.residualCents, plan.budgetCents - plan.totalAmountCents - plan.totalFeesCents)
 })
+
+
+test('basket: accepts exchange prefixes like SH600519', () => {
+  const parsed = parseBasketCsv('SH600519,50%\nSZ000001,50%')
+  assert.equal(parsed.issues.length, 0)
+  assert.deepEqual(parsed.rows.map(row => row.symbol), ['600519', '000001'])
+})

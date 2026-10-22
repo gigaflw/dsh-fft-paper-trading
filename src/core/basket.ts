@@ -83,9 +83,11 @@ function parseWeightCell(raw: string): { weight: number; percentShorthand: boole
   return { weight: value, percentShorthand: false }
 }
 
-/** `600519.SH` / `600519.XSHG` / bare `600519` → `600519`; anything else is null. */
+/** `SH600519`, `600519.SH`, `600519.XSHG` or bare `600519` → `600519`. */
 function normaliseSymbol(raw: string): string | undefined {
-  const bare = raw.trim().toUpperCase().replace(/\.(SH|SZ|BJ|XSHG|XSHE)$/, '')
+  const bare = raw.trim().toUpperCase()
+    .replace(/^(SH|SZ|BJ)(?=\d{6}$)/, '')
+    .replace(/\.(SH|SZ|BJ|XSHG|XSHE)$/, '')
   return /^\d{6}$/.test(bare) ? bare : undefined
 }
 
