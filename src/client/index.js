@@ -66,17 +66,16 @@ window.__ModuleLoader__.load({
         --pt-accent-hover:var(--ft-accent-warm-hover,light-dark(#b8481b, #ff9a72));
         --pt-accent-ink:var(--ft-accent-warm-ink,light-dark(#ffffff, #1a120e));
         --pt-accent-soft:var(--ft-accent-warm-soft,light-dark(#fbeee8, #2b1d16));
-        /* The page surface fills the whole centre column, like the host's
-           other first-level pages. The readable column is capped inside it,
-           so a wide window widens the surface instead of leaving the card
-           as a stripe. */
+        /* The page surface and its content use the whole centre column; the
+           K-line rail takes a fixed share on wide screens instead of a
+           centred reader column. */
         flex:1 1 auto; min-width:0; min-height:0; height:100%; box-sizing:border-box;
         overflow:auto; scrollbar-gutter:stable; width:100%; align-self:stretch;
         background:var(--dsw-alias-bg-base, #ffffff); color:var(--dsw-alias-label-primary, #171b22);
-        font-size:var(--dsh-content-font-size-secondary, 13px); line-height:1.5; container-type:inline-size; }
+        font-size:var(--dsh-content-font-size-secondary, 13px); line-height:1.5; container:paper-panel / inline-size; }
       .pt-inner { display:flex; flex-direction:column; gap:10px; box-sizing:border-box;
-        width:100%; max-width:1080px; margin:0 auto;
-        padding:calc(28px + var(--dsh-frame-top-clearance, 0px)) clamp(16px, 3vw, 28px) 32px; }
+        width:100%; margin:0 auto;
+        padding:calc(28px + var(--dsh-frame-top-clearance, 0px)) clamp(16px, 2.2vw, 40px) 32px; }
       .pt-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;
         padding-bottom:8px; border-bottom:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.12)); }
       .pt-title { font-size:16px; font-weight:500; letter-spacing:-.01em; margin:0; }
@@ -133,6 +132,20 @@ window.__ModuleLoader__.load({
         border-radius:var(--dsw-radius-sm, 8px); background:var(--dsw-alias-bg-layer-1, #fff); padding:10px; min-width:0; }
       .pt-card-title { font-size:11px; font-weight:500; letter-spacing:.04em;
         color:var(--dsw-alias-label-secondary, #49525f); margin-bottom:8px; }
+      /* Main workspace: scrolls with the page; the K-line rail sticks. */
+      .pt-workspace { display:grid; grid-template-columns:minmax(0, 1fr) clamp(380px, 38%, 760px);
+        gap:10px; align-items:start; min-width:0; }
+      .pt-main { display:flex; flex-direction:column; gap:10px; min-width:0; container:paper-main / inline-size; }
+      .pt-kline-rail { position:sticky; top:calc(12px + var(--dsh-frame-top-clearance, 0px)); align-self:start; min-width:0; }
+      .pt-kline-card { display:flex; flex-direction:column; min-width:0; }
+      .pt-kline-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+      .pt-kline-title { min-width:0; }
+      .pt-kline-body { height:clamp(420px, calc(100vh - 250px), 720px); min-height:0; overflow:hidden;
+        border:0.5px solid var(--dsw-alias-border-l4, rgba(45,49,66,.08)); border-radius:var(--dsw-radius-sm, 8px);
+        background:var(--dsw-alias-bg-layer-2, #f7f8fa); }
+      .pt-kline-slot, .pt-kline-body > div { width:100%; height:100%; min-height:0; }
+      .pt-kline-body .pt-chart { height:100%; }
+      .pt-kline-hint { margin-top:6px; font-size:11px; }
       .pt-trade-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(260px, 320px); gap:10px; align-items:start; }
       .pt-table-wrap { overflow-x:auto; min-width:0; }
       .pt-table { width:100%; border-collapse:collapse; font-size:12px; min-width:0; }
@@ -155,14 +168,19 @@ window.__ModuleLoader__.load({
       /* Breakpoints follow the panel's own width, not the window's: the centre
          column also yields to the sidebar and the right pane, so a wide screen
          can still leave a narrow trading surface. */
-      @container (max-width: 900px) { .pt-trade-grid { grid-template-columns:minmax(0, 1fr); } }
-      @container (max-width: 760px) {
+      @container paper-main (max-width: 760px) { .pt-trade-grid { grid-template-columns:minmax(0, 1fr); } }
+      @container paper-panel (max-width: 1100px) {
+        .pt-workspace { grid-template-columns:minmax(0, 1fr); }
+        .pt-kline-rail { position:static; order:-1; }
+        .pt-kline-body { height:360px; }
+      }
+      @container paper-panel (max-width: 760px) {
         .pt-stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
         .pt-stat:nth-child(2n) { border-right:0; }
         .pt-stat:nth-child(-n+2) { border-bottom:0.5px solid var(--dsw-alias-border-l4, rgba(45,49,66,.10)); }
         .pt-chart { height:96px; }
       }
-      @container (max-width: 520px) {
+      @container paper-panel (max-width: 520px) {
         .pt-inner { padding-left:12px; padding-right:12px; padding-bottom:20px; }
         .pt-stat-value { font-size:15px; }
         .pt-tabs { overflow-x:auto; }
@@ -227,7 +245,7 @@ window.__ModuleLoader__.load({
       const x = index => bars.length === 1 ? width / 2 : (index / (bars.length - 1)) * (width - 20) + 10
       const y = value => height - ((value - min) / span) * (height - 24) - 12
       const line = bars.map((bar, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(bar.close).toFixed(1)}`).join(' ')
-      return h('svg', { className: 'pt-chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': interval === 'minute' ? '分时图' : '日K线' },
+      return h('svg', { className: 'pt-chart pt-chart-fill', viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: 'none', role: 'img', 'aria-label': interval === 'minute' ? '分时图' : '日K线' },
         interval === 'minute'
           ? h('path', { d: line, fill: 'none', stroke: 'var(--pt-accent, #cf5623)', strokeWidth: 1.6 })
           : h('g', null, bars.map((bar, index) => {
@@ -240,6 +258,38 @@ window.__ModuleLoader__.load({
               h('rect', { x: x(index) - 2.5, y: top, width: 5, height: Math.max(1, bottom - top), fill: color }),
             )
           })),
+      )
+    }
+
+
+    /** Always-visible K-line rail; dsh_kline fills the slot when installed. */
+    function KlinePane({ renderSlot, symbol, quote, bars, interval, onInterval, onRefresh, onIdentity }) {
+      const slot = typeof renderSlot === 'function'
+        ? renderSlot('paperTrading.kline', { symbol, onIdentity })
+        : null
+      const hasSlot = slot !== null && slot !== undefined && slot !== false
+        && !(Array.isArray(slot) && slot.length === 0)
+      return h('aside', { className: 'pt-kline-rail', 'aria-label': 'K线' },
+        h('div', { className: 'pt-card pt-kline-card' },
+          h('div', { className: 'pt-kline-head' },
+            h('div', { className: 'pt-kline-title' },
+              h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${symbol || '—'} K线`),
+              h('div', { className: 'pt-note' }, quote ? `${quote.name ?? ''} 现价 ${quote.last.toFixed(2)}` : '等待行情'),
+            ),
+            h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
+              h('div', { className: 'pt-seg' },
+                [['day', '日K'], ['minute', '分时']].map(([key, label]) =>
+                  h('button', { key, 'data-active': interval === key, onClick: () => onInterval(key) }, label),
+                ),
+              ),
+              h('button', { className: 'pt-btn', onClick: onRefresh }, '刷新'),
+            ),
+          ),
+          h('div', { className: 'pt-kline-body' },
+            hasSlot ? h('div', { className: 'pt-kline-slot' }, slot) : h(PriceChart, { bars, interval }),
+          ),
+          hasSlot ? null : h('div', { className: 'pt-note pt-kline-hint' }, '安装或升级 dsh_kline 后显示完整 K 线；当前为内置简图。'),
+        ),
       )
     }
 
@@ -326,7 +376,7 @@ window.__ModuleLoader__.load({
       }, [tick])
 
       const loadBars = useCallback(async (symbol = form.symbol) => {
-        if (!symbol.trim()) return
+        if (symbol.trim().length < 6) return
         try {
           const result = await rpc('market/bars', { symbol: symbol.trim(), interval: barInterval, limit: 80 })
           if (alive.current) setBars(result.bars ?? [])
@@ -352,6 +402,16 @@ window.__ModuleLoader__.load({
         }
       }, [marketBoard])
 
+      const klineIdentity = useCallback((symbol, name) => {
+        if (!symbol) return
+        setForm(prev => ({ ...prev, symbol }))
+        setQuote(null)
+        setNotice(name ? `已从 K 线选择 ${name}` : '')
+        rpc('market/quote', { symbols: [symbol] })
+          .then(result => { if (alive.current) setQuote(result.quotes[0] ?? null) })
+          .catch(() => {})
+      }, [])
+
       const loadReviewDetail = useCallback(async () => {
         try {
           const [nextDaily, nextCash, nextTrips] = await Promise.all([
@@ -369,8 +429,18 @@ window.__ModuleLoader__.load({
       }, [])
 
       useEffect(() => {
-        if (tab === 'market') void loadBars()
-      }, [tab, barInterval, loadBars])
+        void loadBars()
+      }, [loadBars])
+
+      useEffect(() => {
+        const symbol = form.symbol.trim()
+        if (symbol.length < 6) return
+        let cancelled = false
+        rpc('market/quote', { symbols: [symbol] })
+          .then(result => { if (!cancelled && alive.current) setQuote(result.quotes[0] ?? null) })
+          .catch(() => {})
+        return () => { cancelled = true }
+      }, [form.symbol])
 
       useEffect(() => {
         if (tab === 'review') void loadReviewDetail()
@@ -508,11 +578,13 @@ window.__ModuleLoader__.load({
           ),
           error ? h('div', { className: 'pt-error' }, error) : null,
           notice ? h('div', { className: 'pt-note' }, notice) : null,
-          h('div', { className: 'pt-tabs' },
-            [['trade', '交易'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
-              h('button', { key, className: 'pt-tab', 'data-active': tab === key, onClick: () => setTab(key) }, label),
-            ),
-          ),
+          h('div', { className: 'pt-workspace' },
+            h('div', { className: 'pt-main' },
+              h('div', { className: 'pt-tabs' },
+                [['trade', '交易'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
+                  h('button', { key, className: 'pt-tab', 'data-active': tab === key, onClick: () => setTab(key) }, label),
+                ),
+              ),
 
           tab === 'trade' ? h('div', { className: 'pt-trade-grid' },
             h('div', { className: 'pt-card' },
@@ -600,7 +672,6 @@ window.__ModuleLoader__.load({
                       setQuote(null)
                       setTab('trade')
                       rpc('market/quote', { symbols: [hit.symbol] }).then(result => setQuote(result.quotes[0] ?? null)).catch(cause => setError(cause.message))
-                      void loadBars(hit.symbol)
                     },
                   }, `${hit.symbol} ${hit.name}`),
                   h('button', { className: 'pt-btn', onClick: () => toggleWatch(hit.symbol) }, watchlist.includes(hit.symbol) ? '已自选' : '加自选'),
@@ -624,7 +695,7 @@ window.__ModuleLoader__.load({
                       const change = item.prevClose && item.prevClose > 0 ? (item.last - item.prevClose) / item.prevClose : null
                       return h('tr', {
                         key: `${item.symbol}-${item.last}`, style: { cursor: 'pointer' },
-                        onClick: () => { setForm(prev => ({ ...prev, symbol: item.symbol })); setQuote(item); setTab('trade'); void loadBars(item.symbol) },
+                        onClick: () => { setForm(prev => ({ ...prev, symbol: item.symbol })); setQuote(item); setTab('trade') },
                       },
                         h('td', null, item.symbol),
                         h('td', null, item.name ?? '—'),
@@ -635,35 +706,6 @@ window.__ModuleLoader__.load({
                       )
                     })),
                   ),
-            ),
-            h('div', { className: 'pt-card' },
-              h('div', { className: 'pt-row' },
-                h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${form.symbol} K 线`),
-                h('div', { className: 'pt-seg' },
-                  [['day', '日K'], ['minute', '分时']].map(([key, label]) =>
-                    h('button', { key, 'data-active': barInterval === key, onClick: () => setBarInterval(key) }, label),
-                  ),
-                ),
-                h('button', { className: 'pt-btn', onClick: () => loadBars() }, '刷新'),
-              ),
-              (() => {
-                const slot = typeof renderSlot === 'function'
-                  ? renderSlot('paperTrading.kline', {
-                    symbol: form.symbol,
-                    onIdentity: (symbol, name) => {
-                      if (!symbol) return
-                      setForm(prev => ({ ...prev, symbol }))
-                      setQuote(prev => prev && prev.symbol === symbol ? prev : null)
-                      void loadBars(symbol)
-                    },
-                  })
-                  : null
-                if (slot) return h('div', { style: { height: 420, minHeight: 280, marginTop: 8 } }, slot)
-                return h('div', null,
-                  h(PriceChart, { bars, interval: barInterval }),
-                  h('div', { className: 'pt-note' }, '安装 dsh_kline 后此处由它提供完整 K 线视图；当前为内置简图。'),
-                )
-              })(),
             ),
           ) : null,
 
@@ -795,6 +837,18 @@ window.__ModuleLoader__.load({
               ),
             ) : h('div', { className: 'pt-empty' }, '加载复盘…'),
           ) : null,
+            ),
+            h(KlinePane, {
+              renderSlot,
+              symbol: form.symbol,
+              quote,
+              bars,
+              interval: barInterval,
+              onInterval: setBarInterval,
+              onRefresh: () => loadBars(),
+              onIdentity: klineIdentity,
+            }),
+          ),
         ),
       )
     }
