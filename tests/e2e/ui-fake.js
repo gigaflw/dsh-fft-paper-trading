@@ -36,7 +36,7 @@
     positions: [],
   }
   const futuresPreview = (draft) => {
-    const price = 3200
+    const price = window.__futuresLast ?? 3200
     const multiplier = 10
     const amountCents = Math.round(price * multiplier * draft.qty * 100)
     const marginCents = Math.round(amountCents * 0.1)
@@ -50,7 +50,7 @@
       maxOpenQty: 28,
       availableCloseQty: draft.offset === 'close' ? (futuresState.positions.find(item => item.symbol === draft.symbol && item.side === draft.side)?.qty ?? 0) : 0,
       limit: { symbol: draft.symbol, upper: 3400, lower: 2900, ratio: 0.1, source: 'limit' },
-      quote: futuresQuote, session: futuresStatus, warnings: [],
+      quote: { ...futuresQuote, last: price, marketTs: ts() }, session: futuresStatus, warnings: [],
     }
   }
 
@@ -64,9 +64,19 @@
     'cash/flow': () => [],
     'review/roundtrips': () => [],
     'market/bars': () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }),
-    'market/quote': () => ({ state: 'ok', quotes: [quote] }),
+    'market/quote': () => ({ state: 'ok', quotes: [{ ...quote, last: window.__quoteLast ?? quote.last, marketTs: ts() }] }),
     'market/search': query => ({ state: 'ok', hits: query === 'zzzzzz' ? [] : [{ symbol: '600519.XSHG', name: '贵州茅台' }] }),
-    'order/preview': () => preview,
+    'order/preview': (payload) => {
+      const last = window.__quoteLast ?? quote.last
+      return {
+        ...preview,
+        price: last,
+        side: payload?.side ?? preview.side,
+        type: payload?.type ?? preview.type,
+        qty: payload?.qty ?? preview.qty,
+        quote: { ...quote, last, marketTs: ts() },
+      }
+    },
     'order/place': (payload) => {
       const draft = payload.draft ?? payload
       return {
@@ -129,7 +139,7 @@
     'futures/account/reset': () => futuresState.account,
     'futures/account/export': () => ({ path: '/tmp/futures/events.jsonl', exists: true, content: '{}' }),
     'futures/contracts': () => ({ state: 'ok', contracts: [futuresContract] }),
-    'futures/quote': () => ({ state: 'ok', quotes: [futuresQuote] }),
+    'futures/quote': () => ({ state: 'ok', quotes: [{ ...futuresQuote, last: window.__futuresLast ?? futuresQuote.last, marketTs: ts() }] }),
     'futures/status': () => futuresStatus,
     'futures/preview': draft => futuresPreview(draft),
     'futures/order': (payload) => {
@@ -264,6 +274,25 @@
         const text = document.querySelector('.pt-quote')?.innerText ?? ''
         return text.includes('现价') ? text : null
       }, 5000)
+      return result
+    }
+    if (name === 'live-stock') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 400))
+      window.__quoteLast = 1500
+      result.quote = await e2e.wait(() => {
+        const text = document.querySelector('.pt-quote')?.innerText ?? ''
+        return text.includes('1,500.00') ? text : null
+      }, 9000)
+      return result
+    }
+    if (name === 'live-futures') {
+      window.__futuresLast = 3300
+      result.rail = await e2e.wait(() => {
+        const text = document.querySelector('.pt-futures-rail')?.innerText ?? ''
+        return text.includes('3,300.00') ? text : null
+      }, 9000)
       return result
     }
     if (name === 'stock-close') {

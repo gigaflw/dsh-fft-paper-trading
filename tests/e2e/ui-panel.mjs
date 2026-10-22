@@ -169,6 +169,8 @@ try {
   assert('watchlist removes again', Array.isArray(marketWatch.removed) && marketWatch.removed.length === 0, JSON.stringify(marketWatch))
   const marketEmpty = await scenario('market-empty-search')
   assert('empty market search says so', marketEmpty.empty === '没有找到匹配标的', JSON.stringify(marketEmpty))
+  const liveStock = await scenario('live-stock')
+  assert('open ticket re-prices on the polling tick', typeof liveStock.quote === 'string' && liveStock.quote.includes('1,500.00'), JSON.stringify(liveStock))
   const quoteRetry = await scenario('quote-retry')
   assert('failed quote is visible and refresh recovers it', typeof quoteRetry.error === 'string' && typeof quoteRetry.quote === 'string' && quoteRetry.quote.includes('现价'), JSON.stringify(quoteRetry))
   const stockClose = await scenario('stock-close')
@@ -207,6 +209,8 @@ try {
   const futuresCalls = await evaluate('window.__calls.filter(item => item.startsWith("futures/"))')
   assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
 
+  const liveFutures = await scenario('live-futures')
+  assert('futures rail re-prices on the polling tick', typeof liveFutures.rail === 'string' && liveFutures.rail.includes('3,300.00'), JSON.stringify(liveFutures))
   const futuresClose = await scenario('futures-close')
   assert('closing from the book fills a close ticket', futuresClose.hasClose === true && typeof futuresClose.ticket === 'string' && futuresClose.ticket.includes('平多') && futuresClose.qty === '1', JSON.stringify(futuresClose))
   assert('close ticket submits and reports the fill', typeof futuresClose.receipt === 'string' && futuresClose.receipt.includes('平') && futuresClose.receipt.includes('成交'), JSON.stringify(futuresClose))
