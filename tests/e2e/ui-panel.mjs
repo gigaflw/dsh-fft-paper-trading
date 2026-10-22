@@ -234,6 +234,7 @@ try {
   assert('an oversize CSV is rejected before upload', typeof basketOversize.error === 'string' && basketOversize.error.includes('32 KiB'), JSON.stringify(basketOversize))
   const basketBudget = await scenario('basket-budget')
   assert('an invalid basket budget is caught immediately', basketBudget.disabled === '预算需为正数' && basketBudget.note === true, JSON.stringify(basketBudget))
+  assert('full-width budget digits are normalised', basketBudget.budget === '10000', JSON.stringify(basketBudget))
   const basketError = await scenario('basket-error')
   assert('basket structural errors show the host reason', typeof basketError.error === 'string' && basketError.error.includes('最多 20 只'), JSON.stringify(basketError))
   assert('basket error keeps the panel mounted', basketError.panelAlive === true)
