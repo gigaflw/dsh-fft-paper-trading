@@ -260,6 +260,8 @@ try {
   assert('a stale futures quote cannot paint over the new contract', typeof quoteRace.rail === 'string' && quoteRace.rail.includes('70,000.00') && !quoteRace.rail.includes('3,200.00'), JSON.stringify(quoteRace))
   const futuresNoQuote = await scenario('futures-no-quote')
   assert('a futures market order without a quote is blocked', typeof futuresNoQuote.title === 'string' && typeof futuresNoQuote.preview === 'string' && futuresNoQuote.preview.includes('没有可用行情'), JSON.stringify(futuresNoQuote))
+  const stockInsufficient = await scenario('stock-insufficient')
+  assert('an unaffordable buy is disabled with a reason', stockInsufficient.title === '资金不足', JSON.stringify(stockInsufficient))
   const stockNoQuote = await scenario('stock-no-quote')
   assert('a market order without a quote is blocked with a reason', typeof stockNoQuote.title === 'string' && typeof stockNoQuote.preview === 'string' && stockNoQuote.preview.includes('没有可用行情'), JSON.stringify(stockNoQuote))
   const reviewRace2 = await scenario('review-race2')
