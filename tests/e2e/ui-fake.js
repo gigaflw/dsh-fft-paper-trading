@@ -673,6 +673,28 @@
       window.__fake.on('market/search', query => (query === '600519' ? [{ symbol: '600519.XSHG', name: '贵州茅台' }] : []))
       return result
     }
+    if (name === 'market-pages') {
+      const pageRows = page => Array.from({ length: 50 }, (_, index) => ({
+        symbol: `600${String((page - 1) * 50 + index).padStart(3, '0')}.XSHG`,
+        name: `分页股${(page - 1) * 50 + index}`, last: 10 + index / 100, prevClose: 10,
+      }))
+      window.__fake.on('market/list', payload => ({ state: 'ok', page: payload.page ?? 1, quotes: pageRows(payload.page ?? 1) }))
+      const tab = e2e.byText('行情')[0]
+      e2e.click(tab)
+      await e2e.wait(() => (document.querySelector('.pt-main')?.innerText ?? '').includes('第 1 页'), 4000)
+      e2e.click(e2e.byText('下一页')[0])
+      result.page2 = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('第 2 页') ? text : null
+      }, 4000)
+      result.prevEnabled = e2e.byText('上一页')[0]?.disabled ?? null
+      e2e.click(e2e.byText('上一页')[0])
+      result.page1 = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('第 1 页') ? text : null
+      }, 4000)
+      return result
+    }
     if (name === 'market-empty-search') {
       const tab = e2e.byText('行情')[0]
       if (!tab) throw new Error('market tab missing')
