@@ -64,6 +64,7 @@
     'review/roundtrips': () => [],
     'market/bars': () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }),
     'market/quote': () => ({ state: 'ok', quotes: [quote] }),
+    'market/search': query => ({ state: 'ok', hits: query === 'zzzzzz' ? [] : [{ symbol: '600519.XSHG', name: '贵州茅台' }] }),
     'order/preview': () => preview,
     'order/place': () => ({ id: 'o-1', requestId: 'r-1', symbol: '600519.XSHG', side: 'buy', type: 'market', qty: 100, status: 'filled', createdAt: ts(), updatedAt: ts() }),
     'tick': () => ({ tradeDate: '2026-10-22', filled: [], expired: [], notices: [], quotes: [] }),
@@ -215,6 +216,13 @@
       result.shortSymbolHint = e2e.text('.pt-ticket-form')
       e2e.setInput(symbolInput, '600519')
       await new Promise(done => setTimeout(done, 500))
+      // A complete preview must leave the quote available for the 限价 draft.
+      e2e.click(e2e.byText('限价')[0])
+      await new Promise(done => setTimeout(done, 600))
+      result.limitQuote = document.querySelector('.pt-quote')?.innerText ?? null
+      result.limitSubmitDisabled = document.querySelector('.pt-ticket-submit')?.disabled ?? null
+      e2e.click(e2e.byText('市价')[0])
+      await new Promise(done => setTimeout(done, 300))
       return result
     }
     if (name === 'basket' || name === 'basket-preview') {
@@ -271,6 +279,24 @@
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       return result
     }
+    if (name === 'market-empty-search') {
+      const tab = e2e.byText('行情')[0]
+      if (!tab) throw new Error('market tab missing')
+      e2e.click(tab)
+      const input = await e2e.wait(() => {
+        const el = document.querySelector('.pt-main input[placeholder^="代码或名称"]')
+        return el && el.type !== 'file' ? el : null
+      })
+      if (!input) throw new Error('market search input missing')
+      e2e.setInput(input, 'zzzzzz')
+      await new Promise(done => setTimeout(done, 200))
+      e2e.click(e2e.byText('搜索')[0])
+      result.empty = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-empty')].find(el => el.innerText.includes('没有找到匹配标的'))
+        return node ? node.innerText.trim() : null
+      }, 4000)
+      return result
+    }
     if (name === 'basket-error') {
       const tab = e2e.byText('一揽子')[0]
       if (!tab) throw new Error('basket tab missing')
@@ -307,6 +333,13 @@
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
       await e2e.wait(() => document.querySelector('.pt-kline-rail'))
+      // Simulate the real failure: a loading text that disappears, then an
+      // empty host. Text must not stop the fallback timer.
+      const host = document.querySelector('.dsh-kline-native-host')
+      if (host) {
+        host.textContent = '加载中…'
+        setTimeout(() => { host.textContent = '' }, 900)
+      }
       await new Promise(done => setTimeout(done, 7500))
       result.panelAlive = Boolean(document.querySelector('.pt-root'))
       result.chart = Boolean(document.querySelector('.pt-kline-body .pt-chart'))
