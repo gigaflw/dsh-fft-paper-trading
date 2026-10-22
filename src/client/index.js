@@ -1632,6 +1632,7 @@ window.__ModuleLoader__.load({
                     ? h('span', null, `${contract.symbol} ${contract.name ?? ''}`)
                     : h('span', { className: 'pt-note' }, '尚未选择合约'),
                   quote !== null ? h('span', null, `最新 ${money(quote.last)}`) : null,
+                  quote !== null && quote.marketTs ? h('span', { className: 'pt-note' }, `更新 ${clockTime(quote.marketTs)}`) : null,
                   quoteNotice !== '' ? h('span', { className: 'pt-note' }, quoteNotice) : null,
                 ),
               ),
