@@ -184,6 +184,7 @@
     'futures/tick': () => ({ tradeDate: '2026-10-22', filled: [], expired: [], notices: [] }),
   }
 
+  window.__baseStockAccount = stockAccount
   window.__calls = []
   window.__basketBatchIds = []
   window.__fake = {
@@ -444,6 +445,26 @@
         const text = document.querySelector('.pt-inner')?.innerText ?? ''
         return text.includes('账户已重置') ? text : null
       }, 4000)
+      return result
+    }
+    if (name === 'next-trade-date') {
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await new Promise(done => setTimeout(done, 500))
+      const fmt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
+      const tomorrow = fmt.format(new Date(Date.now() + 86_400_000))
+      window.__fake.on('account/get', () => ({
+        accountId: 'default', currency: 'CNY', initialCash: 1000000, cash: 1000000,
+        marketValue: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
+        tradeDate: tomorrow, blocked: false, positions: [], settings: {},
+      }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.sub = await e2e.wait(() => {
+        const text = document.querySelector('.pt-sub')?.innerText ?? ''
+        return text.includes('下一交易日') ? text : null
+      }, 4000)
+      window.__fake.on('account/get', () => window.__baseStockAccount)
       return result
     }
     if (name === 'basket' || name === 'basket-preview') {
