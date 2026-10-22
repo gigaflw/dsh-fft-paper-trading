@@ -136,7 +136,7 @@ window.__ModuleLoader__.load({
     const FUTURES_PHASE_TEXT = {
       pre_open: '待开盘',
       trading: '交易中',
-      lunch: '午休',
+      lunch: '休市',
       closed: '已收盘',
     }
     const FUTURES_STATUS_TEXT = {
