@@ -249,7 +249,8 @@
       const confirm = await e2e.wait(() => e2e.byText('确认下单')[0])
       result.confirmDisabled = confirm ? confirm.disabled : null
       if (name === 'basket-preview') return result
-      if (confirm && !confirm.disabled) e2e.click(confirm)
+      // Two clicks in the same task must send one request (ref guard).
+      if (confirm && !confirm.disabled) { e2e.click(confirm); e2e.click(confirm) }
       result.result = await e2e.wait(() => {
         const table = [...document.querySelectorAll('.pt-table')].find(el => el.innerText.includes('成交价'))
         return table ? table.innerText.replace(/\n/g, ' | ') : null
@@ -258,6 +259,7 @@
         const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('成交后现金'))
         return node ? node.innerText : null
       })
+      result.firstBatchIds = window.__basketBatchIds.slice()
       // A retry after a lost response must reuse the preview's batchId.
       const retry = e2e.byText('确认下单')[0]
       if (retry && !retry.disabled) {
