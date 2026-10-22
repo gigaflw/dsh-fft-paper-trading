@@ -1215,6 +1215,19 @@
       window.__fake.on('market/status', () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }))
       return result
     }
+    if (name === 'market-auction') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('行情'))
+      if (tab) e2e.click(tab)
+      window.__fake.on('market/status', () => ({ phase: 'auction_close', tradeDate: '2026-10-22', canSubmit: false, canMatch: false }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.note = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('收盘竞价中'))
+        return node ? node.innerText.trim() : null
+      }, 4000)
+      window.__fake.on('market/status', () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }))
+      return result
+    }
     if (name === 'slot-identity') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)

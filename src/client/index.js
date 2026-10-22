@@ -778,6 +778,13 @@ window.__ModuleLoader__.load({
       )
     }
 
+    const marketSessionNote = session => {
+      if (!session || session.canMatch) return ''
+      return session.phase === 'auction_close'
+        ? '收盘竞价中，现价为最近一次行情'
+        : '非交易时段，现价为最近一次行情'
+    }
+
     function MarketTab({ searchQuery, setSearchQuery, runSearch, searchHits, searchAttempted, watchlist, isWatched, toggleWatch, marketList, marketBoard, setMarketBoard, watchOnly, setWatchOnly, loadMarket, busy, adoptQuote, session }) {
       const visibleQuotes = marketList === null
         ? []
@@ -821,8 +828,8 @@ window.__ModuleLoader__.load({
               disabled: marketList !== null && marketList.quotes.length < 50,
             }, '下一页'),
           ),
-          session !== null && session.canMatch === false
-            ? h('div', { className: 'pt-note' }, '非交易时段，现价为最近一次行情')
+          marketSessionNote(session) !== ''
+            ? h('div', { className: 'pt-note' }, marketSessionNote(session))
             : null,
           marketList === null ? h('div', { className: 'pt-empty' }, '加载行情…')
             : marketList.quotes.length === 0 ? h('div', { className: 'pt-empty' }, marketList.notice ?? '没有行情')
