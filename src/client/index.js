@@ -105,6 +105,12 @@ window.__ModuleLoader__.load({
       rejected: '拒绝',
       expired: '过期',
     }
+    /** Why the ticket is limited outside continuous trading. */
+    const sessionNote = session => {
+      if (!session || session.canMatch) return ''
+      if (session.phase === 'auction_close') return '（收盘竞价暂不支持下单）'
+      return '（仅可预埋限价单）'
+    }
     const PHASE_TEXT = {
       pre_open: '集合竞价',
       continuous_am: '上午连续竞价',
@@ -2417,6 +2423,7 @@ window.__ModuleLoader__.load({
         if (!Number.isInteger(qty) || qty <= 0) return '数量需为正整数'
         if (form.side === 'buy' && qty % 100 !== 0) return '买入需 100 股整数倍'
         if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
+        if (session !== null && session.phase === 'auction_close') return '收盘竞价暂不支持模拟撮合'
         if (form.type === 'market' && session !== null && !session.canMatch) return '当前时段不能市价成交'
         if (form.type === 'market' && quote === null && !(Number(form.price) > 0)) return '无行情，请填参考价'
         if (preview !== null && preview.quote?.status === 'suspended') return '停牌'
@@ -2457,7 +2464,7 @@ window.__ModuleLoader__.load({
               h('h3', { className: 'pt-title' }, '模拟交易'),
               h('div', { className: 'pt-sub' },
                 `${tradeDateText(account.tradeDate)} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
-                session && !session.canMatch ? h('span', { className: 'pt-note' }, '（仅可预埋限价单）') : null,
+                sessionNote(session) !== '' ? h('span', { className: 'pt-note' }, sessionNote(session)) : null,
               ),
             ),
             h('div', { className: 'pt-row' },

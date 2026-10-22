@@ -17,7 +17,7 @@ export const SESSION_WINDOWS: readonly SessionWindow[] = [
   { phase: 'continuous_am', start: 9 * 60 + 30, end: 11 * 60 + 30, canSubmitMarket: true, canSubmitLimit: true, canMatch: true },
   { phase: 'lunch', start: 11 * 60 + 30, end: 13 * 60, canSubmitMarket: false, canSubmitLimit: true, canMatch: false },
   { phase: 'continuous_pm', start: 13 * 60, end: 14 * 60 + 57, canSubmitMarket: true, canSubmitLimit: true, canMatch: true },
-  { phase: 'auction_close', start: 14 * 60 + 57, end: 15 * 60, canSubmitMarket: false, canSubmitLimit: true, canMatch: false },
+  { phase: 'auction_close', start: 14 * 60 + 57, end: 15 * 60, canSubmitMarket: false, canSubmitLimit: false, canMatch: false },
   { phase: 'closed', start: 15 * 60, end: 24 * 60, canSubmitMarket: false, canSubmitLimit: true, canMatch: false },
   { phase: 'closed', start: 0, end: 9 * 60 + 15, canSubmitMarket: false, canSubmitLimit: true, canMatch: false },
 ]

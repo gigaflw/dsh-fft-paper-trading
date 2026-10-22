@@ -281,6 +281,8 @@ try {
   assert('a market order without a quote is blocked with a reason', typeof stockNoQuote.title === 'string' && typeof stockNoQuote.preview === 'string' && stockNoQuote.preview.includes('没有可用行情'), JSON.stringify(stockNoQuote))
   const stockSuspended = await scenario('stock-suspended')
   assert('a suspended stock is disabled with a reason', stockSuspended.title === '停牌', JSON.stringify(stockSuspended))
+  const stockAuctionClose = await scenario('stock-auction-close')
+  assert('auction-close limit orders are blocked with an explanation', stockAuctionClose.title === '收盘竞价暂不支持模拟撮合' && typeof stockAuctionClose.header === 'string' && stockAuctionClose.header.includes('收盘竞价暂不支持下单'), JSON.stringify(stockAuctionClose))
   const reviewRace2 = await scenario('review-race2')
   assert('a slow stock review period cannot overwrite the newer one (isolated)', Array.isArray(reviewRace2.stats) && reviewRace2.stats.some(text => text.includes('成交笔数') && text.trim().endsWith('30')), JSON.stringify(reviewRace2))
   const lockedAccount = await scenario('locked-account')
