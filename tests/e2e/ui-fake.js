@@ -870,6 +870,8 @@
         return button && button.disabled ? button.title : null
       }, 3000)
       result.note = [...document.querySelectorAll('.pt-trade .pt-note')].some(node => node.innerText.includes('预算需为正数'))
+      e2e.setInput(budget, '１００００')
+      result.budget = budget.value
       e2e.setInput(budget, '')
       return result
     }
