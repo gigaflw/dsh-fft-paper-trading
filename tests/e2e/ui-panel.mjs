@@ -329,6 +329,8 @@ try {
   assert('a retried order reuses the request id', Array.isArray(placeRetry.ids) && placeRetry.ids.length === 2 && placeRetry.ids[0] === placeRetry.ids[1], JSON.stringify(placeRetry))
   const accountRetry = await scenario('account-retry')
   assert('a failed account load can be retried', typeof accountRetry.error === 'string' && accountRetry.retry === 1 && typeof accountRetry.loaded === 'string', JSON.stringify(accountRetry))
+  const futuresAccountRetry = await scenario('futures-account-retry')
+  assert('a failed futures account load can be retried', typeof futuresAccountRetry.error === 'string' && futuresAccountRetry.retry === 1 && typeof futuresAccountRetry.loaded === 'string', JSON.stringify(futuresAccountRetry))
   const slotIdentity = await scenario('slot-identity')
   assert('a K-line selection fills the ticket symbol', slotIdentity.symbol === '000001' && typeof slotIdentity.notice === 'string' && slotIdentity.notice.includes('平安银行'), JSON.stringify(slotIdentity))
   const slotFallback = await scenario('slot-fallback')

@@ -1382,6 +1382,26 @@
       }, 4000)
       return result
     }
+    if (name === 'futures-account-retry') {
+      window.__fake.on('futures/account/get', () => ({ __error: { code: 'INTERNAL', message: '期货账本读取失败' } }))
+      window.__remount('fresh')
+      await new Promise(done => setTimeout(done, 800))
+      const futuresButton = await e2e.wait(() => e2e.byText('期货')[0] ?? null, 4000)
+      if (!futuresButton) throw new Error('futures-account-retry: no futures switch')
+      e2e.click(futuresButton)
+      result.error = await e2e.wait(() => {
+        const text = document.querySelector('.pt-error')?.innerText ?? null
+        return text !== null && text.includes('期货账本读取失败') ? text : null
+      }, 5000)
+      result.retry = e2e.byText('重试').length
+      window.__fake.on('futures/account/get', () => futuresState.account)
+      e2e.click(e2e.byText('重试')[0])
+      result.loaded = await e2e.wait(() => {
+        const text = document.querySelector('.pt-root')?.innerText ?? ''
+        return text.includes('总权益') && text.includes('运行中') ? text : null
+      }, 5000)
+      return result
+    }
     if (name === 'slot-identity') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
