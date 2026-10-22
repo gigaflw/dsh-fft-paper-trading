@@ -181,7 +181,6 @@ export function limitView(limit: LimitInput, symbol: string): FuturesLimitView {
     symbol,
     upper: limit.upper,
     lower: limit.lower,
-    ratio: limit.marginRate,
     source: limit.source ?? 'limit',
   }
 }

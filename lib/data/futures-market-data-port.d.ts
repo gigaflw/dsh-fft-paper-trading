@@ -48,6 +48,12 @@ export interface FuturesRawSettle {
      * a per-lot fee when the per-lot value is missing or zero.
      */
     feeRate?: number;
+    /**
+     * Close-today ad-valorem fee (`offset_today_fee` on an ad-valorem
+     * exchange). Set instead of `closeTodayFeePerLotCents` so the service can
+     * convert it with the same unit as `feeRate`.
+     */
+    closeTodayFeeRate?: number;
 }
 export interface FuturesRawClose {
     symbol: string;
