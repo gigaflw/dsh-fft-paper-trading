@@ -171,6 +171,8 @@ try {
   assert('market list renders and next is disabled on a short page', marketWatch.rows === 2 && marketWatch.nextDisabled === true, JSON.stringify(marketWatch))
   assert('watchlist adds and filters the market list', Array.isArray(marketWatch.added) && marketWatch.added.length === 1 && marketWatch.filteredRows === 1, JSON.stringify(marketWatch))
   assert('watchlist removes again', Array.isArray(marketWatch.removed) && marketWatch.removed.length === 0, JSON.stringify(marketWatch))
+  const watchConcurrent = await scenario('watch-concurrent')
+  assert('two quick star clicks keep both favourites', Array.isArray(watchConcurrent.symbols) && watchConcurrent.symbols.length === 2, JSON.stringify(watchConcurrent))
   const marketEmpty = await scenario('market-empty-search')
   assert('empty market search says so', marketEmpty.empty === '没有找到匹配标的', JSON.stringify(marketEmpty))
   const liveStock = await scenario('live-stock')
