@@ -1277,6 +1277,17 @@
       window.__fake.on('futures/preview', futuresPreview)
       return result
     }
+    if (name === 'futures-preopen') {
+      window.__fake.on('futures/status', () => ({ phase: 'pre_open', tradeDate: '2026-10-23', canSubmit: false, canMatch: false, nextBoundary: '2026-10-23T01:00:00.000Z' }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.header = await e2e.wait(() => {
+        const text = document.querySelector('.pt-sub')?.innerText ?? ''
+        return text.includes('待开盘') ? text : null
+      }, 4000)
+      window.__fake.on('futures/status', () => futuresStatus)
+      return result
+    }
     if (name === 'futures-review') {
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
       if (tab) e2e.click(tab)
