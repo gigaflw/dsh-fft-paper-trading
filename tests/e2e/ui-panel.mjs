@@ -15,7 +15,7 @@
  */
 import http from 'node:http'
 import net from 'node:net'
-import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -74,7 +74,7 @@ const server = http.createServer((req, res) => {
 await new Promise(done => server.listen(pagePort, '127.0.0.1', done))
 
 const child = spawn(chrome, [
-  '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+  '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--window-size=1440,1100',
   `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`,
   `http://127.0.0.1:${pagePort}/`,
 ], { stdio: 'ignore' })
@@ -117,6 +117,16 @@ try {
     socket.send(JSON.stringify({ id, method, params }))
   })
   await send('Runtime.enable')
+  await send('Page.enable')
+  const shotsDir = process.env.UI_SHOTS ?? ''
+  if (shotsDir !== '') mkdirSync(shotsDir, { recursive: true })
+  const shot = async name => {
+    if (shotsDir === '') return
+    await evaluate("document.querySelector('.pt-root')?.scrollTo(0, 0)")
+    const result = await send('Page.captureScreenshot', { format: 'png' })
+    writeFileSync(join(shotsDir, name), Buffer.from(result.result.data, 'base64'))
+    console.log(`SHOT  ${join(shotsDir, name)}`)
+  }
   const evaluate = async expression => {
     const result = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
     if (result.result?.exceptionDetails) throw new Error(result.result.exceptionDetails.exception?.description ?? result.result.exceptionDetails.text)
@@ -141,8 +151,12 @@ try {
   assert('stock ticket keeps the aligned form grid', stock.ticketFields?.length === 7, JSON.stringify(stock.ticketFields))
   assert('stock K-line rail renders', stock.kline === true)
   assert('stock book renders', typeof stock.book === 'string' && stock.book.includes('持仓'))
+  await shot('stock-trade.png')
 
   // 2. 一揽子
+  const basketPreview = await scenario('basket-preview')
+  assert('basket preview is shown before confirmation', typeof basketPreview.preview === 'string' && basketPreview.preview.includes('目标权重'), basketPreview.preview ?? '')
+  await shot('basket-preview.png')
   const basket = await scenario('basket')
   assert('basket preview has three rows', typeof basket.preview === 'string' && ['600519', '000001', '300750'].every(code => basket.preview.includes(code)), basket.preview ?? '')
   assert('basket preview shows statuses', typeof basket.preview === 'string' && basket.preview.includes('可买') && basket.preview.includes('不足 1 手'))
@@ -151,19 +165,23 @@ try {
   assert('basket cash line renders', typeof basket.cashLine === 'string' && basket.cashLine.includes('成交后现金'), basket.cashLine ?? '')
   const basketCalls = await evaluate('window.__calls.filter(item => item.startsWith("basket/"))')
   assert('basket RPCs were called', basketCalls.includes('basket/preview') && basketCalls.includes('basket/place'), JSON.stringify(basketCalls))
+  await shot('basket-result.png')
 
   // 3. 期货
   const switched = await scenario('futures-switch')
   assert('futures switch renders the account', typeof switched.head === 'string' && switched.head.includes('期货 ·'), switched.head ?? '')
   assert('futures stats labels', Array.isArray(switched.stats) && switched.stats.some(text => text.includes('总权益')) && switched.stats.some(text => text.includes('风险度')), JSON.stringify(switched.stats))
   assert('futures has four tabs and no market tab', switched.tabs.length === 4 && !switched.tabs.some(text => text.includes('行情')), JSON.stringify(switched.tabs))
+  await shot('futures-trade.png')
   const searched = await scenario('futures-search')
   assert('futures contract rail filled', typeof searched.contract === 'string' && searched.contract.includes('乘数') && searched.contract.includes('保证金率'), searched.contract ?? '')
   const previewed = await scenario('futures-preview')
   assert('futures preview shows margin and risk', typeof previewed.preview === 'string' && previewed.preview.includes('保证金') && previewed.preview.includes('风险度'), previewed.preview ?? '')
+  await shot('futures-preview.png')
   const submitted = await scenario('futures-submit')
   assert('futures order fills', typeof submitted.receipt === 'string' && submitted.receipt.includes('成交'), submitted.receipt ?? '')
   assert('futures position book updates', typeof submitted.book === 'string' && submitted.book.includes('RB2611.SHFE'), submitted.book ?? '')
+  await shot('futures-position.png')
   const futuresCalls = await evaluate('window.__calls.filter(item => item.startsWith("futures/"))')
   assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
 
