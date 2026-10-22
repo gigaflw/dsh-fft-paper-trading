@@ -1041,6 +1041,12 @@ window.__ModuleLoader__.load({
         setResult(null)
         setBatchId('')
         setFileName(file.name)
+        // The RPC has the same cap; catching it here gives instant feedback.
+        if (file.size > 32 * 1024) {
+          setCsv('')
+          setError('CSV 文件不能超过 32 KiB')
+          return
+        }
         try {
           setCsv(await file.text())
         } catch {
