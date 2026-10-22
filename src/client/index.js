@@ -870,6 +870,9 @@ window.__ModuleLoader__.load({
               h('td', null, h('button', { className: 'pt-btn', onClick: () => onCancel(order.id), disabled: busy }, '撤单')),
             ))),
           ),
+          pending.some(order => order.status === 'queued')
+            ? h('div', { className: 'pt-note' }, '「排队」：当前时段不撮合，下一交易时段会尝试成交，可随时撤单。')
+            : null,
         ),
         h('div', null,
           h('div', { className: 'pt-sub' }, '历史'),
@@ -1844,6 +1847,9 @@ window.__ModuleLoader__.load({
               h('td', null, h('button', { className: 'pt-btn', onClick: () => onCancel(order.id), disabled: busy }, '撤单')),
             ))),
           ),
+          pending.some(order => order.status === 'queued')
+            ? h('div', { className: 'pt-note' }, '「排队」：当前时段不撮合，下一交易时段会尝试成交，可随时撤单。')
+            : null,
         ),
         h('div', null,
           h('div', { className: 'pt-sub' }, '历史'),

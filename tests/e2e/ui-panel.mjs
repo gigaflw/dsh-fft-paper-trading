@@ -200,6 +200,7 @@ try {
   assert('a resting limit order shows the pending receipt', typeof stockLimit.receipt === 'string' && stockLimit.receipt.includes('挂单') && stockLimit.receipt.includes('11.40'), JSON.stringify(stockLimit))
   const cancelOrder = await scenario('cancel-order')
   assert('cancelling a pending order clears the table', typeof cancelOrder.empty === 'string' && cancelOrder.empty.includes('无挂单'), JSON.stringify(cancelOrder))
+  assert('a queued order explains that it waits for the next session', typeof cancelOrder.note === 'string' && cancelOrder.note.includes('下一交易时段'), JSON.stringify(cancelOrder.note))
   const resetAccount = await scenario('reset-account')
   assert('resetting the stock account reports success', typeof resetAccount.notice === 'string' && resetAccount.notice.includes('账户已重置'), JSON.stringify(resetAccount))
   const basket = await scenario('basket')
