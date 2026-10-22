@@ -43,6 +43,20 @@ export interface PaperServiceOptions {
   logger?: { warn(message: string): void }
 }
 
+/** Why the account is locked, flattened to one readable line. */
+function reasonText(reason: string | undefined, limit = 120): string {
+  if (reason === undefined || reason === '') return ''
+  const flat = reason.replace(/\s+/g, ' ').trim()
+  return flat.length <= limit ? flat : `${flat.slice(0, limit)}…`
+}
+
+export interface LedgerStatus {
+  path: string
+  exists: boolean
+  blocked: boolean
+  blockedReason?: string
+}
+
 interface PlaceOutcome {
   orderId?: string
   duplicateId?: string
@@ -67,8 +81,21 @@ export class PaperService {
     return this.now().toISOString()
   }
 
+  /** Attach the on-disk location so a locked account is repairable from a reply. */
+  private viewOf(state: AccountState): AccountView {
+    const view = toAccountView(state)
+    const path = this.options.repo.ledgerPath
+    return path === undefined ? view : { ...view, ledgerPath: path }
+  }
+
+  /** The single place that turns a blocked state into an error carrying its reason. */
+  private blocked(state: AccountState): PaperError {
+    const reason = reasonText(state.blockedReason)
+    return new PaperError('ACCOUNT_BLOCKED', `账户已锁定，请重置后继续${reason === '' ? '' : `（${reason}）`}`, 409)
+  }
+
   async account(): Promise<AccountView> {
-    return toAccountView(await this.sync())
+    return this.viewOf(await this.sync())
   }
 
   /** Open the account on first use, through the store transaction. */
@@ -321,6 +348,9 @@ export class PaperService {
 
   async place(draft: OrderDraft, requestId: string = randomUUID()): Promise<OrderView> {
     const state = await this.sync()
+    // A locked account must answer with the lock (and its reason) even when the
+    // order would also fail the session gate; the repair path comes first.
+    if (state.blocked) throw this.blocked(state)
     const now = this.ts()
     const phase = sessionPhaseAt(now)
     const matchable = canMatch(phase)
@@ -349,7 +379,7 @@ export class PaperService {
       return toOrderView(duplicate)
     }
     if (outcome.value.blocked === true || outcome.state.blocked) {
-      throw new PaperError('ACCOUNT_BLOCKED', '账户已锁定，请重置后继续', 409)
+      throw this.blocked(outcome.state)
     }
     const order = outcome.value.orderId === undefined ? undefined : outcome.state.orders[outcome.value.orderId]
     if (order === undefined) throw new PaperError('INTERNAL', '订单未写入账本')
@@ -358,7 +388,7 @@ export class PaperService {
 
   async cancel(orderId: string): Promise<OrderView> {
     const state = await this.sync()
-    if (state.blocked) throw new PaperError('ACCOUNT_BLOCKED', '账户已锁定，请重置后继续', 409)
+    if (state.blocked) throw this.blocked(state)
     const outcome = await this.options.repo.transact<CancelOutcome>(current => {
       if (current.blocked) return { events: [], value: { blocked: true } }
       if (current.orders[orderId] === undefined) return { events: [], value: { missing: true } }
@@ -366,7 +396,7 @@ export class PaperService {
       if (result.events.length === 0) return { events: [], value: { notPending: true } }
       return { events: result.events, value: {} }
     })
-    if (outcome.value.blocked === true) throw new PaperError('ACCOUNT_BLOCKED', '账户已锁定，请重置后继续', 409)
+    if (outcome.value.blocked === true) throw this.blocked(outcome.state)
     if (outcome.value.missing === true) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
     if (outcome.value.notPending === true) throw new PaperError('ORDER_NOT_PENDING', '订单不是挂单状态', 409)
     const order = outcome.state.orders[orderId]
@@ -386,7 +416,8 @@ export class PaperService {
     }
     const outcome = await this.options.repo.transact(current => {
       if (current.blocked) {
-        return { events: [], value: { filled: [] as Order[], expired: [] as Order[], notices: ['账户已锁定，已跳过撮合'] } }
+        const reason = reasonText(current.blockedReason)
+        return { events: [], value: { filled: [] as Order[], expired: [] as Order[], notices: [`账户已锁定，已跳过撮合${reason === '' ? '' : `（${reason}）`}`] } }
       }
       const released = releaseQueued(current, now, current.tradeDate)
       const ticked = engineTick(released.state, quotes.quotes, now)
@@ -620,7 +651,7 @@ export class PaperService {
       payload: { settings, initialCashCents: settings.initialCashCents, tradeDate, reason: 'user' },
     }
     const next = await this.options.repo.replace([genesis])
-    return toAccountView(next)
+    return this.viewOf(next)
   }
 
   /** Read-only export of the raw ledger, for a locked account's banner. */
@@ -628,6 +659,26 @@ export class PaperService {
     const ledger = await this.options.repo.readLedger()
     if (ledger.content === null) return { path: ledger.path, exists: false, notice: '账本文件尚未创建' }
     return { path: ledger.path, exists: true, content: ledger.content }
+  }
+
+  /**
+   * Where the ledger is and why it is locked — without the raw text.
+   *
+   * `exportLedger` exists for downloading; this is the answer a human or an
+   * agent needs to locate the file and name the failing invariant.
+   */
+  async ledgerStatus(): Promise<LedgerStatus> {
+    const ledger = await this.options.repo.readLedger()
+    const state = await this.options.repo.current().catch(error => {
+      this.options.logger?.warn(`paper-trading: ledger status could not replay: ${String(error)}`)
+      return undefined
+    })
+    return {
+      path: ledger.path,
+      exists: ledger.content !== null,
+      blocked: state?.blocked === true,
+      blockedReason: state?.blockedReason,
+    }
   }
 
   /** Exposed for tests/scenarios: current equity in cents after advancing the clock. */

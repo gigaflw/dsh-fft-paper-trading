@@ -30,6 +30,11 @@ export class AccountRepo implements AccountStore {
     this.store = new EventStore(eventsPath(options.home, options.accountId))
   }
 
+  /** Absolute path of `events.jsonl`, surfaced so a locked account is fixable. */
+  get ledgerPath(): string {
+    return this.store.filePath
+  }
+
   private async ensureLoaded(): Promise<AccountState> {
     if (this.state !== undefined) return this.state
     if (this.loading === undefined) this.loading = this.loadOnce()

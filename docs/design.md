@@ -38,7 +38,7 @@
 | 交易 / 持仓 / 订单 / 复盘 | 四个页签 | ● | |
 | 事件账本 + 重放 + 对账 | JSONL，失败关闭 | ● | |
 | 按需 tick + 市价/限价 | 简化撮合，全量成交 | ● | |
-| Agent 工具 | 8 个 `paper_*` 工具 | ● | |
+| Agent 工具 | 9 个 `paper_*` 工具 | ● | |
 | 权益曲线 / 复盘统计 | 纯 SVG + 日终快照 | ● | |
 | 交易时段 / 日切 / 收盘开盘快照 | 真实节奏的基础，见 §19.2–19.3 | ○ | v0.2 P0 |
 | 行情时间语义 | `marketTs` + `fetchedAt`，见 §19.3 | ○ | v0.2 P0 |
@@ -133,7 +133,7 @@ dsh-fft-paper-trading/       # 仓库根即包根
       route.ts               # connection.fetch 路由注册
       errors.ts              # PaperError（错误码 + HTTP 状态）
     agent/
-      tools.ts               # 8 个 paper_* 工具定义
+      tools.ts               # 9 个 paper_* 工具定义
       format.ts              # 结果转模型可读摘要
     client/
       index.js               # ModuleLoader 入口 + 面板 + 页签 + 样式（单文件）
@@ -259,7 +259,7 @@ interface AccountState {
 1. 读 `events.jsonl`，末尾坏行（进程被杀）丢弃并记录 warning。
 2. 校验 `seq` 严格递增：同一 seq 且内容相同（忽略易变的 `recordedAt`）视为重复写入，丢弃后补一条 `ledger.repaired` 并把压缩结果原子写回；同一 seq 内容不同则是真损坏，保留原文件并失败关闭。
 3. 重放并校验：现金恒等式、持仓数量、可卖 ≤ 持仓、成交数量/价格/金额/费用必须是有限值、已成交订单必须有成交记录。
-4. 失败：追加一条 `ledger.violation`，置 `blocked`；界面红条提示，可导出账本或重置。已锁定的账户不再追加任何事件，避免每 5 秒刷一条。
+4. 失败：追加一条 `ledger.violation`，置 `blocked`；原因写进 `AccountState.blockedReason`，界面红条显示「原因 + 账本绝对路径」，可导出账本或重置；工具侧 `paper_account` / `paper_export` 同样给出原因与路径。已锁定的账户不再追加任何事件，避免每 5 秒刷一条。
 5. 写入：`transact` 在写队列内用最新状态重建事件，落盘前强制 `event.seq === state.lastSeq + 1`；不连续直接抛错，绝不写坏账本。
 6. 重置：先原样备份，再用合并默认值后的配置把账本原子替换为单条 `account.reset`（seq 从 1 开始），内存状态直接替换，不依赖旧账本重放成功。
 
@@ -334,17 +334,18 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 ## 10 Agent 工具与工具卡
 
-### 10.1 工具（8 个）
+### 10.1 工具（9 个）
 
 | 工具 | 入参 | 返回 | 卡片 |
 | --- | --- | --- | --- |
-| `paper_account` | `{ reset?, confirm? }` | 账户摘要 | 待做 |
+| `paper_account` | `{ reset?, confirm? }` | 账户摘要（锁定时带原因与账本路径） | 待做 |
 | `paper_quote` | `{ symbols }` | 报价表 | 无 |
 | `paper_preview` | `{ symbol, side, qty, type, limitPrice?, price? }` | 金额、费用、占用资金、可卖 | 待做 |
 | `paper_order` | `{ symbol, side, qty, type, limitPrice?, price?, requestId? }` | 订单状态 | 待做 |
 | `paper_cancel` | `{ orderId }` | 订单状态 | 待做 |
 | `paper_status` | 无 | 持仓 + 挂单 + 最近成交 | 待做 |
 | `paper_tick` | 无 | 成交/过期结果 | 无 |
+| `paper_export` | 无 | 账本绝对路径、备份目录、锁定原因（只读） | 无 |
 | `paper_review` | `{ period? }` | 曲线与统计 | 待做 |
 
 规则：所有工具只调 `PaperService`；`output.render` 产出中文摘要；`presentationMeta` 尚未添加（工具卡的前置条件）。
@@ -387,7 +388,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 复盘 | 7/30/全部区间、成交统计、最大回撤、权益曲线、成交记录 |
 
 账户头：总资产、可用现金、浮动盈亏、今日盈亏、刷新、重置（`window.confirm` 二次确认）。
-锁定横幅带「导出账本」：调 `account/export` 下载 JSONL 并复制绝对路径，不再只提示用户自己找文件。
+锁定横幅显示失败原因（最后一条 `ledger.violation` 的 `actual`）与账本绝对路径，带「导出账本」（调 `account/export` 下载 JSONL 并复制路径）和「复制路径」；`AccountView` 带 `blockedReason` / `ledgerPath`，所以工具与横幅不必各自猜文件位置。
 `data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 
 **刷新**：页面挂载即拉取 `account/get`、`list/orders`、`list/trades`、`review/get`；每 5 秒在 `document.visibilityState === 'visible'` 时调 `tick` 并静默重载（宿主调度器才是主驱动，见 §19.7）；提交、撤单、重置、手动刷新立即重载，重置后同时刷新日终/流水/回合。

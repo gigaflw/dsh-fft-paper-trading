@@ -137,6 +137,10 @@ export interface AccountView {
     todayPnl: number;
     tradeDate: string;
     blocked: boolean;
+    /** Why the account is locked, copied from the last `ledger.violation`. */
+    blockedReason?: string;
+    /** Absolute path of `events.jsonl`, so a locked account can be repaired. */
+    ledgerPath?: string;
     positions: PositionView[];
     settings: PaperSettings;
 }

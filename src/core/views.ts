@@ -97,6 +97,7 @@ export function toAccountView(state: AccountState): AccountView {
     todayPnl: (equity - baseline) / 100,
     tradeDate: state.tradeDate,
     blocked: state.blocked,
+    blockedReason: state.blockedReason,
     positions,
     settings: state.settings,
   }

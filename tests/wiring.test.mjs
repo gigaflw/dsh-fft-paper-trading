@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { apply } from '../lib/index.js'
 
 const TOOL_NAMES = [
-  'paper_account', 'paper_cancel', 'paper_market', 'paper_order', 'paper_preview',
+  'paper_account', 'paper_cancel', 'paper_export', 'paper_market', 'paper_order', 'paper_preview',
   'paper_quote', 'paper_review', 'paper_status', 'paper_tick',
 ]
 
@@ -63,6 +63,12 @@ test('wiring: route and tools attach without the market-data service', async () 
     const account = await call('account/get')
     assert.equal(account.ok, true)
     assert.equal(account.value.cash, 100_000)
+    assert.match(account.value.ledgerPath ?? '', /events\.jsonl$/, 'the account view names its ledger file')
+
+    const export_ = await tools.find(tool => tool.name === 'paper_export').execute({})
+    assert.match(export_.summary, /events\.jsonl/, 'paper_export prints the ledger path')
+    assert.equal(export_.data.exists, true)
+    assert.equal(export_.data.blocked, false)
 
     const quote = await call('market/quote', { symbols: ['600519'] })
     assert.equal(quote.ok, true)

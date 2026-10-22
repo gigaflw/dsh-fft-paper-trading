@@ -15,6 +15,12 @@ export interface PaperServiceOptions {
         warn(message: string): void;
     };
 }
+export interface LedgerStatus {
+    path: string;
+    exists: boolean;
+    blocked: boolean;
+    blockedReason?: string;
+}
 /** Orchestrates the ledger, the data port, the calendar and the clock. No IO of its own. */
 export declare class PaperService {
     private readonly options;
@@ -23,6 +29,10 @@ export declare class PaperService {
     private readonly now;
     constructor(options: PaperServiceOptions);
     private ts;
+    /** Attach the on-disk location so a locked account is repairable from a reply. */
+    private viewOf;
+    /** The single place that turns a blocked state into an error carrying its reason. */
+    private blocked;
     account(): Promise<AccountView>;
     /** Open the account on first use, through the store transaction. */
     private ensureAccount;
@@ -103,6 +113,13 @@ export declare class PaperService {
     reset(confirm: boolean): Promise<AccountView>;
     /** Read-only export of the raw ledger, for a locked account's banner. */
     exportLedger(): Promise<LedgerExport>;
+    /**
+     * Where the ledger is and why it is locked — without the raw text.
+     *
+     * `exportLedger` exists for downloading; this is the answer a human or an
+     * agent needs to locate the file and name the failing invariant.
+     */
+    ledgerStatus(): Promise<LedgerStatus>;
     /** Exposed for tests/scenarios: current equity in cents after advancing the clock. */
     equityCents(): Promise<number>;
 }

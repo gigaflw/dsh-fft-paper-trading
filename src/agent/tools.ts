@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path'
 import type { ParameterSchemaSpec, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { OrderDraft } from '../contract.js'
@@ -17,6 +18,8 @@ const outputSchema = {
     data: { type: 'json' },
   },
 } as const satisfies ValueSchemaSpec
+
+const noParameters = {} as const satisfies ParameterSchemaSpec
 
 const parameters = {
   symbol: { type: 'string', description: '证券代码，例如 600519' },
@@ -76,6 +79,29 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
           ? await service.reset(input.confirm === true)
           : await service.account()
         return { summary: renderAccount(account), data: account }
+      } catch (error) {
+        return fail(error)
+      }
+    },
+  }))
+
+  tools.register(defineTool({
+    ...base,
+    name: 'paper_export',
+    parameters: noParameters,
+    description: '查看账本文件位置与锁定原因，用于手动修复账本。',
+    async execute(): Promise<ToolResult> {
+      try {
+        const status = await service.ledgerStatus()
+        const lines = [
+          `账本 ${status.path}${status.exists ? '' : '（尚未创建）'}`,
+          status.blocked ? `已锁定 · 原因：${status.blockedReason ?? '未记录'}` : '账户正常',
+        ]
+        if (status.blocked) {
+          lines.push(`备份目录 ${join(dirname(status.path), 'backups')}`)
+          lines.push('修复后需完全退出并重开 DSH；也可 paper_account reset=true, confirm=true（会先备份）')
+        }
+        return { summary: lines.join('\n'), data: status }
       } catch (error) {
         return fail(error)
       }

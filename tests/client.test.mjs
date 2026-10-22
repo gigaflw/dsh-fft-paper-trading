@@ -70,6 +70,10 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /review\/daily/)
   assert.match(source, /paperTrading\.kline/)
   assert.match(source, /account\/export/, 'the locked banner needs an export entry point')
+  // The locked banner must name the failure and the file, not just "locked".
+  assert.match(source, /account\.blockedReason/)
+  assert.match(source, /account\.ledgerPath/)
+  assert.match(source, /复制路径/)
   // Times are pinned to zh-CN / Asia/Shanghai, never the host locale.
   assert.match(source, /Intl\.DateTimeFormat\('zh-CN'/)
   assert.match(source, /Asia\/Shanghai/)

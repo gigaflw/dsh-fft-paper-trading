@@ -50,6 +50,7 @@ function openState(state: AccountState, settings: PaperSettings, initialCashCent
   state.tradeDate = tradeDate
   state.lastOpenedDate = ''
   state.blocked = false
+  state.blockedReason = undefined
 }
 
 function applyFill(state: AccountState, fill: FillRecord): void {
@@ -223,6 +224,7 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
     }
     case 'ledger.violation': {
       state.blocked = true
+      state.blockedReason = event.payload.actual === '' ? undefined : event.payload.actual
       break
     }
     case 'ledger.repaired': {

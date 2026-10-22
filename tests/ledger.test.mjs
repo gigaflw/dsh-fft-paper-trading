@@ -243,6 +243,20 @@ test('p0-1: a conflicting duplicate seq still blocks and stops appending', async
     const { service } = makeService(home, data, now)
     const account = await service.account()
     assert.equal(account.blocked, true)
+    // A locked view must name the failing invariant and the file to repair.
+    assert.match(account.blockedReason ?? '', /重复且内容不同/)
+    assert.ok(account.ledgerPath?.endsWith('events.jsonl'), 'the locked view carries the ledger path')
+
+    const status = await service.ledgerStatus()
+    assert.equal(status.exists, true)
+    assert.equal(status.blocked, true)
+    assert.equal(status.blockedReason, account.blockedReason)
+
+    // The lock reason, not the session gate, must explain a refused order.
+    await assert.rejects(
+      service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 }),
+      /账户已锁定，请重置后继续（事件序号重复且内容不同: 2）/,
+    )
 
     const before = (await readFile(file, 'utf8')).trim().split('\n').length
     // Reads and ticks on a blocked account must not keep appending events
@@ -371,9 +385,11 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
   try {
     const locked = await service.account()
     assert.equal(locked.blocked, true)
+    assert.equal(locked.blockedReason, '现金为负或非法: NaN')
 
     const reset = await service.reset(true)
     assert.equal(reset.blocked, false)
+    assert.equal(reset.blockedReason, undefined)
     assert.equal(reset.cash, 100_000)
     assert.equal(reset.initialCash, 100_000)
     assert.equal(reset.positions.length, 0)

@@ -22,6 +22,8 @@ export declare class AccountRepo implements AccountStore {
     private loading;
     private queue;
     constructor(options: RepoOptions);
+    /** Absolute path of `events.jsonl`, surfaced so a locked account is fixable. */
+    get ledgerPath(): string;
     private ensureLoaded;
     private loadOnce;
     /**

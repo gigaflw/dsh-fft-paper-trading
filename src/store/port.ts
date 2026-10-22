@@ -10,6 +10,8 @@ import type { AccountState, LedgerEvent } from '../core/types.js'
  * mark-to-market views, but the auditable history is still the event log.
  */
 export interface AccountStore {
+  /** Absolute path of the event file when the store is file-backed. */
+  readonly ledgerPath?: string
   /** Replay the log once and return the current state. */
   current(): Promise<AccountState>
   /**
