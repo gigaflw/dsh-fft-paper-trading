@@ -70,7 +70,7 @@
     'review/roundtrips': () => [],
     'market/bars': () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }),
     'market/quote': () => ({ state: 'ok', quotes: [{ ...quote, last: window.__quoteLast ?? quote.last, marketTs: ts() }] }),
-    'market/search': query => ({ state: 'ok', hits: query === 'zzzzzz' ? [] : [{ symbol: '600519.XSHG', name: '贵州茅台' }] }),
+    'market/search': query => (query === 'zzzzzz' ? [] : [{ symbol: '600519.XSHG', name: '贵州茅台' }]),
     'order/preview': (payload) => {
       const last = window.__quoteLast ?? quote.last
       return {
@@ -536,6 +536,32 @@
       result.watchedCount = e2e.byText('★').length
       return result
     }
+    if (name === 'search-race') {
+      const tab = e2e.byText('行情')[0]
+      e2e.click(tab)
+      const input = await e2e.wait(() => {
+        const el = document.querySelector('.pt-main input[placeholder^="代码或名称"]')
+        return el && el.type !== 'file' ? el : null
+      })
+      window.__searchLog = []
+      window.__fake.on('market/search', async payload => {
+        window.__searchLog.push(payload.query)
+        const first = payload.query === 'aaa'
+        await new Promise(done => setTimeout(done, first ? 300 : 50))
+        return [{ symbol: first ? '600519.XSHG' : '000001.XSHE', name: first ? '贵州茅台' : '平安银行' }]
+      })
+      e2e.setInput(input, 'aaa')
+      await new Promise(done => setTimeout(done, 200))
+      e2e.click(e2e.byText('搜索')[0])
+      await new Promise(done => setTimeout(done, 60))
+      e2e.setInput(input, 'bbb')
+      e2e.click(e2e.byText('搜索')[0])
+      await new Promise(done => setTimeout(done, 600))
+      result.hits = e2e.text('.pt-main .pt-card')
+      result.log = window.__searchLog.slice()
+      window.__fake.on('market/search', query => (query === '600519' ? [{ symbol: '600519.XSHG', name: '贵州茅台' }] : []))
+      return result
+    }
     if (name === 'market-empty-search') {
       const tab = e2e.byText('行情')[0]
       if (!tab) throw new Error('market tab missing')
@@ -552,6 +578,8 @@
         const node = [...document.querySelectorAll('.pt-empty')].find(el => el.innerText.includes('没有找到匹配标的'))
         return node ? node.innerText.trim() : null
       }, 4000)
+      result.card = e2e.text('.pt-main .pt-card')
+      result.value = document.querySelector('.pt-main input[placeholder^="代码或名称"]')?.value
       return result
     }
     if (name === 'basket-race') {
