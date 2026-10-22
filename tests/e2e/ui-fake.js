@@ -677,6 +677,31 @@
       result.errorAfter = document.querySelector('.pt-error')?.innerText ?? null
       return result
     }
+    if (name === 'market-stale-note') {
+      window.__fake.on('market/list', () => ({
+        state: 'stale', notice: '行情为缓存数据', page: 1,
+        quotes: [
+          { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+          { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+        ],
+      }))
+      const tab = e2e.byText('行情')[0]
+      e2e.click(tab)
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.note = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('缓存'))
+        return node ? node.innerText.trim() : null
+      }, 4000)
+      window.__fake.on('market/list', payload => ({
+        state: 'ok', page: payload.page ?? 1,
+        quotes: [
+          { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+          { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+        ],
+      }))
+      return result
+    }
     if (name === 'market-adopt') {
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('行情'))
       e2e.click(tab)
@@ -1367,6 +1392,22 @@
         return text !== null && text.includes('成交') ? text : null
       }, 5000)
       result.calls = window.__placeCalls
+      return result
+    }
+    if (name === 'futures-contract-stale') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('futures/contracts', () => ({
+        state: 'stale', notice: '合约索引为缓存', contracts: [futuresContract, futuresContract2],
+      }))
+      const search = e2e.byText('搜索')[0]
+      if (search) e2e.click(search)
+      result.note = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('合约索引为缓存'))
+        return node ? node.innerText.trim() : null
+      }, 4000)
+      window.__fake.on('futures/contracts', () => ({ state: 'ok', contracts: [futuresContract, futuresContract2] }))
       return result
     }
     if (name === 'futures-search-race') {
