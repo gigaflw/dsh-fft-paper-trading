@@ -385,3 +385,24 @@ test('service: no close price means no risk liquidation, but expiry still closes
     await close(subject)
   }
 })
+
+test('fee fallback: ad-valorem trading_fee_rate becomes a per-lot fee snapshot', async () => {
+  const subject = setup('futures-fee-rate')
+  try {
+    subject.data.settleMap.set(SYMBOL, {
+      symbol: SYMBOL,
+      feePerLotCents: 0,
+      closeTodayFeePerLotCents: 0,
+      longMarginRate: 0.09,
+      feeRate: 0.1,
+    })
+    const preview = await subject.service.preview(draft())
+    // 3200 * 10 * 0.1‰ = 3.2 yuan = 320 cents.
+    assert.equal(preview.feesCents, 320)
+    assert.ok(preview.warnings.some(text => text.includes('按成交额计费')), JSON.stringify(preview.warnings))
+    const order = await subject.service.place(draft(), 'rate-fee')
+    assert.equal(order.feesCents, 320)
+  } finally {
+    await close(subject)
+  }
+})

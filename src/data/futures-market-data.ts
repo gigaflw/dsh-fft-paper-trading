@@ -408,11 +408,13 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     }
     const resolved = new Map<string, FuturesRawLimit>()
     const notices: string[] = []
+    const tableFailed = new Set<ExchangeCode>()
+    const missingRows: string[] = []
     for (const [exchange, group] of byExchange) {
       const table = await this.fetchExchangeTable(LIMIT_TOOL, exchange)
       if (table.state !== 'ok') {
         notices.push(`${exchange} 涨跌停不可用：${table.notice ?? '接口调用失败'}`)
-        fallback.push(...group)
+        tableFailed.add(exchange)
         continue
       }
       const rows = new Map<string, Record<string, unknown>>()
@@ -425,7 +427,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
         const upper = row === undefined ? undefined : pickPositive(row, ['up_limit', 'upper', 'upper_limit'])
         const lower = row === undefined ? undefined : pickPositive(row, ['down_limit', 'lower', 'lower_limit'])
         if (row === undefined || upper === undefined || lower === undefined) {
-          fallback.push(symbol)
+          missingRows.push(symbol)
           continue
         }
         resolved.set(symbol, {
@@ -437,7 +439,30 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
         })
       }
     }
-    const fallbackSymbols = uniqueSymbols(fallback)
+    // The SHFE limit table rejects large pages ("missing pre-settlement
+    // price"), so ask for one exact contract before falling back to minutes.
+    const minuteCandidates: string[] = [...missingRows, ...fallback]
+    const failedSymbols = uniqueSymbols(unique.filter(symbol => {
+      const exchange = exchangeOfSymbol(symbol)
+      return exchange !== undefined && tableFailed.has(exchange)
+    }))
+    for (const symbol of failedSymbols) {
+      const row = await this.fetchLimitRowBySymbol(symbol)
+      const upper = row === undefined ? undefined : pickPositive(row, ['up_limit', 'upper', 'upper_limit'])
+      const lower = row === undefined ? undefined : pickPositive(row, ['down_limit', 'lower', 'lower_limit'])
+      if (row === undefined || upper === undefined || lower === undefined) {
+        minuteCandidates.push(symbol)
+        continue
+      }
+      resolved.set(symbol, {
+        symbol,
+        upper,
+        lower,
+        marginRate: ratioOf(row, ['m_ratio', 'margin_ratio', 'margin_rate', 'ratio']),
+        source: 'limit',
+      })
+    }
+    const fallbackSymbols = uniqueSymbols(minuteCandidates)
     const missing: string[] = []
     if (fallbackSymbols.length > 0) {
       const minutes = await this.fetchMinuteRows(fallbackSymbols)
@@ -503,8 +528,9 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
         const longMarginRate = ratioOf(row, ['long_margin_rate', 'long_margin_ratio'])
         const tradingFee = pickNonNegative(row, ['trading_fee', 'fee'])
         const closeTodayFee = pickNonNegative(row, ['offset_today_fee', 'close_today_fee'])
+        const feeRate = pickNonNegative(row, ['trading_fee_rate', 'fee_rate'])
         if (settle === undefined && longMarginRate === undefined
-          && tradingFee === undefined && closeTodayFee === undefined) {
+          && tradingFee === undefined && closeTodayFee === undefined && feeRate === undefined) {
           missing.push(symbol)
           continue
         }
@@ -514,6 +540,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
           longMarginRate,
           feePerLotCents: tradingFee === undefined ? undefined : Math.round(tradingFee * 100),
           closeTodayFeePerLotCents: closeTodayFee === undefined ? undefined : Math.round(closeTodayFee * 100),
+          feeRate,
         })
       }
     }
@@ -662,7 +689,11 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
       if (outcome.state !== 'ok') return { state: outcome.state, rows: new Map(), notice: outcome.notice }
       const grouped = this.groupMinuteRows(outcome.rows)
       for (const symbol of batch) {
-        const group = grouped.get(symbol)
+        // Real minute rows carry a bare lowercase code plus an `exchange`
+        // column (e.g. `rb2611` + `SHFE`); groupMinuteRows keys those back to
+        // the full market symbol. A bare code without an exchange is matched
+        // as a fallback so single-exchange instruments still resolve.
+        const group = grouped.get(symbol) ?? grouped.get(splitSymbol(symbol).code)
         if (group !== undefined) rows.set(symbol, group)
       }
     }
@@ -674,13 +705,32 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     for (const row of rows) {
       const raw = pickString(row, ['symbol', 'ts_code', 'contract'])
       if (raw === undefined) continue
-      const symbol = normalizeToMarket(raw)
-      if (symbol === '') continue
-      const group = grouped.get(symbol) ?? []
+      const { code, suffix } = splitSymbol(raw)
+      if (code === '') continue
+      const exchange = exchangeOfValue(row.exchange) ?? (suffix === undefined ? undefined : SUFFIX_TO_EXCHANGE[suffix])
+      const key = exchange === undefined ? code : `${code}.${exchange}`
+      const group = grouped.get(key) ?? []
       group.push(row)
-      grouped.set(symbol, group)
+      grouped.set(key, group)
     }
     return grouped
+  }
+
+  /** One-symbol `ft_limit` fallback for exchanges whose whole-table paging fails (SHFE). */
+  private async fetchLimitRowBySymbol(symbol: string): Promise<Record<string, unknown> | undefined> {
+    const exchange = exchangeOfSymbol(symbol)
+    if (exchange === undefined) return undefined
+    const { code } = splitSymbol(symbol)
+    const outcome = await this.call(LIMIT_TOOL, {
+      exchange: EXCHANGE_TABLE_SUFFIX[exchange],
+      ts_code: `${code}.${EXCHANGE_TABLE_SUFFIX[exchange]}`,
+      trade_date: Number(todayTradeDate().replaceAll('-', '')),
+    })
+    if (outcome.state !== 'ok') return undefined
+    return outcome.rows.find(row => {
+      const raw = pickString(row, ['ts_code', 'symbol', 'contract'])
+      return raw !== undefined && normalizeToMarket(raw) === symbol
+    })
   }
 
   private quoteFromRows(symbol: string, rows: readonly Record<string, unknown>[] | undefined): FuturesRawQuote | undefined {
