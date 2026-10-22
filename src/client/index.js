@@ -1425,6 +1425,10 @@ window.__ModuleLoader__.load({
         const qty = Number(form.qty)
         if (!Number.isInteger(qty) || qty <= 0) return '手数需为正整数'
         if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
+        if (form.type === 'limit' && preview !== null && preview.limit !== undefined) {
+          const price = Number(form.limitPrice)
+          if (price < preview.limit.lower || price > preview.limit.upper) return '价格超出涨跌停'
+        }
         if (status !== null && status.canSubmit === false) return '当前时段不可下单'
         if (form.type === 'market' && status !== null && status.canMatch === false) return '当前时段不能市价成交'
         const hasQuote = quote !== null
@@ -2410,6 +2414,11 @@ window.__ModuleLoader__.load({
         if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
         if (form.type === 'market' && session !== null && !session.canMatch) return '当前时段不能市价成交'
         if (form.type === 'market' && quote === null && !(Number(form.price) > 0)) return '无行情，请填参考价'
+        if (preview !== null && preview.quote?.status === 'suspended') return '停牌'
+        if (preview !== null && form.type === 'limit' && preview.priceLimit !== undefined) {
+          const price = Number(form.limitPrice)
+          if (price < preview.priceLimit.lower || price > preview.priceLimit.upper) return '价格超出涨跌停'
+        }
         if (form.side === 'buy' && preview !== null && preview.cashAfterCents < 0) return '资金不足'
         if (form.side === 'sell' && preview !== null && qty > preview.availableQty) return '可卖不足'
         return ''
