@@ -482,6 +482,10 @@
         return node ? node.innerText.trim() : null
       }, 4000)
       result.error = document.querySelector('.pt-error')?.innerText ?? null
+      window.__fake.on('order/cancel', () => ({ __error: { code: 'ORDER_NOT_FOUND', message: '订单不存在' } }))
+      e2e.click(cancel)
+      await new Promise(done => setTimeout(done, 400))
+      result.error2 = document.querySelector('.pt-error')?.innerText ?? null
       window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
       window.__fake.on('order/cancel', payload => ({
         id: payload.orderId, requestId: 'r', symbol: '600519.XSHG', side: 'buy', type: 'limit',
