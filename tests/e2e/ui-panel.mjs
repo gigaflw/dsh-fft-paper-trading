@@ -178,6 +178,8 @@ try {
   assert('review marks losses with the down tone', Array.isArray(reviewData.negative) && reviewData.negative.some(text => text.includes('-1,234.56')), JSON.stringify(reviewData.negative))
   const marketRetry = await scenario('market-retry')
   assert('market failure is visible and 刷新 retries it', typeof marketRetry.error === 'string' && marketRetry.rows === 2 && marketRetry.errorAfter === null, JSON.stringify(marketRetry))
+  const marketAdopt = await scenario('market-adopt')
+  assert('clicking a market row fills the ticket', marketAdopt.tab === '交易' && marketAdopt.symbol === '600519', JSON.stringify(marketAdopt))
   const marketWatch = await scenario('market-watch')
   assert('market list renders and next is disabled on a short page', marketWatch.rows === 2 && marketWatch.nextDisabled === true, JSON.stringify(marketWatch))
   assert('watchlist adds and filters the market list', Array.isArray(marketWatch.added) && marketWatch.added.length === 1 && marketWatch.filteredRows === 1, JSON.stringify(marketWatch))
@@ -261,6 +263,8 @@ try {
   const futuresCalls = await evaluate('window.__calls.filter(item => item.startsWith("futures/"))')
   assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
 
+  const futuresPositionsClose = await scenario('futures-positions-close')
+  assert('closing from the positions tab fills a close ticket', futuresPositionsClose.tab === '交易' && futuresPositionsClose.direction === '平多' && futuresPositionsClose.qty === '1', JSON.stringify(futuresPositionsClose))
   const futuresLimit = await scenario('futures-limit')
   assert('a resting futures limit shows the pending receipt', typeof futuresLimit.receipt === 'string' && futuresLimit.receipt.includes('挂单') && futuresLimit.receipt.includes('3,300.00'), JSON.stringify(futuresLimit))
   const futuresCancel = await scenario('futures-cancel')
