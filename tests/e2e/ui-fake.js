@@ -684,6 +684,42 @@
       result.contract = document.querySelector('.pt-ticket-form')?.innerText.slice(0, 80) ?? null
       return result
     }
+    if (name === 'stock-no-quote') {
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await new Promise(done => setTimeout(done, 500))
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('market/quote', () => ({ state: 'failed', quotes: [], notice: '行情暂不可用' }))
+      window.__fake.on('order/preview', (payload) => ({
+        symbol: payload.symbol ?? '600000.XSHG', side: payload.side ?? 'buy', type: 'market',
+        qty: payload.qty ?? 100, price: 0, amountCents: 0, commissionCents: 0, stampCents: 0,
+        transferCents: 0, totalFeesCents: 0, cashAfterCents: 100000000, availableQty: 0, maxBuyQty: 0,
+        quote: null, warnings: ['没有可用行情，请填写参考价或改用限价单'],
+      }))
+      const input = document.querySelector('.pt-ticket-form input')
+      e2e.setInput(input, '600000')
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('无行情') ? button.title : null
+      }, 4000)
+      return result
+    }
+    if (name === 'futures-no-quote') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 300))
+      window.__fake.on('futures/quote', () => ({ state: 'failed', quotes: [], notice: '行情暂不可用' }))
+      window.__fake.on('futures/preview', () => ({ __error: { code: 'NO_QUOTE', message: '行情暂不可用' } }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('等待行情') ? button.title : null
+      }, 4000)
+      return result
+    }
     if (name === 'slot-fallback') {
       window.__remount('empty')
       const stockButton = e2e.byText('股票')[0]

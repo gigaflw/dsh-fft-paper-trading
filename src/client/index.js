@@ -1396,10 +1396,13 @@ window.__ModuleLoader__.load({
         if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
         if (status !== null && status.canSubmit === false) return '当前时段不可下单'
         if (form.type === 'market' && status !== null && status.canMatch === false) return '当前时段不能市价成交'
+        const hasQuote = quote !== null
+          || (quoteNotice === '' && preview !== null && preview.quote !== undefined && preview.quote !== null)
+        if (form.type === 'market' && !hasQuote && !(form.offset === 'close' && Number(form.price) > 0)) return '等待行情'
         if (form.offset === 'close' && preview !== null && qty > preview.availableCloseQty) return '可平手数不足'
         if (form.offset === 'open' && preview !== null && preview.cashAfterCents < 0) return '保证金不足'
         return ''
-      }, [account, contract, form, status, preview])
+      }, [account, contract, form, status, preview, quote, quoteNotice])
 
       const doSubmit = useCallback(async () => {
         if (submitReason !== '' || submitting.current) return
@@ -2346,6 +2349,7 @@ window.__ModuleLoader__.load({
       /** Only real blockers disable submit; a failed preview never does. */
       /** Read the flag outside the deps array: `account` is null on the first render. */
       const blocked = account?.blocked === true
+      const quote = preview ? preview.quote ?? null : symbolQuote
       const submitReason = useMemo(() => {
         if (account === null) return '加载账户中'
         if (blocked) return '账户已锁定'
@@ -2356,10 +2360,9 @@ window.__ModuleLoader__.load({
         if (form.side === 'buy' && qty % 100 !== 0) return '买入需 100 股整数倍'
         if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
         if (form.type === 'market' && session !== null && !session.canMatch) return '当前时段不能市价成交'
+        if (form.type === 'market' && quote === null && !(Number(form.price) > 0)) return '无行情，请填参考价'
         return ''
-      }, [blocked, form, session])
-
-      const quote = preview ? preview.quote ?? null : symbolQuote
+      }, [blocked, form, session, quote])
       const pending = useMemo(() => orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled'), [orders])
       const history = useMemo(() => orders.filter(order => order.status !== 'pending' && order.status !== 'queued' && order.status !== 'partially_filled'), [orders])
       const positions = account?.positions ?? []
