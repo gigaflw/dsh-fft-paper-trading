@@ -1348,16 +1348,23 @@
       return result
     }
     if (name === 'futures-reasons') {
-      window.__fake.on('futures/orders', () => [{
-        id: 'f-reason', requestId: 'r-f-reason', symbol: 'RB2611.SHFE', name: '螺纹钢2611',
-        side: 'long', offset: 'open', type: 'limit', qty: 1, limitPrice: 3000,
-        status: 'canceled', reason: 'margin_unavailable', createdAt: ts(), updatedAt: ts(),
-      }])
+      window.__fake.on('futures/orders', () => [
+        {
+          id: 'f-reason', requestId: 'r-f-reason', symbol: 'RB2611.SHFE', name: '螺纹钢2611',
+          side: 'long', offset: 'open', type: 'limit', qty: 1, limitPrice: 3000,
+          status: 'canceled', reason: 'margin_unavailable', createdAt: ts(), updatedAt: ts(),
+        },
+        {
+          id: 'f-reason2', requestId: 'r-f-reason2', symbol: 'RB2611.SHFE', name: '螺纹钢2611',
+          side: 'long', offset: 'close', type: 'market', qty: 1,
+          status: 'canceled', reason: 'insufficient_position', createdAt: ts(), updatedAt: ts(),
+        },
+      ])
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
       result.reason = await e2e.wait(() => {
         const text = document.querySelector('.pt-main')?.innerText ?? ''
-        return text.includes('可用资金不足') ? text : null
+        return text.includes('可用资金不足') && text.includes('可平不足') ? text : null
       }, 4000)
       window.__fake.on('futures/orders', () => futuresState.orders)
       return result

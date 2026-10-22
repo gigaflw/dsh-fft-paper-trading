@@ -195,10 +195,11 @@ window.__ModuleLoader__.load({
     }
     const CODE_PREFIX = /^([A-Z_]+):\s*(.*)$/
     /** `T1_LOCKED: 可卖数量不足（可卖 0 股）` → the Chinese detail only. */
-    const reasonText = reason => {
+    const reasonText = (reason, scope = 'stock') => {
       if (!reason) return ''
       const matched = CODE_PREFIX.exec(reason)
       if (matched) return matched[2] || ERROR_TEXT[matched[1]] || reason
+      if (reason === 'insufficient_position') return scope === 'futures' ? '可平不足' : '可卖不足'
       return CANCEL_REASON_TEXT[reason] ?? reason
     }
     // The host message is already a readable Chinese sentence and carries
@@ -1812,7 +1813,7 @@ window.__ModuleLoader__.load({
       const direction = directionText(order.side, order.offset)
       if (order.status === 'rejected') {
         return h('div', { className: 'pt-receipt', 'data-state': 'rejected', title: order.reason || undefined },
-          `拒绝：${direction} ${order.symbol} ${count(order.qty)} 手 · ${reasonText(order.reason) || '未通过风控'}`,
+          `拒绝：${direction} ${order.symbol} ${count(order.qty)} 手 · ${reasonText(order.reason, 'futures') || '未通过风控'}`,
         )
       }
       if (order.status === 'filled') {
@@ -1884,7 +1885,7 @@ window.__ModuleLoader__.load({
               h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
               h('td', null, FUTURES_STATUS_TEXT[order.status] ?? order.status),
               h('td', null, order.fillPrice === undefined ? '—' : money(order.fillPrice)),
-              h('td', { title: order.reason ?? undefined }, reasonText(order.reason)),
+              h('td', { title: order.reason ?? undefined }, reasonText(order.reason, 'futures')),
             ))),
           ),
           history.length > 30 ? h('div', { className: 'pt-note' }, `仅显示最近 30 条，共 ${history.length} 条`) : null,
