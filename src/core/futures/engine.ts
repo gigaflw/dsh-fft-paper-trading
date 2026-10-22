@@ -576,8 +576,15 @@ export function closeDay(state: FuturesAccountState, options: DayCloseOptions): 
   }
 
   const marks = markToMarket(working)
-  const riskHit = Object.keys(working.positions).length > 0
+  let riskHit = Object.keys(working.positions).length > 0
     && riskRatioFor(marks.marginCents, marks.equityCents) >= working.settings.liquidateRiskRatio
+  // Without a close price the "close" is a stale mark: fail closed and skip the
+  // risk liquidation rather than guessing a price to trade at. Expiry closes
+  // still run so a position cannot silently carry into delivery.
+  if (riskHit && options.closeSource === 'missing') {
+    riskHit = false
+    notices.push('缺少收盘价，跳过收盘强平检查')
+  }
 
   for (const position of Object.values(working.positions)) {
     const expiry = position.deListDate !== undefined && position.deListDate !== '' && position.deListDate <= options.date
