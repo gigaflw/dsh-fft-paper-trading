@@ -121,6 +121,7 @@ export interface FuturesOrderView {
   limitPrice?: number
   status: FuturesOrderStatus
   reason?: string
+  note?: string
   createdAt: string
   updatedAt: string
   filledAt?: string

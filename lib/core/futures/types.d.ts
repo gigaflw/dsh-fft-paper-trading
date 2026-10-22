@@ -104,6 +104,8 @@ export interface FuturesOrder {
     price?: number;
     status: FuturesOrderStatus;
     reason?: string;
+    /** Free-form ticket note, shown with the order history. */
+    note?: string;
     createdAt: string;
     updatedAt: string;
     filledAt?: string;

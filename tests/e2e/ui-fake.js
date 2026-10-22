@@ -465,7 +465,7 @@
     if (name === 'orders-truncation') {
       window.__fake.on('list/orders', () => Array.from({ length: 31 }, (_, index) => ({
         id: `hist-${index}`, requestId: `r-hist-${index}`, symbol: '600519.XSHG', side: 'buy', type: 'limit',
-        qty: 100, limitPrice: 10, status: 'filled', fillPrice: 10, createdAt: ts(), updatedAt: ts(),
+        qty: 100, limitPrice: 10, status: 'filled', fillPrice: 10, note: '历史备注', createdAt: ts(), updatedAt: ts(),
       })))
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
@@ -475,6 +475,7 @@
         const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('共 31 条'))
         return node ? node.innerText.trim() : null
       }, 4000)
+      result.hasNote = (document.querySelector('.pt-main')?.innerText ?? '').includes('历史备注')
       window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
       return result
     }
@@ -1415,7 +1416,7 @@
         {
           id: 'f-reason', requestId: 'r-f-reason', symbol: 'RB2611.SHFE', name: '螺纹钢2611',
           side: 'long', offset: 'open', type: 'limit', qty: 1, limitPrice: 3000,
-          status: 'canceled', reason: 'margin_unavailable', createdAt: ts(), updatedAt: ts(),
+          status: 'canceled', reason: 'margin_unavailable', note: '期货备注', createdAt: ts(), updatedAt: ts(),
         },
         {
           id: 'f-reason2', requestId: 'r-f-reason2', symbol: 'RB2611.SHFE', name: '螺纹钢2611',
