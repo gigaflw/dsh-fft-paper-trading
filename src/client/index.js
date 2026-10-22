@@ -1234,6 +1234,8 @@ window.__ModuleLoader__.load({
       const [orders, setOrders] = useState([])
       const [review, setReview] = useState(null)
       const [period, setPeriod] = useState('30d')
+      const periodRef = useRef(period)
+      useEffect(() => { periodRef.current = period }, [period])
       const reviewSeq = useRef(0)
       const loadAllSeq = useRef(0)
       const [tab, setTab] = useState('trade')
@@ -1266,8 +1268,9 @@ window.__ModuleLoader__.load({
         return () => { alive.current = false }
       }, [])
 
-      const loadAll = useCallback(async (quiet = false) => {
+      const loadAll = useCallback(async (quiet = false, reviewPeriod = period) => {
         const seq = ++loadAllSeq.current
+        const requestedPeriod = reviewPeriod
         try {
           const [nextAccount, nextStatus, nextPositions, nextOrders] = await Promise.all([
             rpc('futures/account/get'),
@@ -1296,9 +1299,9 @@ window.__ModuleLoader__.load({
         const seq = ++reviewSeq.current
         try {
           const next = await rpc('futures/review', { period: key })
-          if (alive.current && seq === reviewSeq.current) setReview(next)
+          if (alive.current && seq === reviewSeq.current && key === periodRef.current) setReview(next)
         } catch (cause) {
-          if (alive.current && seq === reviewSeq.current) setError(errorOf(cause))
+          if (alive.current && seq === reviewSeq.current && key === periodRef.current) setError(errorOf(cause))
         }
       }, [period])
 
@@ -1330,6 +1333,7 @@ window.__ModuleLoader__.load({
           if (tick.filled.length > 0) setNotice(`成交 ${tick.filled.length} 笔`)
           if (tick.notices.length > 0) setNotice(tick.notices.join('；'))
           await loadAll(true)
+          if (alive.current && tab === 'review') await loadReview(periodRef.current)
           // Keep the selected contract's price and estimate moving while the
           // panel is open; without this the ticket showed the selection price
           // until the next edit.
@@ -1339,7 +1343,7 @@ window.__ModuleLoader__.load({
         } catch {
           // Polling failures stay silent; the manual refresh shows the error.
         }
-      }, [loadAll, contract, fetchQuote])
+      }, [loadAll, contract, fetchQuote, tab, period, loadReview])
 
       useEffect(() => {
         const timer = setInterval(() => {
@@ -2020,6 +2024,8 @@ window.__ModuleLoader__.load({
       const [trades, setTrades] = useState([])
       const [review, setReview] = useState(null)
       const [period, setPeriod] = useState('30d')
+      const periodRef = useRef(period)
+      useEffect(() => { periodRef.current = period }, [period])
       const [tab, setTab] = useState('trade')
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
@@ -2080,21 +2086,22 @@ window.__ModuleLoader__.load({
       const formSymbol = useRef(form.symbol)
       useEffect(() => { formSymbol.current = form.symbol }, [form.symbol])
 
-      const loadAll = useCallback(async (quiet = false) => {
+      const loadAll = useCallback(async (quiet = false, reviewPeriod = period) => {
         const seq = ++loadAllSeq.current
+        const requestedPeriod = reviewPeriod
         try {
           const [nextAccount, nextOrders, nextTrades, nextReview, nextSession] = await Promise.all([
             rpc('account/get'),
             rpc('list/orders'),
             rpc('list/trades'),
-            rpc('review/get', { period }),
+            rpc('review/get', { period: reviewPeriod }),
             rpc('market/status'),
           ])
           if (!alive.current) return null
           // A poll started before a period switch carries the old review;
           // newer requests own the page state, but callers still get their own
           // snapshot (order receipts need the fresh cash).
-          if (seq === loadAllSeq.current) {
+          if (seq === loadAllSeq.current && requestedPeriod === periodRef.current) {
             setAccount(nextAccount)
             setOrders(nextOrders)
             setTrades(nextTrades)
@@ -2134,7 +2141,8 @@ window.__ModuleLoader__.load({
           if (!alive.current) return
           if (result.filled.length > 0) setNotice(`成交 ${result.filled.length} 笔`)
           if (result.notices.length > 0) setNotice(result.notices.join('；'))
-          await loadAll(true)
+          await loadAll(true, periodRef.current)
+          if (alive.current && tab === 'review') await loadReviewDetail()
           // Re-price the open ticket: the quote strip and preview otherwise
           // froze at the moment the symbol was entered. An unfinished draft
           // only fetches the quote, so clear its dedupe key too.
@@ -2145,7 +2153,7 @@ window.__ModuleLoader__.load({
         } catch {
           // Polling failures stay silent; the manual refresh shows the error.
         }
-      }, [loadAll])
+      }, [loadAll, loadReviewDetail, tab])
 
       // The host scheduler is the primary matcher; this stays as a live extra
       // trigger while the panel is visible.
