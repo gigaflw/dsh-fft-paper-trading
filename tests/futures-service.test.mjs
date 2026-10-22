@@ -449,3 +449,18 @@ test('requestId idempotency compares the normalised draft, including limit price
     await close(subject)
   }
 })
+
+test('published suffix aliases and lower case resolve to the market symbol', async () => {
+  const subject = setup('futures-suffix')
+  try {
+    const quotes = await subject.service.quote(['rb2611.shf'])
+    assert.equal(quotes.quotes[0]?.symbol, 'RB2611.SHFE')
+    const order = await subject.service.place(draft({ symbol: ' rb2611.shf ' }), 'suffix-order')
+    assert.equal(order.status, 'filled')
+    assert.equal(order.symbol, 'RB2611.SHFE')
+    const positions = await subject.service.positions()
+    assert.equal(positions[0]?.symbol, 'RB2611.SHFE')
+  } finally {
+    await close(subject)
+  }
+})

@@ -13,6 +13,8 @@ import type { FuturesMarketDataPort } from '../data/futures-market-data-port.js'
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js';
 import { toAccountView } from '../core/futures/views.js';
 import type { FuturesStore } from '../store/futures-repo.js';
+/** Accept any published suffix (and lower case); store the market-data form. */
+export declare function normalizeFuturesSymbol(raw: string): string;
 export type FuturesServiceErrorCode = 'INSUFFICIENT_MARGIN' | 'INSUFFICIENT_POSITION' | 'CONTRACT_NOT_FOUND' | 'CONTRACT_EXPIRED' | 'NO_VOLUME' | 'LIMIT_UNAVAILABLE' | 'MARGIN_UNAVAILABLE' | 'ACCOUNT_BLOCKED' | 'INVALID_ARGUMENT' | 'ORDER_NOT_FOUND' | 'ORDER_NOT_PENDING' | 'SESSION_CLOSED' | 'INTERNAL';
 export declare class FuturesError extends Error {
     readonly code: FuturesServiceErrorCode;
@@ -72,8 +74,8 @@ export declare class FuturesService {
     review(period?: FuturesPeriod): Promise<FuturesReviewView>;
     exportLedger(): Promise<FuturesLedgerExport>;
     private assertLotQty;
-    preview(draft: FuturesDraft): Promise<FuturesPreviewView>;
-    place(draft: FuturesDraft, requestId?: string): Promise<FuturesOrderView>;
+    preview(input: FuturesDraft): Promise<FuturesPreviewView>;
+    place(input: FuturesDraft, requestId?: string): Promise<FuturesOrderView>;
     cancel(orderId: string): Promise<FuturesOrderView>;
     tick(): Promise<FuturesTickView>;
     /** Wipe the account by replacing the ledger with one genesis event. */
