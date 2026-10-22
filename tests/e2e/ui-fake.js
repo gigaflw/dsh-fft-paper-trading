@@ -15,7 +15,7 @@
   const preview = {
     symbol: '600519.XSHG', side: 'buy', type: 'market', qty: 100, price: 1450.5,
     amountCents: 14505000, commissionCents: 500, stampCents: 0, transferCents: 14,
-    totalFeesCents: 514, cashAfterCents: 98500000 - 14505000 - 514, availableQty: 0, maxBuyQty: 600,
+    totalFeesCents: 514, cashAfterCents: 98500000 - 14505000 - 514, availableQty: 100, maxBuyQty: 600,
     quote, warnings: [],
   }
   const stockOrders = []
@@ -831,6 +831,24 @@
       result.title = await e2e.wait(() => {
         const button = document.querySelector('.pt-ticket-submit')
         return button && button.disabled && button.title.includes('资金不足') ? button.title : null
+      }, 4000)
+      return result
+    }
+    if (name === 'stock-oversell') {
+      window.__fake.on('order/preview', (payload) => ({
+        ...preview,
+        symbol: '600519.XSHG', side: 'sell', type: 'market', qty: Number(payload.qty) || 200,
+        price: 1318, amountCents: 26360000, commissionCents: 79, stampCents: 13180, transferCents: 26,
+        totalFeesCents: 13285, cashAfterCents: 100000000, availableQty: 100, maxBuyQty: 0,
+        quote: { ...quote, last: 1318, marketTs: ts() }, warnings: ['可卖 100 股，超过部分不可卖'],
+      }))
+      e2e.click(e2e.byText('卖出')[0])
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '200')
+      result.title = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && button.disabled && button.title.includes('可卖不足') ? button.title : null
       }, 4000)
       return result
     }
