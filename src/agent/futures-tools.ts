@@ -111,6 +111,7 @@ function renderOrder(order: FuturesOrderView): string {
   if (order.fillPrice !== undefined) parts.push(`成交价 ${order.fillPrice}`)
   if (order.feesCents !== undefined) parts.push(`手续费 ${money(order.feesCents)}`)
   if (order.reason !== undefined) parts.push(`原因 ${order.reason}`)
+  if (order.note !== undefined) parts.push(`备注 ${order.note}`)
   return parts.join(' · ')
 }
 
