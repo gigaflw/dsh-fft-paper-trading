@@ -599,7 +599,7 @@ window.__ModuleLoader__.load({
                 onChange: event => setForm(prev => ({ ...prev, symbol: symbolInput(event.target.value) })),
               })),
               h(Field, { label: '数量' }, h(DebouncedNumber, {
-                value: form.qty, min: 0, step: 100,
+                value: form.qty, min: 0, step: 100, placeholder: '100',
                 onChange: value => setForm(prev => ({ ...prev, qty: value })),
               })),
               h(Field, { label: '方向' }, h('div', { className: 'pt-seg' },
@@ -1991,7 +1991,7 @@ window.__ModuleLoader__.load({
         symbol: '600519',
         side: 'buy',
         type: 'market',
-        qty: '100',
+        qty: '',
         limitPrice: '',
         price: '',
         note: '',
@@ -2062,8 +2062,12 @@ window.__ModuleLoader__.load({
           if (result.notices.length > 0) setNotice(result.notices.join('；'))
           await loadAll(true)
           // Re-price the open ticket: the quote strip and preview otherwise
-          // froze at the moment the symbol was entered.
-          if (alive.current) setPreviewNonce(value => value + 1)
+          // froze at the moment the symbol was entered. An unfinished draft
+          // only fetches the quote, so clear its dedupe key too.
+          if (alive.current) {
+            quoteSymbol.current = ''
+            setPreviewNonce(value => value + 1)
+          }
         } catch {
           // Polling failures stay silent; the manual refresh shows the error.
         }

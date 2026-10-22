@@ -250,6 +250,7 @@
     if (name === 'stock') {
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       result.stats = [...document.querySelectorAll('.pt-stat')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.previewText = e2e.text('.pt-preview-pane')
       result.ticketFields = [...document.querySelectorAll('.pt-ticket-form > *')].map(el => el.className)
       result.book = e2e.text('.pt-trade-book').replace(/\n/g, ' ')
       result.kline = Boolean(document.querySelector('.pt-kline-body'))
@@ -399,6 +400,7 @@
       e2e.click(e2e.byText('限价')[0])
       await new Promise(done => setTimeout(done, 200))
       const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[1], '100')
       e2e.setInput(inputs[2], '11.40')
       const submit = await e2e.wait(() => {
         const button = document.querySelector('.pt-ticket-submit')
@@ -818,8 +820,9 @@
         transferCents: 0, totalFeesCents: 0, cashAfterCents: 100000000, availableQty: 0, maxBuyQty: 0,
         quote: null, warnings: ['没有可用行情，请填写参考价或改用限价单'],
       }))
-      const input = document.querySelector('.pt-ticket-form input')
-      e2e.setInput(input, '600000')
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[0], '600000')
+      e2e.setInput(inputs[1], '100')
       result.title = await e2e.wait(() => {
         const button = document.querySelector('.pt-ticket-submit')
         return button && button.disabled && button.title.includes('无行情') ? button.title : null
@@ -964,6 +967,7 @@
       await e2e.wait(() => document.querySelector('.pt-workspace-futures'))
       result.head = await e2e.wait(() => e2e.text('.pt-head').includes('期货 ·') ? e2e.text('.pt-head').replace(/\n/g, ' ') : null)
       result.stats = [...document.querySelectorAll('.pt-stat')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.previewText = e2e.text('.pt-preview-pane')
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       return result
     }
