@@ -467,6 +467,22 @@
       window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
       return result
     }
+    if (name === 'stock-reasons') {
+      window.__fake.on('list/orders', () => [{
+        id: 's-reason', requestId: 'r-s-reason', symbol: '600519.XSHG', side: 'sell', type: 'market',
+        qty: 100, status: 'canceled', reason: 'insufficient_position', createdAt: ts(), updatedAt: ts(),
+      }])
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
+      e2e.click(tab)
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.text = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('可卖不足') ? text : null
+      }, 4000)
+      window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
+      return result
+    }
     if (name === 'reset-account') {
       window.confirm = () => true
       const resetAccount = {
