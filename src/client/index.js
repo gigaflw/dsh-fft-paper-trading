@@ -1365,9 +1365,6 @@ window.__ModuleLoader__.load({
             .then(result => {
               if (!alive.current || seq !== previewSeq.current) return
               setPreview(result)
-              // Keep the quote for an unfinished draft: switching to 限价 must
-              // not blank the price line while the limit is still being typed.
-              if (result.quote) setSymbolQuote(result.quote)
               setPreviewError('')
               setPreviewState('ready')
             })
