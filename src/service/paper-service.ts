@@ -636,7 +636,7 @@ export class PaperService {
     const quotes = await this.fetchQuotes(symbols)
     if (!canMatch(phase)) {
       await this.options.repo.markPrices(quotes.quotes)
-      return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: quotes.quotes, notices: quotes.notice === undefined ? [] : [quotes.notice] }
+      return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: quotes.quotes, notices: quotes.state === 'ok' ? [] : [this.friendlyNotice(quotes.state, quotes.notice, '行情暂不可用')] }
     }
     const outcome = await this.options.repo.transact(current => {
       if (current.blocked) {
@@ -656,7 +656,7 @@ export class PaperService {
       filled: outcome.value.filled.map(order => toOrderView(marked.orders[order.id] ?? order)),
       expired: outcome.value.expired.map(order => toOrderView(marked.orders[order.id] ?? order)),
       quotes: quotes.quotes,
-      notices: [...outcome.value.notices, ...(quotes.notice === undefined ? [] : [quotes.notice])],
+      notices: [...outcome.value.notices, ...(quotes.state === 'ok' ? [] : [this.friendlyNotice(quotes.state, quotes.notice, '行情暂不可用')])],
     }
   }
 
@@ -678,25 +678,45 @@ export class PaperService {
   }
 
   async quote(symbols: string[]): Promise<QuoteResult> {
-    return this.fetchQuotes(symbols)
+    return this.sanitiseDataNotice(await this.fetchQuotes(symbols), '行情暂不可用') as QuoteResult
   }
 
   async dailyBars(symbol: string, limit = 60): Promise<BarsResult> {
     try {
-      return await this.options.data.dailyBars(symbol, Math.min(Math.max(1, limit), 250))
+      const result = await this.options.data.dailyBars(symbol, Math.min(Math.max(1, limit), 250))
+      return this.sanitiseDataNotice(result, 'K 线数据暂不可用') as BarsResult
     } catch (error) {
       this.options.logger?.warn(`paper-trading: bars failed: ${String(error)}`)
-      return { state: 'failed', bars: [], notice: String(error) }
+      return { state: 'failed', bars: [], notice: 'K 线数据暂不可用' }
     }
   }
 
   async minuteBars(symbol: string, date?: string): Promise<BarsResult> {
     try {
-      return await this.options.data.minuteBars(symbol, date ?? todayTradeDate(this.now()))
+      const result = await this.options.data.minuteBars(symbol, date ?? todayTradeDate(this.now()))
+      return this.sanitiseDataNotice(result, 'K 线数据暂不可用') as BarsResult
     } catch (error) {
       this.options.logger?.warn(`paper-trading: minute bars failed: ${String(error)}`)
-      return { state: 'failed', bars: [], notice: String(error) }
+      return { state: 'failed', bars: [], notice: 'K 线数据暂不可用' }
     }
+  }
+
+  /**
+   * Upstream adapters include FTShare function names and parameter errors in
+   * their notices. Those are useful in logs, not in the panel (or to the model
+   * reading a tool result), so the user-facing notice stays short.
+   */
+  private sanitiseDataNotice<T extends { state: string; notice?: string }>(result: T, fallback: string): T {
+    if (result.state === 'ok') return result
+    return { ...result, notice: this.friendlyNotice(result.state, result.notice, fallback) }
+  }
+
+  private friendlyNotice(state: string, notice: string | undefined, fallback: string): string {
+    if (state === 'denied') return '行情接口无权限'
+    if (notice === undefined || notice === '') return fallback
+    // Keep short operational notices (e.g. "行情服务未就绪") but hide adapter
+    // internals such as FTShare function names and parameter validation.
+    return /FTShare|UPSTREAM|invalid symbol|symbols\[|调用失败|参数格式|request/i.test(notice) ? fallback : notice
   }
 
   async search(query: string, limit = 10): Promise<Awaited<ReturnType<MarketDataPort['search']>>> {
@@ -704,7 +724,8 @@ export class PaperService {
   }
 
   async marketList(input: { board?: string; page?: number; pageSize?: number } = {}) {
-    return this.options.data.marketList(input)
+    const result = await this.options.data.marketList(input)
+    return this.sanitiseDataNotice(result, '行情暂不可用')
   }
 
   async watchlist(): Promise<string[]> {
