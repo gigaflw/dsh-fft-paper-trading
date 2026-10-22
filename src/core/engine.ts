@@ -1,4 +1,4 @@
-import type { FillModel, PaperSettings, Quote, SessionPhase } from '../contract.js'
+import type { PaperSettings, Quote, SessionPhase } from '../contract.js'
 import { PAPER_LEDGER_VERSION } from '../contract.js'
 import type { AccountState, DayOpened, DayPoint, FillRecord, LedgerEvent, Order, PositionSnapshot } from './types.js'
 import { tradeDateOf } from './calendar.js'
@@ -7,7 +7,7 @@ import { computeFees } from './fees.js'
 import { decideFill } from './matching.js'
 import { checkOrder } from './risk.js'
 import { applyEvent } from './ledger.js'
-import { normalizeSettings } from './settings.js'
+import { m2Settings } from './settings.js'
 
 export interface EngineResult {
   events: LedgerEvent[]
@@ -39,7 +39,7 @@ export function openAccount(
 ): EngineResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
-  const normalized = normalizeSettings(settings)
+  const normalized = m2Settings(settings)
   append(working, events, {
     type: 'account.opened',
     payload: { accountId, settings: normalized, initialCashCents: normalized.initialCashCents, tradeDate, ledgerVersion: PAPER_LEDGER_VERSION },
@@ -56,7 +56,7 @@ export function resetAccount(
 ): EngineResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
-  const normalized = normalizeSettings(settings)
+  const normalized = m2Settings(settings)
   append(working, events, {
     type: 'account.reset',
     payload: { settings: normalized, initialCashCents: normalized.initialCashCents, tradeDate, reason },
@@ -64,22 +64,10 @@ export function resetAccount(
   return { events, state: working }
 }
 
-function fillQty(order: Order, barVolume: number | undefined, settings: PaperSettings): number {
+/** One fill takes the whole remaining quantity: M2 never partially fills. */
+export function fillQty(order: Order): number {
   const remaining = order.remainingQty
-  if (!Number.isFinite(remaining) || remaining <= 0) return 0
-  if (settings.fillModel === 'unlimited') return remaining
-  // No usable bar volume: the documented fallback is an unlimited fill.
-  if (barVolume === undefined || !Number.isFinite(barVolume) || barVolume <= 0) return remaining
-  // A non-finite participation rate is a corrupted setting. Treat it as "no
-  // cap" rather than 0: 0 would freeze every order forever, while unlimited
-  // matches the no-volume fallback above. `normalizeSettings` makes this
-  // branch unreachable for replayed ledgers; hand-built states still hit it.
-  if (!Number.isFinite(settings.maxParticipationRate) || settings.maxParticipationRate <= 0) return remaining
-  const capped = Math.floor(barVolume * settings.maxParticipationRate)
-  if (!Number.isFinite(capped) || capped <= 0) return 0
-  const lots = Math.floor(capped / 100) * 100
-  if (order.side === 'buy') return Math.max(0, Math.min(remaining, lots))
-  return Math.max(0, Math.min(remaining, capped))
+  return Number.isFinite(remaining) && remaining > 0 ? remaining : 0
 }
 
 function makeFill(
@@ -89,7 +77,6 @@ function makeFill(
   qty: number,
   ts: string,
   settings: PaperSettings,
-  barTs?: string,
 ): FillRecord {
   const amount = amountCents(price, qty)
   const index = state.fills.filter(item => item.orderId === order.id).length + 1
@@ -105,7 +92,6 @@ function makeFill(
     fees: computeFees(amount, order.side, settings),
     ts,
     tradeDate: tradeDateOf(ts),
-    ...(barTs === undefined ? {} : { barTs }),
     fillModel: settings.fillModel,
   }
 }
@@ -114,9 +100,6 @@ export interface SubmitOptions {
   /** Whether the current phase allows continuous matching. */
   matchable: boolean
   phase?: SessionPhase
-  /** Minute-bar volume for a participation-capped fill. */
-  barVolume?: number
-  barTs?: string
 }
 
 /**
@@ -174,14 +157,13 @@ export function submit(
   }
   append(working, events, { type: 'order.submitted', payload: { order, quote: quote ?? { ...emptyQuote(draft.symbol) }, phase: options.phase } }, ts)
   if (options.matchable && quote !== null) {
-    const decision = decideFill(order, quote, working.settings, Date.parse(ts))
+    const decision = decideFill(order, quote)
     if (decision.fill && decision.price !== undefined) {
-      const qty = fillQty(order, options.barVolume, working.settings)
+      const qty = fillQty(order)
       if (qty > 0) {
-        const complete = qty >= order.remainingQty
         append(working, events, {
-          type: complete ? 'order.filled' : 'order.partially_filled',
-          payload: { orderId: order.id, fill: makeFill(working, order, decision.price, qty, ts, working.settings, options.barTs) },
+          type: 'order.filled',
+          payload: { orderId: order.id, fill: makeFill(working, order, decision.price, qty, ts, working.settings) },
         }, ts)
       }
     }
@@ -211,12 +193,11 @@ export interface TickResult extends EngineResult {
   notices: string[]
 }
 
-/** Match resting orders against a fresh quote/bar. Day expiry is handled by closeDay. */
+/** Match resting orders against a fresh quote. Day expiry is handled by closeDay. */
 export function tick(
   state: AccountState,
   quotes: Quote[],
   ts: string,
-  barVolumes: Record<string, number> = {},
 ): TickResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
@@ -237,7 +218,7 @@ export function tick(
     if (order.status !== 'pending' && order.status !== 'partially_filled') continue
     const quote = quoteMap.get(order.symbol)
     if (quote === undefined) continue
-    const decision = decideFill(order, quote, working.settings, Date.parse(ts))
+    const decision = decideFill(order, quote)
     if (!decision.fill || decision.price === undefined) continue
     if (order.side === 'buy') {
       const amount = amountCents(decision.price, order.remainingQty)
@@ -255,15 +236,11 @@ export function tick(
         continue
       }
     }
-    const qty = fillQty(order, barVolumes[order.symbol], working.settings)
-    if (qty <= 0) {
-      notices.push(`${order.symbol} 挂单受成交量约束暂未成交`)
-      continue
-    }
-    const complete = qty >= order.remainingQty
+    const qty = fillQty(order)
+    if (qty <= 0) continue
     append(working, events, {
-      type: complete ? 'order.filled' : 'order.partially_filled',
-      payload: { orderId: order.id, fill: makeFill(working, order, decision.price, qty, ts, working.settings, quote.marketTs ?? undefined) },
+      type: 'order.filled',
+      payload: { orderId: order.id, fill: makeFill(working, order, decision.price, qty, ts, working.settings) },
     }, ts)
     filled.push(working.orders[order.id])
   }

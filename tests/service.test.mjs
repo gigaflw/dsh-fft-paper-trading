@@ -61,7 +61,7 @@ test('service: buy, T+1 block, next-day sell, review and reset', async () => {
     setQuote(data, 10, DAY1_ISO)
     const buy = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
     assert.equal(buy.status, 'filled')
-    assert.equal(buy.fillPrice, 10.01)
+    assert.equal(buy.fillPrice, 10)
 
     const afterBuy = await service.account()
     assert.equal(afterBuy.positions[0].qty, 100)
@@ -81,7 +81,7 @@ test('service: buy, T+1 block, next-day sell, review and reset', async () => {
 
     const sell = await service.place({ symbol: '600519', side: 'sell', type: 'market', qty: 100 })
     assert.equal(sell.status, 'filled')
-    assert.equal(sell.fillPrice, 10.19)
+    assert.equal(sell.fillPrice, 10.2)
 
     const review = await service.review('all')
     assert.equal(review.tradeCount, 2)
@@ -118,6 +118,90 @@ test('service: idempotent request returns the same order', async () => {
     assert.equal(first.id, second.id)
     const orders = await service.orders()
     assert.equal(orders.length, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: preview price, quote and fill price are the same last price', async () => {
+  const home = makeHome('preview-price')
+  const data = makeData()
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
+  try {
+    await service.account()
+    setQuote(data, 12.34, DAY1_ISO)
+    const preview = await service.preview({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
+    assert.equal(preview.price, 12.34)
+    assert.equal(preview.quote.last, 12.34)
+
+    const market = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 }, 'preview-1')
+    assert.equal(market.status, 'filled')
+    assert.equal(market.fillPrice, 12.34)
+
+    // A crossed limit also fills at last, not at its limit, and the preview
+    // already shows that same last price.
+    const limitPreview = await service.preview({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 12.5 })
+    assert.equal(limitPreview.price, 12.34)
+    assert.equal(limitPreview.quote.last, 12.34)
+    const limit = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 12.5 }, 'preview-2')
+    assert.equal(limit.status, 'filled')
+    assert.equal(limit.fillPrice, 12.34)
+
+    // A limit that the last price has not reached cannot fill now: the preview
+    // prices it at the limit (its worst case), says so, and the order rests.
+    const restingPreview = await service.preview({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 11 })
+    assert.equal(restingPreview.price, 11)
+    assert.ok(restingPreview.warnings.some(warning => /挂单等待/.test(warning)), restingPreview.warnings.join('；'))
+    const resting = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 11 }, 'preview-3')
+    assert.equal(resting.status, 'pending')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: concurrent ticks fill a resting order once', async () => {
+  const home = makeHome('concurrent-tick')
+  const data = makeData()
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
+  try {
+    await service.account()
+    setQuote(data, 10, DAY1_ISO)
+    const placed = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 9.5 }, 'rest-1')
+    assert.equal(placed.status, 'pending')
+
+    setQuote(data, 9.5, DAY1_ISO)
+    await Promise.all([service.tick(), service.tick()])
+    const trades = await service.trades()
+    assert.equal(trades.length, 1, 'a resting order must fill exactly once')
+    const [order] = await service.orders()
+    assert.equal(order.status, 'filled')
+    assert.equal(order.filledQty, 100)
+    assert.equal(order.fillPrice, 9.5)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: a market order never rests, even when the last price is zero', async () => {
+  const home = makeHome('market-never-rests')
+  const data = makeData()
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
+  try {
+    await service.account()
+    setQuote(data, 0, DAY1_ISO)
+    const rejected = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
+    assert.equal(rejected.status, 'rejected')
+    assert.match(rejected.reason ?? '', /QUOTE_UNAVAILABLE/)
+
+    // With a manual reference the order fills at that reference, still in one chunk.
+    const manual = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100, price: 10 }, 'manual-1')
+    assert.equal(manual.status, 'filled')
+    assert.equal(manual.fillPrice, 10)
+    const orders = await service.orders()
+    assert.ok(orders.every(order => order.status !== 'pending' && order.status !== 'queued'))
   } finally {
     await rm(home, { recursive: true, force: true })
   }

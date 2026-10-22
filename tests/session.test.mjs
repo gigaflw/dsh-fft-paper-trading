@@ -182,24 +182,34 @@ test('service: offline days only backfill snapshots, never fills', async () => {
   }
 })
 
-test('service: partial fill is replayable and the remainder can fill later', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `partial-${process.pid}-${Date.now()}`)
+test('service: a market order fills in one chunk and never asks for minute volume', async () => {
+  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `m2-fill-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '10:00') }
   const service = makeService(home, data, now)
   try {
     setQuote(data, 10, now.current.toISOString())
     data.volumes.set('600519', 5_000)
+    let minuteCalls = 0
+    const minuteBars = data.minuteBars
+    data.minuteBars = async (...args) => {
+      minuteCalls += 1
+      return minuteBars(...args)
+    }
     await service.account()
     const order = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 1_000 })
-    assert.equal(order.status, 'partially_filled')
-    assert.equal(order.filledQty, 500)
-    assert.equal(order.remainingQty, 500)
+    assert.equal(order.status, 'filled', 'M2 never partially fills')
+    assert.equal(order.filledQty, 1_000)
+    assert.equal(order.remainingQty, 0)
+    assert.equal(order.fillPrice, 10)
+
+    const fills = await service.trades()
+    assert.equal(fills.length, 1)
+    assert.equal(fills[0].qty, 1_000)
+    assert.equal(fills[0].price, 10)
 
     await service.tick()
-    const orders = await service.orders()
-    assert.equal(orders[0].status, 'filled')
-    assert.equal(orders[0].filledQty, 1_000)
+    assert.equal(minuteCalls, 0, 'matching must not request minute bars')
   } finally {
     await rm(home, { recursive: true, force: true })
   }

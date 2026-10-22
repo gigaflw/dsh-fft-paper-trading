@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from '../lib/contract.js'
 import { computeFees } from '../lib/core/fees.js'
 import { decideFill } from '../lib/core/matching.js'
 import { checkOrder } from '../lib/core/risk.js'
-import { closeDay, openAccount, openDay, submit, tick } from '../lib/core/engine.js'
+import { closeDay, fillQty, openAccount, openDay, submit, tick } from '../lib/core/engine.js'
 import { emptyState } from '../lib/core/ledger.js'
 import { replay } from '../lib/core/replay.js'
 
@@ -26,19 +26,42 @@ test('fees: minimum commission and sell-side stamp duty', () => {
   assert.equal(sell.totalCents, 1010)
 })
 
-test('matching: market pays ask plus slippage; limit is capped', () => {
+test('matching: M2 fills at last with no slippage, volume cap or TTL', () => {
   const market = { id: 'o', requestId: 'r', symbol: '600519', side: 'buy', type: 'market', qty: 100, status: 'pending', createdAt: DAY1, updatedAt: DAY1, tradeDate: '2026-10-19' }
-  const filled = decideFill(market, quote(10), DEFAULT_SETTINGS, Date.parse(DAY1))
+  const filled = decideFill(market, quote(10))
   assert.equal(filled.fill, true)
-  assert.equal(filled.price, 10.01)
+  assert.equal(filled.price, 10)
 
+  // An old marketTs is still executable: M2 has no quote TTL gate.
+  const stale = decideFill(market, quote(10, '2026-10-18T02:00:00.000Z'))
+  assert.equal(stale.fill, true)
+  assert.equal(stale.price, 10)
+
+  // Only a missing/zero last price blocks a fill.
+  assert.equal(decideFill(market, quote(0)).fill, false)
+  assert.equal(decideFill(market, { ...quote(10), last: Number.NaN }).fill, false)
+
+  // A buy limit rests until last <= limit, then fills at last (not at the limit).
   const limit = { ...market, type: 'limit', limitPrice: 9.98 }
-  const capped = decideFill(limit, quote(10), DEFAULT_SETTINGS, Date.parse(DAY1))
-  assert.equal(capped.fill, false)
-
-  const crossed = decideFill({ ...limit, limitPrice: 10 }, quote(10), DEFAULT_SETTINGS, Date.parse(DAY1))
+  const resting = decideFill(limit, quote(10))
+  assert.equal(resting.fill, false)
+  assert.equal(resting.reason, 'NOT_CROSSED')
+  const crossed = decideFill({ ...limit, limitPrice: 10.5 }, quote(10))
   assert.equal(crossed.fill, true)
   assert.equal(crossed.price, 10)
+
+  // A sell limit rests until last >= limit, then fills at last.
+  const sell = { ...market, side: 'sell', type: 'limit', limitPrice: 10.5 }
+  assert.equal(decideFill(sell, quote(10)).fill, false)
+  const sellCrossed = decideFill({ ...sell, limitPrice: 9.5 }, quote(10))
+  assert.equal(sellCrossed.fill, true)
+  assert.equal(sellCrossed.price, 10)
+})
+
+test('engine: fillQty takes the whole remaining quantity in one chunk', () => {
+  assert.equal(fillQty({ remainingQty: 1_000 }), 1_000)
+  assert.equal(fillQty({ remainingQty: 0 }), 0)
+  assert.equal(fillQty({ remainingQty: Number.NaN }), 0)
 })
 
 test('risk: lot, cash and T+1 rejection codes', () => {
@@ -62,7 +85,7 @@ test('engine: buy fills, replay is deterministic, close/open moves the day', () 
   const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
   const bought = submit(open.state, { symbol: '600519', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
   assert.equal(bought.order.status, 'filled')
-  assert.equal(bought.state.cashCents, 10_000_000 - 100_100 - 501)
+  assert.equal(bought.state.cashCents, 10_000_000 - 100_000 - 501)
   assert.equal(bought.state.positions['600519'].available, 0)
 
   const events = [...open.events, ...bought.events]
@@ -95,11 +118,49 @@ test('engine: buy fills, replay is deterministic, close/open moves the day', () 
   assert.equal(opened.state.lastOpenedDate, '2026-10-20')
 })
 
-test('engine: limit order stays pending then fills on tick', () => {
+test('engine: limit order stays pending then fills in full on tick', () => {
   const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
   const placed = submit(open.state, { symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 9.5 }, quote(10), 'r1', DAY1)
   assert.equal(placed.order.status, 'pending')
-  const ticked = tick(placed.state, [quote(9.4, DAY1)], DAY1)
+  const ticked = tick(placed.state, [quote(9.5, DAY1)], DAY1)
   assert.equal(ticked.filled.length, 1)
   assert.equal(ticked.filled[0].status, 'filled')
+  assert.equal(ticked.filled[0].filledQty, 100)
+  assert.equal(ticked.filled[0].fillPrice, 9.5)
+})
+
+test('engine: an unfilled limit expires when the day closes', () => {
+  const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
+  const placed = submit(open.state, { symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 9.5 }, quote(10), 'r1', DAY1)
+  assert.equal(placed.order.status, 'pending')
+  const closed = closeDay(placed.state, {
+    date: '2026-10-19',
+    nextTradeDate: '2026-10-20',
+    ts: '2026-10-19T07:00:00.000Z',
+    recordedAt: '2026-10-19T07:00:00.000Z',
+    quotes: [quote(10.2, '2026-10-19T07:00:00.000Z')],
+    closeSource: 'last',
+  })
+  assert.equal(closed.state.orders[placed.order.id].status, 'expired')
+})
+
+test('ledger: replaying an old account.opened pins the M2 settings', () => {
+  const old = {
+    seq: 1,
+    id: 'evt-1',
+    ts: DAY1,
+    type: 'account.opened',
+    payload: {
+      accountId: 't',
+      settings: { ...DEFAULT_SETTINGS, slippageBps: 5, fillModel: 'volume-share' },
+      initialCashCents: 1_000_000,
+      tradeDate: '2026-10-19',
+      ledgerVersion: 1,
+    },
+  }
+  const { state, issues } = replay([old], 't')
+  assert.deepEqual(issues, [])
+  assert.equal(state.settings.slippageBps, 0)
+  assert.equal(state.settings.fillModel, 'unlimited')
+  assert.equal(state.ledgerVersion, 1)
 })

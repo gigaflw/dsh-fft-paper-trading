@@ -48,7 +48,8 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     }
     const preview = await call('order/preview', { symbol: '600519', side: 'buy', type: 'market', qty: 100 })
     assert.equal(preview.ok, true)
-    assert.equal(preview.value.price, 10.01)
+    assert.equal(preview.value.price, 10)
+    assert.equal(preview.value.quote.last, 10)
 
     const placed = await call('order/place', {
       draft: { symbol: '600519', side: 'buy', type: 'market', qty: 100 },
@@ -56,6 +57,7 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     })
     assert.equal(placed.ok, true)
     assert.equal(placed.value.status, 'filled')
+    assert.equal(placed.value.fillPrice, 10)
 
     const unknown = await call('nope/get', {})
     assert.equal(unknown.ok, false)

@@ -20,8 +20,9 @@ import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
 import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, type EngineResult } from '../core/engine.js'
 import { addDays, todayTradeDate, tradeDateOf } from '../core/calendar.js'
 import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt } from '../core/session.js'
-import { normalizeSettings } from '../core/settings.js'
+import { m2Settings } from '../core/settings.js'
 import { prevCloseFromBars } from '../core/price-limit.js'
+import { roundPrice } from '../core/money.js'
 import { toAccountView, toFillView, toOrderView, toReview, previewOrder } from '../core/views.js'
 import type { AccountState, LedgerEvent, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
@@ -56,7 +57,7 @@ export class PaperService {
   private readonly now: () => Date
 
   constructor(private readonly options: PaperServiceOptions) {
-    this.settings = normalizeSettings(options.settings ?? DEFAULT_SETTINGS)
+    this.settings = m2Settings(options.settings ?? DEFAULT_SETTINGS)
     this.accountId = options.accountId ?? DEFAULT_ACCOUNT_ID
     this.now = options.now ?? (() => new Date())
   }
@@ -261,12 +262,14 @@ export class PaperService {
   private async quoteFor(draft: OrderDraft): Promise<Quote | null> {
     const result = await this.fetchQuotes([draft.symbol])
     const live = result.quotes[0]
-    if (live !== undefined) return this.withPrevClose(live)
+    // A zero last price is unusable under M2; treat it as "no quote" so a market
+    // order is rejected or falls back to the manual reference, never left resting.
+    if (live !== undefined && Number.isFinite(live.last) && live.last > 0) return this.withPrevClose(live)
     if (draft.price !== undefined && draft.price > 0) {
       const fetchedAt = this.ts()
       return this.withPrevClose({
         symbol: draft.symbol,
-        last: draft.price,
+        last: roundPrice(draft.price),
         marketTs: fetchedAt,
         fetchedAt,
         source: 'manual',
@@ -289,22 +292,6 @@ export class PaperService {
     } catch {
       return undefined
     }
-  }
-
-  private async volumeFor(symbols: readonly string[], date: string): Promise<Record<string, number>> {
-    const volumes: Record<string, number> = {}
-    for (const symbol of symbols) {
-      try {
-        const bars = await this.options.data.minuteBars(symbol, date)
-        if (bars.state === 'ok' && bars.bars.length > 0) {
-          const bar = bars.bars[bars.bars.length - 1]
-          if (bar.volume !== undefined && tradeDateOf(bar.time) === date) volumes[symbol] = bar.volume
-        }
-      } catch {
-        // no volume → unlimited fill model
-      }
-    }
-    return volumes
   }
 
   private async orderDateFor(state: AccountState, nowIso: string, phase = sessionPhaseAt(nowIso)): Promise<string> {
@@ -338,7 +325,6 @@ export class PaperService {
     }
     const quote = await this.quoteFor(draft)
     const tradeDate = await this.orderDateFor(state, now, phase)
-    const volumes = matchable ? await this.volumeFor([draft.symbol], tradeDate) : {}
     const outcome = await this.options.repo.transact<PlaceOutcome>(current => {
       const duplicate = Object.values(current.orders).find(order => order.requestId === requestId)
       if (duplicate !== undefined) return { events: [], value: { duplicateId: duplicate.id } }
@@ -346,8 +332,6 @@ export class PaperService {
       const result = submit(current, { ...draft, name: quote?.name, tradeDate }, quote, requestId, now, {
         matchable,
         phase,
-        barVolume: volumes[draft.symbol],
-        barTs: quote?.marketTs ?? undefined,
       })
       return { events: result.events, value: { orderId: result.order?.id } }
     })
@@ -392,13 +376,12 @@ export class PaperService {
       await this.options.repo.markPrices(quotes.quotes)
       return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: quotes.quotes, notices: quotes.notice === undefined ? [] : [quotes.notice] }
     }
-    const volumes = await this.volumeFor(symbols, state.tradeDate)
     const outcome = await this.options.repo.transact(current => {
       if (current.blocked) {
         return { events: [], value: { filled: [] as Order[], expired: [] as Order[], notices: ['账户已锁定，已跳过撮合'] } }
       }
       const released = releaseQueued(current, now, current.tradeDate)
-      const ticked = engineTick(released.state, quotes.quotes, now, volumes)
+      const ticked = engineTick(released.state, quotes.quotes, now)
       return {
         events: [...released.events, ...ticked.events],
         value: { filled: ticked.filled, expired: ticked.expired, notices: ticked.notices },
@@ -619,7 +602,7 @@ export class PaperService {
       this.options.logger?.warn(`paper-trading: reset could not replay the old ledger: ${String(error)}`)
       return undefined
     })
-    const settings = normalizeSettings(previous !== undefined && previous.tradeDate !== '' ? previous.settings : this.settings)
+    const settings = m2Settings(previous !== undefined && previous.tradeDate !== '' ? previous.settings : this.settings)
     const tradeDate = previous !== undefined && previous.tradeDate !== '' ? previous.tradeDate : await this.tradeDateForNow()
     const genesis: LedgerEvent = {
       seq: 1,

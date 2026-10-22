@@ -9,8 +9,6 @@ import { EventStore } from '../lib/store/event-store.js'
 import { backupsDir, eventsPath } from '../lib/store/paths.js'
 import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
 import { replay } from '../lib/core/replay.js'
-import { emptyState } from '../lib/core/ledger.js'
-import { openAccount, submit } from '../lib/core/engine.js'
 
 const at = (date, hhmm) => new Date(`${date}T${hhmm}:00+08:00`)
 
@@ -142,7 +140,7 @@ test('p0-1: five concurrent reads write each day-boundary event once', async () 
     const account = await restarted.service.account()
     assert.equal(account.blocked, false)
     assert.equal(account.tradeDate, '2026-10-22')
-    assert.equal(account.cash, 98_993.99)
+    assert.equal(account.cash, 98_994.99)
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -262,7 +260,7 @@ test('p0-1: a conflicting duplicate seq still blocks and stops appending', async
   }
 })
 
-test('p0-2: legacy settings are normalized on replay and orders fill with finite qty', async () => {
+test('p0-2: legacy settings migrate to M2 and orders fill in full', async () => {
   const home = makeHome('legacy-settings')
   await writeLedger(home, [
     {
@@ -270,7 +268,7 @@ test('p0-2: legacy settings are normalized on replay and orders fill with finite
       id: 'evt-1',
       ts: '2026-10-20T02:00:00.000Z',
       type: 'account.opened',
-      payload: { accountId: 'default', settings: LEGACY_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: 2 },
+      payload: { accountId: 'default', settings: LEGACY_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: 1 },
     },
   ])
   const data = makeData()
@@ -280,16 +278,17 @@ test('p0-2: legacy settings are normalized on replay and orders fill with finite
   try {
     const account = await service.account()
     assert.equal(account.blocked, false)
-    assert.equal(account.settings.maxParticipationRate, DEFAULT_SETTINGS.maxParticipationRate)
-    assert.equal(account.settings.fillModel, DEFAULT_SETTINGS.fillModel)
+    assert.equal(account.settings.slippageBps, 0, 'the legacy slippage is dropped')
+    assert.equal(account.settings.fillModel, 'unlimited', 'the legacy fill model is pinned to M2')
 
     data.setQuote('600519', 10, now.current.toISOString())
     const order = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 1_000 })
-    assert.equal(order.status, 'partially_filled')
-    assert.equal(order.filledQty, 500, '10% of a 5,000-share bar is 500 shares')
+    assert.equal(order.status, 'filled')
+    assert.equal(order.filledQty, 1_000, 'M2 ignores the minute volume entirely')
 
     const fills = await service.trades()
     assert.equal(fills.length, 1)
+    assert.equal(fills[0].price, 10, 'no slippage is applied')
     assert.ok(Number.isInteger(fills[0].qty) && fills[0].qty > 0, `fill qty must be an integer, got ${String(fills[0].qty)}`)
     assert.ok(Number.isFinite(fills[0].amountCents))
     assert.ok(Number.isFinite(fills[0].feesCents))
@@ -301,23 +300,6 @@ test('p0-2: legacy settings are normalized on replay and orders fill with finite
   } finally {
     await rm(home, { recursive: true, force: true })
   }
-})
-
-test('p0-2: fillQty degrades a non-finite participation rate to unlimited', () => {
-  const state = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', '2026-10-19T02:00:00.000Z', 't').state
-  // Hand-built state, as a partially-written ledger used to produce: the rate
-  // is NaN, so the cap must fall back to "unlimited" instead of NaN shares.
-  state.settings.maxParticipationRate = Number.NaN
-  const placed = submit(state, { symbol: '600519', side: 'buy', type: 'market', qty: 1_000 }, {
-    symbol: '600519',
-    last: 10,
-    marketTs: '2026-10-19T02:00:00.000Z',
-    fetchedAt: '2026-10-19T02:00:00.000Z',
-  }, 'r1', '2026-10-19T02:00:00.000Z', { matchable: true, barVolume: 5_000 })
-  assert.equal(placed.order.status, 'filled')
-  assert.equal(placed.order.filledQty, 1_000)
-  assert.ok(Number.isFinite(placed.state.fills[0].qty))
-  assert.ok(Number.isFinite(placed.state.cashCents))
 })
 
 test('p0-3: reset rewrites a single genesis event and survives a locked ledger', async () => {
@@ -422,7 +404,7 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
     const reloaded = await restarted.service.account()
     assert.equal(reloaded.blocked, false)
     assert.equal(reloaded.positions.length, 1)
-    assert.equal(reloaded.cash, 98_993.99)
+    assert.equal(reloaded.cash, 98_994.99)
   } finally {
     await rm(home, { recursive: true, force: true })
   }
