@@ -16,6 +16,7 @@ export * from './contract.js';
 export { PaperService } from './service/paper-service.js';
 export { createPaperRpcHandler } from './service/rpc.js';
 export { createPaperRoute } from './service/route.js';
+export { PaperScheduler } from './service/scheduler.js';
 export { AccountRepo } from './store/repo.js';
 export { FtshareMarketData } from './data/ftshare-market-data.js';
 export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js';

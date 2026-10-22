@@ -1,6 +1,6 @@
 # 模拟盘子插件架构
 
-> 状态：v0.1 已落地；v0.2 P0/P1 已实施（分支 `feat/paper-trading`），并完成账本并发/迁移/重置修复、宿主撮合调度与 UI 本地化（§6、§9、§19.7、§19.11），K 线视图由 dsh_kline 的 slot 提供，详见 §19.12。
+> 状态：v0.1 已落地；v0.2 P0/P1 已实施（独立仓库 `main`），并完成账本并发/迁移/重置修复、宿主撮合调度与 UI 本地化（§6、§9、§19.7、§19.11），K 线视图由 dsh_kline 的 slot 提供，详见 §19.12。
 > 本文写架构、模块边界、账本与扩展方式；v0.1 的范围与验收见 [mvp.md](mvp.md)。
 > 配图：图 1–3 见文内。
 > 目标包：`@ft/dsh-fft-paper-trading`
@@ -98,7 +98,7 @@ client  不 import 宿主任何模块，只走自己的 RPC 路由
 ### 5.1 目录（实际结构）
 
 ```
-packages/dsh-fft-paper-trading/
+dsh-fft-paper-trading/       # 仓库根即包根
   package.json               # exports: . / ./client / ./contract
   cordis.patch.yml           # 一行业务行
   tsconfig.json
@@ -397,7 +397,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 ### 11.3 UI 基线（B 紧凑版）
 
-已按 [`docs/specs/ui/design.md`](../ui/design.md) 接入宿主 UI 基线：
+已按主仓 `docs/specs/ui/design.md` 接入宿主 UI 基线：
 
 | 项 | 落地 |
 | --- | --- |
@@ -409,7 +409,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 密度 | 16/18 padding、统计指标带、30px 表格行、120px 图表、下单/预览双卡 |
 | 响应 | 容器查询 900/760/520px，跟随面板宽度而非窗口 |
 
-验收：`DSH_HARNESS_ROOT=<dsh checkout> node scripts/ui-audit.mjs`。
+验收：本仓不跑主仓的 `ui-audit`，按 `plugin-ui-review` 的隔离渲染流程自检。
 视觉对照：[UI 预览（A 舒适 / B 紧凑）](ui-preview.html)。结论取 B。
 
 ## 12 设置
@@ -499,12 +499,12 @@ $DSH_HOME/paper-trading/
 
 1. 全局行继续提供浏览器半与 RPC 路由，并把 service `ctx.provide('paperTrading', service)`。
 2. 新增 `./agent` 子路径导出，只注册工具，`inject: ['paperTrading']`。
-3. 在 `packages/dsh-fft-bundle/cordis.patch.yml` 的 `preset-ft-finance.plugins` 里加一行 `@ft/dsh-fft-paper-trading/agent`。
-4. 不要给 preset 行加裸包名，否则浏览器半会挂到 preset 的 detached 子树、在模块扫描里消失（`packages/dsh-fft-bundle/tests/patch.test.mjs` 挡住）。
+3. 在 bundle 仓库（主仓）的 `cordis.patch.yml` 的 `preset-ft-finance.plugins` 里加一行 `@ft/dsh-fft-paper-trading/agent`。
+4. 不要给 preset 行加裸包名，否则浏览器半会挂到 preset 的 detached 子树、在模块扫描里消失（主仓 `tests/patch.test.mjs` 挡住）。
 
 ## 15 测试策略
 
-当前 41 个用例（`pnpm test`，构建后跑 `node --test`）：
+当前 42 个用例（`pnpm test`，构建后跑 `node --test`）：
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -517,6 +517,7 @@ $DSH_HOME/paper-trading/
 | `wiring.test.mjs` | 没有 `ftshareData` 时路由与 8 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
 | `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、旧 settings 迁移、重置健壮性、日 K 补 `prevClose` |
 | `scheduler.test.mjs` | 假时钟周期调用、非重叠、start/stop 幂等、异常转 warning |
+| `brand.test.mjs` | 浏览器半读的 `--ft-*` 兜底值与品牌契约一致（本仓不依赖 settings 包） |
 
 尚未覆盖：路由 405/413、工具卡（待做）；P2 挂单冻结资金未实现（见 §19.11）。
 
@@ -575,7 +576,7 @@ $DSH_HOME/paper-trading/
 ## 19 v0.2：P0/P1 改造设计
 
 > 本节是增量设计，§1–18 仍是 v0.1 现状。目标：把「账本正确」升级为「市场节奏正确」——时间不加速、非交易时段不成交、收盘用收盘价、次日开盘才解锁 T+1。
-> 外部事实：[开源模拟交易实现](../../thirdparty/sim-trading-open-source.md)；选型分析：[P0/P1 选型](../../investigation/sim-trading-p0-p1.md)。
+> 外部事实：[开源模拟交易实现](thirdparty/sim-trading-open-source.md)；选型分析：[P0/P1 选型](investigation/sim-trading-p0-p1.md)。
 
 ### 19.1 目标与范围
 
@@ -702,7 +703,7 @@ type DayClosed = {
 
 ### 19.4 行情面（P1）
 
-FTShare 目录里已有的数据源（`packages/dsh-fft-ftshare/catalog.json`）：
+FTShare 目录里已有的数据源（见主仓 `packages/dsh-fft-ftshare/catalog.json`）：
 
 | 能力 | 接口 | 实测/用途 |
 | --- | --- | --- |
@@ -956,7 +957,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 
 ### 19.10 参考与取舍
 
-**产品层**（五产品调研：[`docs/investigation/sim-trading-competitors.html`](../../investigation/sim-trading-competitors.html)）：
+**产品层**（五产品调研：[`docs/investigation/sim-trading-competitors.html`](investigation/sim-trading-competitors.html)）：
 
 | 能力 | 借谁 | 说明 |
 | --- | --- | --- |
@@ -966,7 +967,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 | 预览 / 受理与成交分离 | IG demo | v0.1 已落地 |
 | 撮合契约 / 仿真环境分层 | openctp（BSD-3） | 接口契约与双模式；A 股现货规则自己实现 |
 
-**实现机制层**（补充参考，事实见 [`docs/thirdparty/sim-trading-open-source.md`](../../thirdparty/sim-trading-open-source.md)）：
+**实现机制层**（补充参考，事实见 [`docs/thirdparty/sim-trading-open-source.md`](thirdparty/sim-trading-open-source.md)）：
 
 | 参考 | 借什么 | 不借 / 注意 | 许可 |
 | --- | --- | --- | --- |

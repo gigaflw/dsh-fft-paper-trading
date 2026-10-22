@@ -6,7 +6,7 @@
 > ——TradingView、IG demo、openctp、璇玑（sonhany/xuanji，无 License）、牛牛1号（kunkundi/niuone，Apache-2.0）。
 > 本文只补**实现机制层**的四个开源项目，用于核对时段、成交、账本重放这些容易踩坑的地方。
 > 本仓的取舍见 [`docs/investigation/sim-trading-p0-p1.md`](../investigation/sim-trading-p0-p1.md) 与
-> [`docs/specs/paper-trading/design.md`](../specs/paper-trading/design.md) §19。
+> [`docs/design.md`](../design.md) §19。
 > 核对时间：2026-10-21；来源为各项目 `master`/`develop` 的文档与源码，链接见文内。
 
 ## 0 来源与版本

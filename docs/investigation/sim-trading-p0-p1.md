@@ -1,7 +1,7 @@
 # 模拟盘 P0/P1：选型与边界
 
 > 决策前分析：P0/P1 要做「真实市场节奏」，哪些自己写、哪些借开源、哪些明确不做。
-> 下游：[`docs/specs/paper-trading/design.md`](../specs/paper-trading/design.md) §19（定型设计）。
+> 下游：[`docs/design.md`](../design.md) §19（定型设计）。
 > 外部事实：[`docs/thirdparty/sim-trading-open-source.md`](../thirdparty/sim-trading-open-source.md)。
 
 ## 1 问题
@@ -114,7 +114,7 @@ v0.1 有成交、权益曲线、统计，但没有「资金流水」「日终」
 
 ## 10 待验证
 
-**已核对（2026-10-21）**：日历返回结构与假期、搜索/列表/分钟字段、分钟成交量单位（股）、无竞价 bar、收盘后返回全日、无买一/卖一、DSH `ctx.timeout/ctx.interval` 可用。结果见 [design.md](../specs/paper-trading/design.md) §19.9。
+**已核对（2026-10-21）**：日历返回结构与假期、搜索/列表/分钟字段、分钟成交量单位（股）、无竞价 bar、收盘后返回全日、无买一/卖一、DSH `ctx.timeout/ctx.interval` 可用。结果见 [design.md](../design.md) §19.9。
 
 **仍未验证**：
 
