@@ -523,3 +523,22 @@ test('service: basket place refuses a locked account', async () => {
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('service: upstream adapter internals are not exposed in data notices', async () => {
+  const home = makeHome('service-notice')
+  const data = makeData()
+  data.quotes = async () => ({ state: 'failed', quotes: [], notice: 'FTShare ft_v1_stock_candlesticks 调用失败：invalid symbol: missing market suffix' })
+  data.dailyBars = async () => ({ state: 'failed', bars: [], notice: 'FTShare ft_v1_stock_candlesticks 调用失败：symbol: invalid symbol' })
+  data.minuteBars = async () => ({ state: 'denied', bars: [], notice: 'FTShare route_not_allowed' })
+  data.marketList = async () => ({ state: 'failed', quotes: [], page: 1, notice: 'FTShare ft_v1_stock_list request failed' })
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
+  try {
+    assert.equal((await service.quote(['600519'])).notice, '行情暂不可用')
+    assert.equal((await service.dailyBars('600519')).notice, 'K 线数据暂不可用')
+    assert.equal((await service.minuteBars('600519')).notice, '行情接口无权限')
+    assert.equal((await service.marketList()).notice, '行情暂不可用')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

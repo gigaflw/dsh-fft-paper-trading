@@ -114,6 +114,13 @@ export declare class PaperService {
     quote(symbols: string[]): Promise<QuoteResult>;
     dailyBars(symbol: string, limit?: number): Promise<BarsResult>;
     minuteBars(symbol: string, date?: string): Promise<BarsResult>;
+    /**
+     * Upstream adapters include FTShare function names and parameter errors in
+     * their notices. Those are useful in logs, not in the panel (or to the model
+     * reading a tool result), so the user-facing notice stays short.
+     */
+    private sanitiseDataNotice;
+    private friendlyNotice;
     search(query: string, limit?: number): Promise<Awaited<ReturnType<MarketDataPort['search']>>>;
     marketList(input?: {
         board?: string;
