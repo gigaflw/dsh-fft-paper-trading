@@ -244,6 +244,7 @@
       await new Promise(done => setTimeout(done, 500))
       result.shortSymbolAlive = Boolean(document.querySelector('.pt-root'))
       result.shortSymbolHint = e2e.text('.pt-ticket-form')
+      result.shortKline = e2e.text('.pt-kline-body')
       e2e.setInput(symbolInput, '600519')
       await new Promise(done => setTimeout(done, 500))
       // A complete preview must leave the quote available for the 限价 draft.
@@ -255,6 +256,20 @@
       await new Promise(done => setTimeout(done, 300))
       return result
     }
+    if (name === 'bars-fail') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 400))
+      window.__fake.on('market/bars', () => ({ state: 'failed', bars: [], notice: 'K 线数据暂不可用' }))
+      const input = document.querySelector('.pt-ticket-form input')
+      e2e.setInput(input, '600000')
+      result.hint = await e2e.wait(() => {
+        const text = document.querySelector('.pt-kline-hint')?.innerText ?? ''
+        return text.includes('K 线数据暂不可用') ? text : null
+      }, 5000)
+      window.__fake.on('market/bars', () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }))
+      return result
+    }
     if (name === 'quote-retry') {
       const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
       if (tradeTab) e2e.click(tradeTab)
@@ -262,12 +277,12 @@
       window.__fake.on('market/quote', () => ({ state: 'failed', quotes: [], notice: '行情暂不可用' }))
       e2e.click(e2e.byText('限价')[0])
       const symbolInput = document.querySelector('.pt-ticket-form input')
-      e2e.setInput(symbolInput, '600000')
+      e2e.setInput(symbolInput, '600001')
       result.error = await e2e.wait(() => {
         const text = document.querySelector('.pt-ticket-form')?.innerText ?? ''
         return text.includes('行情暂不可用') || text.includes('未取到行情') ? text : null
       }, 5000)
-      window.__fake.on('market/quote', () => ({ state: 'ok', quotes: [{ ...window.__fake.quote ?? {}, symbol: '600000.XSHG', name: '浦发银行', last: 10.5, prevClose: 10.4, marketTs: ts(), source: 'fake' }] }))
+      window.__fake.on('market/quote', () => ({ state: 'ok', quotes: [{ ...window.__fake.quote ?? {}, symbol: '600001.XSHG', name: '邯郸钢铁', last: 10.5, prevClose: 10.4, marketTs: ts(), source: 'fake' }] }))
       const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
       if (refresh) e2e.click(refresh)
       result.quote = await e2e.wait(() => {
