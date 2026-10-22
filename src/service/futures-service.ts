@@ -483,9 +483,16 @@ export class FuturesService {
     const toPerLot = (rate: number | undefined): number | undefined => {
       if (quote === undefined || contract === undefined) return undefined
       if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return undefined
-      // The upstream unit is per-mille for the common case (0.1 = 0.1‰);
-      // values already in fraction form (<= 0.01) are used as-is.
-      const fraction = rate > 0.01 ? rate / 1000 : rate
+      // The upstream rate unit differs by exchange: SHFE/INE publish per-mille
+      // (RB 0.1 = 0.1‰), DCE/GFEX per-10,000 (iron ore 1 = 1‱). Treating DCE
+      // as per-mille overcharged fees 10×. Values already in fraction form
+      // (<= 0.01) are used as-is.
+      const per = contract.exchange === 'SHFE' || contract.exchange === 'INE' ? 1000 : 10000
+      const fraction = rate > 0.01 ? rate / per : rate
+      // A real ad-valorem fee is well below 0.05% of notional (BC/LU publish
+      // 10, which would be 1% if read as a rate; INE offset_today_fee can be
+      // yuan/lot). Refuse implausible values instead of inventing a fee.
+      if (fraction > 0.0005) return undefined
       return Math.max(1, Math.round(quote.last * contract.multiplier * 100 * fraction))
     }
     const rate = params?.feeRate
@@ -501,6 +508,12 @@ export class FuturesService {
         warnings.push(closePerLot === undefined
           ? `该合约按成交额计费，按 ${(perLotCents / 100).toFixed(2)} 元/手估算`
           : `该合约按成交额计费，开仓约 ${(perLotCents / 100).toFixed(2)} 元/手、平今约 ${(closePerLot / 100).toFixed(2)} 元/手`)
+      } else if (typeof rate === 'number' && rate > 0) {
+        // The upstream value is not a usable rate (unit mismatch). Stay honest:
+        // use the configured fallback (0 by default) and explain why.
+        const fallback = state.settings.defaultFeePerLotCents
+        settle = { ...settle, feePerLotCents: fallback }
+        warnings.push(`该合约费率单位异常（上游 ${rate}），手续费${fallback > 0 ? `按 ${(fallback / 100).toFixed(2)} 元/手` : '暂按 0'}估算`)
       }
     }
     return {
