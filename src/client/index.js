@@ -1945,6 +1945,8 @@ window.__ModuleLoader__.load({
       // state (which silently dropped the first symbol).
       const watchRef = useRef([])
       const watchSeq = useRef(0)
+      const searchSeq = useRef(0)
+      const marketSeq = useRef(0)
       useEffect(() => { watchRef.current = watchlist }, [watchlist])
       const [watchOnly, setWatchOnly] = useState(false)
       const [form, setForm] = useState({
@@ -2059,18 +2061,22 @@ window.__ModuleLoader__.load({
       const runSearch = useCallback(async () => {
         if (!searchQuery.trim()) { setSearchAttempted(false); return }
         setSearchAttempted(true)
+        const seq = ++searchSeq.current
         try {
-          setSearchHits(await rpc('market/search', { query: searchQuery.trim(), limit: 12 }))
+          const hits = await rpc('market/search', { query: searchQuery.trim(), limit: 12 })
+          if (alive.current && seq === searchSeq.current) setSearchHits(hits)
         } catch (cause) {
-          setError(errorOf(cause))
+          if (alive.current && seq === searchSeq.current) setError(errorOf(cause))
         }
       }, [searchQuery])
 
       const loadMarket = useCallback(async (page = 1) => {
+        const seq = ++marketSeq.current
         try {
-          setMarketList(await rpc('market/list', { board: marketBoard, page, pageSize: 50 }))
+          const next = await rpc('market/list', { board: marketBoard, page, pageSize: 50 })
+          if (alive.current && seq === marketSeq.current) setMarketList(next)
         } catch (cause) {
-          setError(errorOf(cause))
+          if (alive.current && seq === marketSeq.current) setError(errorOf(cause))
         }
       }, [marketBoard])
 
