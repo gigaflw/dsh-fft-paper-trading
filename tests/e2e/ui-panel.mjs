@@ -265,6 +265,8 @@ try {
   assert('a futures break reads 休市, not 午休', typeof futuresLunch.header === 'string' && futuresLunch.header.includes('休市'), JSON.stringify(futuresLunch))
   const futuresReasons = await scenario('futures-reasons')
   assert('futures cancel reasons are localized', typeof futuresReasons.reason === 'string' && futuresReasons.reason.includes('可用资金不足') && futuresReasons.reason.includes('可平不足') && !futuresReasons.reason.includes('margin_unavailable'), JSON.stringify(futuresReasons))
+  const futuresProduct = await scenario('futures-product-label')
+  assert('futures product codes are uppercase', typeof futuresProduct.text === 'string' && futuresProduct.text.includes('RB'), JSON.stringify(futuresProduct))
   const futuresReview = await scenario('futures-review')
   assert('futures review renders without a stale variable', typeof futuresReview.body === 'string' && futuresReview.body.includes('已实现盈亏'), JSON.stringify(futuresReview))
   assert('a slow review period cannot overwrite the newer one', Array.isArray(futuresReview.stats) && futuresReview.stats.some(text => text.includes('成交笔数') && text.trim().endsWith('30')), JSON.stringify(futuresReview.stats))

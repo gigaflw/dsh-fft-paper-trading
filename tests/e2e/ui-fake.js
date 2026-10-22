@@ -1386,6 +1386,21 @@
       window.__fake.on('futures/orders', () => futuresState.orders)
       return result
     }
+    if (name === 'futures-product-label') {
+      window.__fake.on('futures/review', () => ({
+        equityCurve: [], maxDrawdownPct: 0, tradeCount: 1, openCount: 1, closeCount: 0,
+        winCount: 0, lossCount: 0, totalFees: 5, realizedPnl: 0,
+        byProduct: [{ product: 'rb', tradeCount: 1, realizedPnl: 0 }],
+      }))
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
+      e2e.click(tab)
+      result.text = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('RB') ? text : null
+      }, 4000)
+      window.__fake.on('futures/review', () => ({ equityCurve: [], maxDrawdownPct: 0, tradeCount: 0, openCount: 0, closeCount: 0, winCount: 0, lossCount: 0, totalFees: 0, realizedPnl: 0, byProduct: [] }))
+      return result
+    }
     if (name === 'futures-review') {
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
       if (tab) e2e.click(tab)
