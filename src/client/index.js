@@ -1916,6 +1916,12 @@ window.__ModuleLoader__.load({
       const [cashFlow, setCashFlow] = useState([])
       const [trips, setTrips] = useState([])
       const [watchlist, setWatchlist] = useState([])
+      // Read/write the favourites through a ref so two clicks in one task see
+      // each other's optimistic change instead of both computing from stale
+      // state (which silently dropped the first symbol).
+      const watchRef = useRef([])
+      const watchSeq = useRef(0)
+      useEffect(() => { watchRef.current = watchlist }, [watchlist])
       const [watchOnly, setWatchOnly] = useState(false)
       const [form, setForm] = useState({
         symbol: '600519',
@@ -2075,16 +2081,31 @@ window.__ModuleLoader__.load({
         const code = bareSymbol(symbol)
         // Store the bare 6-digit code so a search hit (`600519.SH`) and a list
         // row (`600519.XSHG`) point at the same favourite.
-        const next = isWatched(code)
-          ? watchlist.filter(item => bareSymbol(item) !== code)
-          : [...watchlist, code]
+        const current = watchRef.current
+        const next = current.some(item => bareSymbol(item) === code)
+          ? current.filter(item => bareSymbol(item) !== code)
+          : [...current, code]
+        watchRef.current = next
+        setWatchlist(next)
+        const seq = ++watchSeq.current
         try {
           const result = await rpc('watchlist/set', { symbols: next })
-          if (alive.current) setWatchlist(result.symbols ?? next)
+          if (!alive.current || seq !== watchSeq.current) return
+          watchRef.current = result.symbols ?? next
+          setWatchlist(result.symbols ?? next)
         } catch (cause) {
-          if (alive.current) setError(errorOf(cause))
+          if (!alive.current) return
+          setError(errorOf(cause))
+          // The server is the source of truth after a failed write.
+          try {
+            const fresh = await rpc('watchlist/get')
+            if (alive.current && seq === watchSeq.current) {
+              watchRef.current = fresh.symbols ?? []
+              setWatchlist(fresh.symbols ?? [])
+            }
+          } catch { /* keep the optimistic state */ }
         }
-      }, [watchlist, isWatched])
+      }, [])
 
       const adoptQuote = useCallback(symbol => {
         const next = bareSymbol(symbol)

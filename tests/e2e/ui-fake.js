@@ -463,6 +463,8 @@
     if (name === 'market-watch') {
       const tab = e2e.byText('行情')[0]
       e2e.click(tab)
+      const watchOnlyButton = e2e.byText('只看自选')[0]
+      if (watchOnlyButton && watchOnlyButton.getAttribute('data-active') === 'true') e2e.click(watchOnlyButton)
       await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length === 2)
       result.rows = document.querySelectorAll('.pt-main tbody tr').length
       result.nextDisabled = e2e.byText('下一页')[0]?.disabled
@@ -476,6 +478,32 @@
       await e2e.wait(() => window.__watchSymbols?.length === 0)
       result.removed = window.__watchSymbols.slice()
       result.calls = (window.__watchCalls ?? []).map(list => list.join(','))
+      return result
+    }
+    if (name === 'watch-concurrent') {
+      const tab = e2e.byText('行情')[0]
+      e2e.click(tab)
+      const watchOnlyButton = e2e.byText('只看自选')[0]
+      if (watchOnlyButton && watchOnlyButton.getAttribute('data-active') === 'true') e2e.click(watchOnlyButton)
+      await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length === 2)
+      // Slow the write so the second click lands before the first response; a
+      // state-only implementation loses the first favourite.
+      window.__fake.on('watchlist/set', async payload => {
+        await new Promise(done => setTimeout(done, 300))
+        window.__watchSymbols = payload.symbols
+        return { symbols: payload.symbols }
+      })
+      const stars = e2e.byText('☆')
+      if (stars.length < 2) throw new Error('need two unfollowed rows')
+      e2e.click(stars[0])
+      await new Promise(done => setTimeout(done, 50))
+      const second = e2e.byText('☆')[0]
+      if (second) e2e.click(second)
+      await new Promise(done => setTimeout(done, 1200))
+      result.symbols = window.__watchSymbols ? window.__watchSymbols.slice() : null
+      result.rows = [...document.querySelectorAll('.pt-main tbody tr')].map(row => row.innerText)
+      result.starCount = e2e.byText('☆').length
+      result.watchedCount = e2e.byText('★').length
       return result
     }
     if (name === 'market-empty-search') {
