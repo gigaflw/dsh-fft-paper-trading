@@ -19,9 +19,16 @@ export { createPaperRoute } from './service/route.js';
 export { PaperScheduler } from './service/scheduler.js';
 export { AccountRepo } from './store/repo.js';
 export { FtshareMarketData } from './data/ftshare-market-data.js';
+export { FtshareFuturesMarketData } from './data/futures-market-data.js';
 export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js';
 export { WeekdayTradingCalendar } from './data/trading-calendar-port.js';
 export { UnavailableMarketData } from './data/unavailable-market-data.js';
+export * from './futures-contract.js';
+export { FuturesService } from './service/futures-service.js';
+export { FuturesError } from './service/futures-service.js';
+export { createFuturesRpcHandler } from './service/futures-rpc.js';
+export { FuturesRepo } from './store/futures-repo.js';
+export { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js';
 export declare const name = "@ft/dsh-fft-paper-trading";
 /**
  * Services are attached lazily: the browser scan needs this row's fiber, so the
