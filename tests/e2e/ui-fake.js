@@ -331,6 +331,15 @@
       result.nan = (document.querySelector('.pt-kline-body')?.innerHTML ?? '').includes('NaN')
       return result
     }
+    if (name === 'symbol-paste') {
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[0], 'SH600519')
+      result.value = inputs[0].value
+      return result
+    }
     if (name === 'quote-retry') {
       const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
       if (tradeTab) e2e.click(tradeTab)
@@ -460,6 +469,8 @@
       })))
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
       result.note = await e2e.wait(() => {
         const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('共 31 条'))
         return node ? node.innerText.trim() : null
