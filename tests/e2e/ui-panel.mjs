@@ -284,6 +284,8 @@ try {
   assert('a locked account offers export and copy', lockedAccount.exportButton === 1 && lockedAccount.copyButton === 1, JSON.stringify(lockedAccount))
   const futuresLocked = await scenario('futures-locked')
   assert('a locked futures account has the same recovery affordances', typeof futuresLocked.blocked === 'string' && futuresLocked.blocked.includes('期货账本校验失败') && futuresLocked.exportButton === 1 && futuresLocked.copyButton === 1 && typeof futuresLocked.copyNotice === 'string' && futuresLocked.copyNotice.includes('账本路径') && futuresLocked.submitDisabled === true && futuresLocked.submitTitle === '账户已锁定', JSON.stringify(futuresLocked))
+  const marketClosed = await scenario('market-closed')
+  assert('a closed market labels its prices as the latest snapshot', typeof marketClosed.note === 'string' && marketClosed.note.includes('非交易时段'), JSON.stringify(marketClosed))
   const slotIdentity = await scenario('slot-identity')
   assert('a K-line selection fills the ticket symbol', slotIdentity.symbol === '000001' && typeof slotIdentity.notice === 'string' && slotIdentity.notice.includes('平安银行'), JSON.stringify(slotIdentity))
   const slotFallback = await scenario('slot-fallback')

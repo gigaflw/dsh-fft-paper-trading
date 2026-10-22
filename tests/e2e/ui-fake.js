@@ -1082,12 +1082,31 @@
       result.submitTitle = submit?.title ?? null
       return result
     }
+    if (name === 'market-closed') {
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await new Promise(done => setTimeout(done, 500))
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('行情'))
+      e2e.click(tab)
+      window.__fake.on('market/status', () => ({ phase: 'closed', tradeDate: '2026-10-22', canSubmit: true, canMatch: false }))
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      result.note = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('非交易时段'))
+        return node ? node.innerText.trim() : null
+      }, 4000)
+      window.__fake.on('market/status', () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }))
+      return result
+    }
     if (name === 'slot-identity') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
       await new Promise(done => setTimeout(done, 500))
       window.__remount('identity')
       await new Promise(done => setTimeout(done, 600))
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
       result.symbol = document.querySelector('.pt-ticket-form input')?.value ?? null
       result.notice = await e2e.wait(() => {
         const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('已从 K 线选择'))
