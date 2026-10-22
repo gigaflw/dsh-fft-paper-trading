@@ -465,6 +465,30 @@
       }, 4000)
       return result
     }
+    if (name === 'cancel-stale') {
+      const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
+      e2e.click(tab)
+      window.__pendingOrders = [{
+        id: 'o-stale-cancel', requestId: 'r-stale-cancel', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        qty: 100, limitPrice: 11.4, status: 'queued', createdAt: ts(), updatedAt: ts(),
+      }]
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      const cancel = await e2e.wait(() => e2e.byText('撤单')[0] ?? null, 4000)
+      window.__fake.on('order/cancel', () => ({ __error: { code: 'ORDER_NOT_PENDING', message: '订单不是挂单状态' } }))
+      e2e.click(cancel)
+      result.note = await e2e.wait(() => {
+        const node = [...document.querySelectorAll('.pt-note')].find(el => el.innerText.includes('订单已结束'))
+        return node ? node.innerText.trim() : null
+      }, 4000)
+      result.error = document.querySelector('.pt-error')?.innerText ?? null
+      window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
+      window.__fake.on('order/cancel', payload => ({
+        id: payload.orderId, requestId: 'r', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        qty: 100, limitPrice: 11.4, status: 'canceled', createdAt: ts(), updatedAt: ts(),
+      }))
+      return result
+    }
     if (name === 'orders-truncation') {
       window.__fake.on('list/orders', () => Array.from({ length: 31 }, (_, index) => ({
         id: `hist-${index}`, requestId: `r-hist-${index}`, symbol: '600519.XSHG', side: 'buy', type: 'limit',
