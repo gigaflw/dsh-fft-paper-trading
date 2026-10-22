@@ -673,9 +673,40 @@
       result.symbol = document.querySelector('.pt-ticket-form input')?.value ?? null
       return result
     }
-    if (name === 'market-watch') {
+    if (name === 'market-board') {
+      window.__boardCalls = []
+      window.__fake.on('market/list', payload => {
+        window.__boardCalls.push({ board: payload.board, page: payload.page })
+        return { state: 'ok', page: 1, quotes: [{ symbol: payload.board === 'star' ? '688001.SH' : '600519.XSHG', name: payload.board === 'star' ? '华兴源创' : '贵州茅台', last: 10, prevClose: 10, status: 'trading' }] }
+      })
       const tab = e2e.byText('行情')[0]
       e2e.click(tab)
+      await e2e.wait(() => (document.querySelector('.pt-main')?.innerText ?? '').includes('全市场'))
+      e2e.click(e2e.byText('科创板')[0])
+      result.text = await e2e.wait(() => {
+        const text = document.querySelector('.pt-main')?.innerText ?? ''
+        return text.includes('688001') && text.includes('科创板') ? text : null
+      }, 4000)
+      result.call = window.__boardCalls.at(-1)
+      e2e.click(e2e.byText('主板')[0])
+      await e2e.wait(() => (document.querySelector('.pt-main')?.innerText ?? '').includes('600519'))
+      window.__fake.on('market/list', payload => ({
+        state: 'ok',
+        page: payload.page ?? 1,
+        quotes: [
+          { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+          { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+        ],
+      }))
+      return result
+    }
+    if (name === 'market-watch') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 100))
+      const tab = e2e.byText('行情')[0]
+      e2e.click(tab)
+      await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length >= 2, 5000)
       const watchOnlyButton = e2e.byText('只看自选')[0]
       if (watchOnlyButton && watchOnlyButton.getAttribute('data-active') === 'true') e2e.click(watchOnlyButton)
       await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length === 2)
