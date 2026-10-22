@@ -436,6 +436,7 @@
         const button = document.querySelector('.pt-ticket-submit')
         return button && !button.disabled ? button : null
       }, 5000)
+      if (!submit) throw new Error('place-retry: submit disabled; title=' + (document.querySelector('.pt-ticket-submit')?.title ?? 'none'))
       e2e.click(submit)
       result.receipt = await e2e.wait(() => {
         const text = document.querySelector('.pt-receipt')?.innerText ?? null
@@ -1282,6 +1283,50 @@
       window.__fake.on('market/status', () => ({ phase: 'continuous_am', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }))
       return result
     }
+    if (name === 'place-retry') {
+      window.__fake.on('account/get', () => window.__baseStockAccount)
+      const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
+      if (refresh) e2e.click(refresh)
+      await new Promise(done => setTimeout(done, 500))
+      const trade = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
+      if (trade) e2e.click(trade)
+      await new Promise(done => setTimeout(done, 300))
+      const marketType = e2e.byText('市价')[0]
+      if (!marketType) throw new Error('place-retry: no 市价; tabs=' + [...document.querySelectorAll('.pt-tab')].map(tab => tab.innerText).join(','))
+      e2e.click(marketType)
+      await new Promise(done => setTimeout(done, 200))
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[0], '600519')
+      e2e.setInput(inputs[1], '100')
+      window.__placeIds = []
+      let calls = 0
+      window.__fake.on('order/place', (payload) => {
+        window.__placeIds.push(payload.requestId)
+        calls += 1
+        if (calls === 1) return { __error: { code: 'INTERNAL', message: '网络中断' } }
+        return {
+          id: 'o-retry', requestId: payload.requestId, symbol: '600519.XSHG', side: 'buy', type: 'market',
+          qty: 100, status: 'filled', fillPrice: 1318.49, feesCents: 514, createdAt: ts(), updatedAt: ts(),
+        }
+      })
+      const submit = await e2e.wait(() => {
+        const button = document.querySelector('.pt-ticket-submit')
+        return button && !button.disabled ? button : null
+      }, 5000)
+      if (!submit) throw new Error('place-retry: submit disabled; title=' + (document.querySelector('.pt-ticket-submit')?.title ?? 'none'))
+      e2e.click(submit)
+      result.failure = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('网络中断') ? text : null
+      }, 4000)
+      e2e.click(submit)
+      result.receipt = await e2e.wait(() => {
+        const text = document.querySelector('.pt-receipt')?.innerText ?? null
+        return text !== null && text.includes('成交') ? text : null
+      }, 5000)
+      result.ids = window.__placeIds.slice()
+      return result
+    }
     if (name === 'slot-identity') {
       const stockButton = e2e.byText('股票')[0]
       if (stockButton) e2e.click(stockButton)
@@ -1404,6 +1449,7 @@
         const button = document.querySelector('.pt-ticket-submit')
         return button && !button.disabled ? button : null
       }, 5000)
+      if (!submit) throw new Error('place-retry: submit disabled; title=' + (document.querySelector('.pt-ticket-submit')?.title ?? 'none'))
       e2e.click(submit)
       result.receipt = await e2e.wait(() => {
         const text = document.querySelector('.pt-receipt')?.innerText ?? null
