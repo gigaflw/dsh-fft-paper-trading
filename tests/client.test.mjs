@@ -79,10 +79,17 @@ test('browser bundle: the page surface fills the column, only the content is cap
   const root = /\.pt-root \{[^}]*\}/.exec(css)
   assert.ok(root, 'page surface rule missing')
   assert.ok(!root[0].includes('max-width'), 'the surface must not cap its own width')
-  assert.match(css, /\.pt-inner \{[^}]*max-width:1080px/)
+  const inner = /\.pt-inner \{[^}]*\}/.exec(css)
+  assert.ok(inner, 'inner layout rule missing')
+  assert.ok(!inner[0].includes('max-width'), 'the inner column must use the full width')
+  assert.match(css, /\.pt-workspace \{[^}]*grid-template-columns/)
+  assert.match(css, /\.pt-kline-rail \{[^}]*position:sticky/)
+  assert.match(css, /\.pt-kline-body \{[^}]*clamp\(420px/)
   assert.match(css, /\.pt-table-wrap \{ overflow-x:auto/)
   // Breakpoints follow the panel width (container queries), not the window.
-  for (const width of ['900px', '760px', '520px']) {
-    assert.ok(css.includes(`@container (max-width: ${width})`), `missing container breakpoint ${width}`)
+  assert.match(css, /\.pt-root \{[^}]*container:paper-panel \/ inline-size/)
+  assert.match(css, /\.pt-main \{[^}]*container:paper-main \/ inline-size/)
+  for (const [name, width] of [['paper-main', '760px'], ['paper-panel', '1100px'], ['paper-panel', '760px'], ['paper-panel', '520px']]) {
+    assert.ok(css.includes(`@container ${name} (max-width: ${width})`), `missing ${name} breakpoint ${width}`)
   }
 })
