@@ -366,3 +366,22 @@ test('service: contracts, quotes and status degrade without throwing', async () 
     await close(subject)
   }
 })
+
+test('service: no close price means no risk liquidation, but expiry still closes', async () => {
+  const subject = setup('futures-missing-close')
+  try {
+    await subject.service.place(draft({ qty: 300 }), 'open')
+    subject.data.setQuote(3170)
+    await subject.service.tick()
+    subject.data.fail = true
+    subject.setNow(clockAt(DATE1, SETTLEMENT + 5))
+    const tick = await subject.service.tick()
+    assert.ok(tick.notices.some(notice => notice.includes('跳过收盘强平')))
+    const account = await subject.service.account()
+    assert.equal(account.tradeDate, DATE2)
+    assert.equal(account.positions.length, 1, 'positions survive a settlement without close prices')
+    assert.equal(account.positions[0].qty, 300)
+  } finally {
+    await close(subject)
+  }
+})
