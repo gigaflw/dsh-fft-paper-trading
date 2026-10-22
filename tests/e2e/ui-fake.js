@@ -4,7 +4,12 @@
   const stockAccount = {
     accountId: 'default', currency: 'CNY', initialCash: 1000000, cash: 985000,
     marketValue: 15000, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
-    tradeDate: '2026-10-22', blocked: false, positions: [], settings: {},
+    tradeDate: '2026-10-22', blocked: false,
+    positions: [
+      { symbol: '600519.XSHG', name: '贵州茅台', qty: 100, available: 100, avgCost: 1400, lastPrice: 1450.5, marketValueCents: 14505000, unrealizedPnlCents: 505000, unrealizedPnlPct: 0.036 },
+      { symbol: '000001.XSHE', name: '平安银行', qty: 5000, available: 0, avgCost: 11.2, lastPrice: 11.3, marketValueCents: 5650000, unrealizedPnlCents: 50000, unrealizedPnlPct: 0.0089 },
+    ],
+    settings: {},
   }
   const quote = { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1440, marketTs: ts(), source: 'fake' }
   const preview = {
@@ -192,7 +197,7 @@
       result.kline = Boolean(document.querySelector('.pt-kline-body'))
       return result
     }
-    if (name === 'basket') {
+    if (name === 'basket' || name === 'basket-preview') {
       const tab = e2e.byText('一揽子')[0]
       if (!tab) throw new Error('basket tab missing')
       e2e.click(tab)
@@ -215,6 +220,7 @@
       }, 5000)
       const confirm = await e2e.wait(() => e2e.byText('确认下单')[0])
       result.confirmDisabled = confirm ? confirm.disabled : null
+      if (name === 'basket-preview') return result
       if (confirm && !confirm.disabled) e2e.click(confirm)
       result.result = await e2e.wait(() => {
         const table = [...document.querySelectorAll('.pt-table')].find(el => el.innerText.includes('成交价'))
