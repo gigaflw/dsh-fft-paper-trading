@@ -11,6 +11,7 @@ tests/e2e/
   offline-ledger.mjs     # 账本：重复 seq / 旧 settings / NaN 锁户 / 重置 / 导出
   offline-matching.mjs   # 撮合：最新价全成 / 挂单 / 无 TTL / 旧账本迁移
   offline-basket.mjs     # 一揽子：预览/整批下单/幂等/收盘拒绝（真服务+真账本）
+  futures-offline.mjs    # 期货：开多/保证金/重启重放/平仓/日结算/收盘拒单
   ui-panel.mjs           # 面板 UI：真 React DOM + 真 bundle + 假 RPC（不启 DSH）
   ui-fake.js             # ui-panel 的假后端与点击剧本
 ```
@@ -81,14 +82,16 @@ node tests/e2e/ui-panel.mjs    # 0 = 全过；失败打印第一处 DOM 断言
 股票面板 → 一揽子导入/预览/下单 → 期货账户切换/搜合约/预览/开仓。不需要调试口，也不会碰到
 真实账本；`REACT_UMD_DIR` 可覆盖 UMD 目录，`CHROME` 可覆盖 headless Chromium 路径。
 
-## 5. 一揽子离线断言
+## 5. 一揽子 / 期货离线断言
 
 ```bash
 node tests/e2e/offline-basket.mjs   # 0 = 全过
+node tests/e2e/futures-offline.mjs  # 0 = 全过
 ```
 
-用真 `PaperService` + 真 RPC handler + 假行情，覆盖 CSV 预览、费用/整手/剩余现金、逐行成交、
-账本落盘、同 `batchId` 幂等与收盘后整批拒绝。数据写 `tmp/`，不碰 `~/.dsh`。
+都用真 service + 真 RPC handler + 假行情：一揽子覆盖 CSV 预览、费用/整手/剩余现金、逐行成交、
+账本落盘、同 `batchId` 幂等与收盘后整批拒绝；期货覆盖开多、保证金/现金/权益、重启重放、次日平仓、
+15:30 日结算、收盘后拒单。数据写 `tmp/`，不碰 `~/.dsh`。
 
 ## 坑（都是真踩过的）
 
