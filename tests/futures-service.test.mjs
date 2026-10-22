@@ -62,6 +62,13 @@ test('F2: day-session open long/short and close both sides, prices tick-quantize
     assert.equal(long.status, 'filled')
     assert.equal(long.note, '复盘备注')
     assert.equal((await subject.service.orders()).find(order => order.id === long.id).note, '复盘备注')
+    const reopened = new FuturesService({
+      repo: new FuturesRepo({ home: subject.home }),
+      data: subject.data,
+      calendar: new WeekdayTradingCalendar(),
+      now: subject.now,
+    })
+    assert.equal((await reopened.orders()).find(order => order.id === long.id).note, '复盘备注')
     assert.equal(long.fillPrice, 3200, 'fill price is quantized to the tick')
     const short = await subject.service.place(draft({ side: 'short' }), 'open-short')
     assert.equal(short.status, 'filled')
