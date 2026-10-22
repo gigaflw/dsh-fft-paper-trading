@@ -190,6 +190,8 @@ try {
   const stockClose = await scenario('stock-close')
   assert('T+1-locked position explains the disabled sell', stockClose.t1Disabled === true && typeof stockClose.t1Title === 'string' && stockClose.t1Title.includes('T+1'), JSON.stringify(stockClose))
   assert('selling a position fills and submits the ticket', stockClose.side === '卖出' && stockClose.qty === '100' && stockClose.submitLabel === '卖出' && typeof stockClose.receipt === 'string' && stockClose.receipt.includes('卖出'), JSON.stringify(stockClose))
+  const stockLimit = await scenario('stock-limit')
+  assert('a resting limit order shows the pending receipt', typeof stockLimit.receipt === 'string' && stockLimit.receipt.includes('挂单') && stockLimit.receipt.includes('11.40'), JSON.stringify(stockLimit))
   const cancelOrder = await scenario('cancel-order')
   assert('cancelling a pending order clears the table', typeof cancelOrder.empty === 'string' && cancelOrder.empty.includes('无挂单'), JSON.stringify(cancelOrder))
   const resetAccount = await scenario('reset-account')
@@ -229,6 +231,8 @@ try {
   const futuresCalls = await evaluate('window.__calls.filter(item => item.startsWith("futures/"))')
   assert('futures RPCs were called', ['futures/account/get', 'futures/contracts', 'futures/preview', 'futures/order'].every(item => futuresCalls.includes(item)), JSON.stringify(futuresCalls))
 
+  const futuresLimit = await scenario('futures-limit')
+  assert('a resting futures limit shows the pending receipt', typeof futuresLimit.receipt === 'string' && futuresLimit.receipt.includes('挂单') && futuresLimit.receipt.includes('3,300.00'), JSON.stringify(futuresLimit))
   const futuresReview = await scenario('futures-review')
   assert('futures review renders without a stale variable', typeof futuresReview.body === 'string' && futuresReview.body.includes('已实现盈亏'), JSON.stringify(futuresReview))
   assert('a slow review period cannot overwrite the newer one', Array.isArray(futuresReview.stats) && futuresReview.stats.some(text => text.includes('成交笔数') && text.trim().endsWith('30')), JSON.stringify(futuresReview.stats))
