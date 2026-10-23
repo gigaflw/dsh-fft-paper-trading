@@ -163,6 +163,71 @@ export interface PreviewView {
     session?: MarketStatus;
     warnings: string[];
 }
+/**
+ * One-row outcome of a basket allocation.
+ *
+ * `ok` means the row can be bought with the computed `qty > 0`; every other
+ * status explains why nothing was allocated, so the client can show the row
+ * without inventing text of its own.
+ */
+export type BasketRowStatus = 'ok' | 'zero_lot' | 'no_quote' | 'suspended';
+/** A CSV problem; `line` is 1-based, 0 means the whole file. */
+export interface BasketIssue {
+    line: number;
+    message: string;
+}
+/** One allocated row of `basket/preview`; the client renders this verbatim. */
+export interface BasketPlanRow {
+    symbol: string;
+    name?: string;
+    /** Normalised weight, 0..1. */
+    weight: number;
+    /** `floor(budgetCents * weight)`, before the fee buy-back. */
+    targetCents: number;
+    price?: number;
+    qty: number;
+    amountCents: number;
+    feesCents: number;
+    /** `amountCents / budgetCents`; rows without allocation report 0. */
+    actualWeight: number;
+    status: BasketRowStatus;
+    warning?: string;
+}
+/** `basket/preview`: parse + allocation, read-only. */
+export interface BasketPreview {
+    /** Effective budget: min(user input, available cash). */
+    budgetCents: number;
+    /** Available cash before the basket. */
+    cashCents: number;
+    rows: BasketPlanRow[];
+    issues: BasketIssue[];
+    warnings: string[];
+    totalAmountCents: number;
+    totalFeesCents: number;
+    /** `budgetCents - totalAmountCents - totalFeesCents`. */
+    residualCents: number;
+    /** `cashCents - totalAmountCents - totalFeesCents`. */
+    cashAfterCents: number;
+    session: MarketStatus;
+}
+/** One confirmed row of a basket order; the caller sends back preview quantities. */
+export interface BasketOrderInput {
+    symbol: string;
+    /** 100-share multiple, > 0. */
+    qty: number;
+}
+export interface BasketOrderRowResult {
+    symbol: string;
+    order?: OrderView;
+    /** Present when the row was rejected; the readable reason, not just a code. */
+    error?: string;
+}
+/** `basket/place`: per-row outcome plus the cash left after the whole batch. */
+export interface BasketOrderResult {
+    batchId: string;
+    rows: BasketOrderRowResult[];
+    cashAfterCents: number;
+}
 export interface EquityPoint {
     date: string;
     equity: number;
