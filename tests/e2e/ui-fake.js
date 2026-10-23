@@ -122,7 +122,7 @@
         .filter(line => line !== '' && !line.startsWith('#'))
       const header = rowsInFile.length > 0 && !/\d/.test(rowsInFile[0].split(',')[1] ?? '') ? 1 : 0
       if (rowsInFile.length - header > 20) {
-        return { __error: { code: 'INVALID_ARGUMENT', message: `一揽子最多 20 只，本次 ${rowsInFile.length - header} 只` } }
+        return { __error: { code: 'INVALID_ARGUMENT', message: `批量最多 20 只，本次 ${rowsInFile.length - header} 只` } }
       }
       const budgetCents = typeof payload.budgetCents === 'number' ? payload.budgetCents : 100000000
       const rows = [
@@ -567,7 +567,7 @@
       return result
     }
     if (name === 'basket' || name === 'basket-preview') {
-      const tab = e2e.byText('一揽子')[0]
+      const tab = e2e.byText('批量')[0]
       if (!tab) throw new Error('basket tab missing')
       e2e.click(tab)
       const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
@@ -578,7 +578,7 @@
       fileInput.dispatchEvent(new Event('change', { bubbles: true }))
       result.fileName = await e2e.wait(() => e2e.text('.pt-card').includes('basket.csv') ? 'basket.csv' : null)
       const previewButton = await e2e.wait(() => {
-        const button = e2e.byText('预览配股')[0]
+        const button = e2e.byText('批量预览')[0]
         return button && !button.disabled ? button : null
       })
       if (!previewButton) throw new Error('preview button never enabled (csv not read)')
@@ -887,7 +887,7 @@
       return result
     }
     if (name === 'basket-race') {
-      const tab = e2e.byText('一揽子')[0]
+      const tab = e2e.byText('批量')[0]
       e2e.click(tab)
       const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
       if (!fileInput) throw new Error('basket-race: no file input')
@@ -912,7 +912,7 @@
       })
       await setFile('a.csv', '代码,权重\n600519,50%\n000001,50%\n300750,0%')
       await new Promise(done => setTimeout(done, 500))
-      const preview = e2e.byText('预览配股')[0]
+      const preview = e2e.byText('批量预览')[0]
       if (!preview) throw new Error('preview button missing')
       e2e.click(preview)
       await new Promise(done => setTimeout(done, 60))
@@ -924,7 +924,7 @@
       return result
     }
     if (name === 'reset-basket') {
-      const tab = e2e.byText('一揽子')[0]
+      const tab = e2e.byText('批量')[0]
       e2e.click(tab)
       const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
       if (!fileInput) throw new Error('reset-basket: no file input')
@@ -935,7 +935,7 @@
       fileInput.dispatchEvent(new Event('change', { bubbles: true }))
       await e2e.wait(() => e2e.text('.pt-trade').includes('reset.csv'))
       await new Promise(done => setTimeout(done, 600))
-      e2e.click(e2e.byText('预览配股')[0])
+      e2e.click(e2e.byText('批量预览')[0])
       await e2e.wait(() => [...document.querySelectorAll('.pt-main table')].some(table => table.innerText.includes('目标权重')), 5000)
       result.rowsBefore = document.querySelectorAll('.pt-main table tbody tr').length
       window.confirm = () => true
@@ -948,7 +948,7 @@
       return result
     }
     if (name === 'basket-oversize') {
-      const tab = e2e.byText('一揽子')[0]
+      const tab = e2e.byText('批量')[0]
       e2e.click(tab)
       const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
       if (!fileInput) throw new Error('basket-oversize: no file input')
@@ -963,7 +963,7 @@
       return result
     }
     if (name === 'basket-budget') {
-      const tab = e2e.byText('一揽子')[0]
+      const tab = e2e.byText('批量')[0]
       e2e.click(tab)
       const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
       if (!fileInput) throw new Error('basket-budget: no file input')
@@ -975,7 +975,7 @@
       const budget = [...document.querySelectorAll('.pt-trade input')].find(input => input.placeholder.includes('默认可用'))
       e2e.setInput(budget, 'abc')
       result.disabled = await e2e.wait(() => {
-        const button = e2e.byText('预览配股')[0]
+        const button = e2e.byText('批量预览')[0]
         return button && button.disabled ? button.title : null
       }, 3000)
       result.note = [...document.querySelectorAll('.pt-trade .pt-note')].some(node => node.innerText.includes('预算需为正数'))
@@ -985,7 +985,7 @@
       return result
     }
     if (name === 'basket-error') {
-      const tab = e2e.byText('一揽子')[0]
+      const tab = e2e.byText('批量')[0]
       if (!tab) throw new Error('basket tab missing')
       e2e.click(tab)
       const fileInput = await e2e.wait(() => document.querySelector('input[type=file]'))
@@ -1001,7 +1001,7 @@
       // otherwise the handler still closes over the previous (3-row) csv.
       await new Promise(done => setTimeout(done, 600))
       const previewButton = await e2e.wait(() => {
-        const button = e2e.byText('预览配股')[0]
+        const button = e2e.byText('批量预览')[0]
         return button && !button.disabled ? button : null
       })
       if (!previewButton) throw new Error('preview button never enabled')

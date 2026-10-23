@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 离线端到端：一揽子买入（真账本 + 真服务 + 真 RPC handler + 假行情）。
+ * 离线端到端：批量买入（真账本 + 真服务 + 真 RPC handler + 假行情）。
  *
  *   node tests/e2e/offline-basket.mjs
  *

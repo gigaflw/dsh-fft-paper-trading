@@ -155,7 +155,7 @@ function sliceBetween(from, to) {
 test('browser bundle: the basket tab imports a CSV and places the previewed rows', () => {
   assert.match(source, /function BasketTab/, 'the basket tab is a component of its own')
   // It follows the single-order ticket in the stock tab strip.
-  assert.match(source, /\[\['trade', '交易'\], \['basket', '一揽子'\]/, 'the basket tab sits right after the ticket')
+  assert.match(source, /\[\['trade', '交易'\], \['basket', '批量'\]/, 'the basket tab sits right after the ticket')
   assert.match(source, /basket\/preview/)
   assert.match(source, /basket\/place/)
   // The picker accepts CSV only and the browser half reads the file itself.

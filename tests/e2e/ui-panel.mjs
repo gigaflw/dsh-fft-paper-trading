@@ -6,7 +6,7 @@
  *
  * 不启动 DSH，也不碰 ~/.dsh：把 lib/client.js 里的面板挂到一个静态页，
  * window.fetch 指向本页内的假后端，然后按用户路径点按钮、断言 DOM。
- * 覆盖：股票面板、一揽子导入→预览→下单、期货账户切换→搜合约→预览→开仓。
+ * 覆盖：股票面板、批量导入→预览→下单、期货账户切换→搜合约→预览→开仓。
  *
  * 前置：`pnpm build`（本脚本直接读 lib/client.js）；react-dom UMD 需要可寻址。
  * 本机一次性准备：
@@ -147,7 +147,7 @@ try {
 
   // 1. 股票面板
   const stock = await scenario('stock')
-  assert('stock tabs include basket', Array.isArray(stock.tabs) && ['交易', '一揽子', '行情', '复盘'].every(label => stock.tabs.some(tab => tab.startsWith(label))), JSON.stringify(stock.tabs))
+  assert('stock tabs include basket', Array.isArray(stock.tabs) && ['交易', '批量', '行情', '复盘'].every(label => stock.tabs.some(tab => tab.startsWith(label))), JSON.stringify(stock.tabs))
   assert('stock stats render', Array.isArray(stock.stats) && stock.stats.length === 4, JSON.stringify(stock.stats))
   assert('stock header labels total PnL correctly', stock.stats.some(text => text.includes('累计盈亏')) && !stock.stats.some(text => text.includes('浮动盈亏')), JSON.stringify(stock.stats))
   assert('zero PnL is neutral, not +0.00', !stock.stats.some(text => text.includes('+0.00')), JSON.stringify(stock.stats))
@@ -163,7 +163,7 @@ try {
   assert('limit draft blocks an empty price', stock.limitSubmitDisabled === true)
   await shot('stock-trade.png')
 
-  // 2. 一揽子
+  // 2. 批量
   const nextTradeDate = await scenario('next-trade-date')
   assert('a rolled ledger date is labeled as the next trading day', typeof nextTradeDate.sub === 'string' && nextTradeDate.sub.includes('下一交易日'), JSON.stringify(nextTradeDate))
   const basketPreview = await scenario('basket-preview')
