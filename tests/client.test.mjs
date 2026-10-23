@@ -85,6 +85,9 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /formSymbol\.current/)
   // Every code the panel shows is the host's canonical `code.exchange` id.
   assert.match(source, /const symbolText = quote => \[quote\?\.symbol, quote\?\.name\]/)
+  // dsh_kline's own suffixes are folded to canonical ids before they reach the ticket.
+  assert.match(source, /XSHG: 'SH'/)
+  assert.match(source, /foldHostSymbol/)
   assert.ok(!source.includes('bareSymbol('), 'display must not strip the exchange suffix')
   // The stock preview effect must use the standalone quote state, not a
   // removed `setQuote` (which threw a ReferenceError on an unfinished draft).

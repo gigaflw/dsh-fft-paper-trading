@@ -73,10 +73,20 @@ window.__ModuleLoader__.load({
     const halfWidthDigits = value => String(value ?? '')
       .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
       .replace(/[Ａ-Ｚ]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
-    // The ticket accepts `600519`, `600519.SH` and `SH600519`; the host folds
-    // them into one canonical id, so the panel keeps letters and the dot.
+    // dsh_kline hands over its own suffixes (`600519.XSHG`, `000001.XSHE`); the
+    // ticket shows the canonical `.SH` / `.SZ` form and the host accepts both.
+    const HOST_EXCHANGES = { XSHG: 'SH', XSHE: 'SZ', BJSE: 'BJ' }
+    const foldHostSymbol = value => {
+      const text = halfWidthDigits(value).toUpperCase().trim()
+      const suffix = /^(\d{6})\.([A-Z]{2,4})$/.exec(text)
+      if (suffix === null) return text
+      const exchange = HOST_EXCHANGES[suffix[2]]
+      return exchange === undefined ? text : `${suffix[1]}.${exchange}`
+    }
+    // The ticket accepts `600519`, `600519.SH`, `600519.XSHG` and `SH600519`;
+    // the host folds them into one canonical id, so the panel keeps letters.
     const symbolInput = value => {
-      const text = halfWidthDigits(value).toUpperCase().replace(/[^0-9A-Z.]/g, '').slice(0, 10)
+      const text = foldHostSymbol(value).replace(/[^0-9A-Z.]/g, '').slice(0, 12)
       const prefix = /^(SH|SZ|BJ)(\d{6})$/.exec(text)
       return prefix === null ? text : `${prefix[2]}.${prefix[1]}`
     }
@@ -637,7 +647,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-ticket' },
             h('div', { className: 'pt-ticket-form' },
               h(Field, { label: '代码' }, h('input', {
-                className: 'pt-input', value: form.symbol, maxLength: 10, spellCheck: false,
+                className: 'pt-input', value: form.symbol, maxLength: 12, spellCheck: false,
                 placeholder: '600519 / 000001.SZ',
                 onChange: event => setForm(prev => ({ ...prev, symbol: symbolInput(event.target.value) })),
               })),
@@ -2256,7 +2266,7 @@ window.__ModuleLoader__.load({
        * symbol must not pop "已从 K 线选择 …" over the user's real feedback.
        */
       const klineIdentity = useCallback((symbol, name) => {
-        const next = String(symbol ?? '').trim().toUpperCase()
+        const next = foldHostSymbol(symbol)
         if (!next || next === String(formSymbol.current).trim().toUpperCase()) return
         formSymbol.current = next
         setForm(prev => ({ ...prev, symbol: next }))

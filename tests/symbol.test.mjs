@@ -27,6 +27,12 @@ test('symbol: the exchange is part of the identity, not a suffix to strip', () =
   assert.equal(idOf('sh600519'), '600519.SH')
   assert.equal(idOf('SZ000001'), '000001.SZ')
   assert.equal(idOf('６００５１９'), '600519.SH')
+  // dsh_kline publishes `XSHG` / `XSHE` / `BJSE`; they are aliases, not a
+  // second identity, so the ticket and the server agree on one id.
+  assert.equal(idOf('600519.XSHG'), '600519.SH')
+  assert.equal(idOf('000001.xshe'), '000001.SZ')
+  assert.equal(idOf('920001.BJSE'), '920001.BJ')
+  assert.equal(idOf('000001.XSHG'), '000001.SH')
 })
 
 test('symbol: an exchange that cannot host the code is rejected, never guessed', () => {
