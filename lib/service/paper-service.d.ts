@@ -1,4 +1,4 @@
-import type { AccountView, CashFlowEntry, DayReport, FillView, LedgerExport, MarketStatus, OrderDraft, OrderView, PaperSettings, PreviewView, ReviewView, RoundTrip, TickView } from '../contract.js';
+import type { AccountView, BasketOrderInput, BasketOrderResult, BasketPreview, CashFlowEntry, DayReport, FillView, LedgerExport, MarketStatus, OrderDraft, OrderView, PaperSettings, PreviewView, ReviewView, RoundTrip, TickView } from '../contract.js';
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js';
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js';
 import type { AccountStore } from '../store/port.js';
@@ -78,6 +78,28 @@ export declare class PaperService {
     private orderDateFor;
     preview(draft: OrderDraft): Promise<PreviewView>;
     place(draft: OrderDraft, requestId?: string): Promise<OrderView>;
+    /**
+     * Read-only basket preview: parse the CSV, fetch every quote in one call and
+     * split the budget into lots. Parse problems ride back in `issues`; only a
+     * structurally invalid explicit budget throws.
+     */
+    basketPreview(csv: string, budgetCents?: number): Promise<BasketPreview>;
+    /**
+     * Place a confirmed basket.
+     *
+     * Everything that can reject the whole batch is checked before the store
+     * transaction, so a failed pre-check writes nothing. Inside the transaction
+     * rows are submitted in input order with `${batchId}:${symbol}` as the
+     * request id: a retried batch reuses its orders, and a row that still fails
+     * (e.g. a concurrent change) is written as `order.rejected` while the rest of
+     * the batch continues.
+     */
+    basketPlace(rows: readonly BasketOrderInput[], batchId?: string): Promise<BasketOrderResult>;
+    /** Shape-level basket checks that must run before any pre-check touches IO. */
+    private basketRows;
+    private basketResultRow;
+    /** A row failed pre-check: the batch is refused with that row's code. */
+    private basketRejection;
     cancel(orderId: string): Promise<OrderView>;
     tick(): Promise<TickView>;
     orders(): Promise<OrderView[]>;
