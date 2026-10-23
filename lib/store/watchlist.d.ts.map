@@ -1,1 +1,0 @@
-{"version":3,"file":"watchlist.d.ts","sourceRoot":"","sources":["../../src/store/watchlist.ts"],"names":[],"mappings":"AAIA,kEAAkE;AAClE,qBAAa,cAAc;IACzB,OAAO,CAAC,QAAQ,CAAC,IAAI,CAAQ;gBAEjB,IAAI,EAAE,MAAM;IAIlB,IAAI,IAAI,OAAO,CAAC,MAAM,EAAE,CAAC;IAYzB,KAAK,CAAC,OAAO,EAAE,MAAM,EAAE,GAAG,OAAO,CAAC,MAAM,EAAE,CAAC;CAQlD"}

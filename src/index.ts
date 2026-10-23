@@ -32,7 +32,7 @@ import { PaperScheduler } from './service/scheduler.js'
 import { AccountRepo } from './store/repo.js'
 import { FuturesRepo } from './store/futures-repo.js'
 import { resolveDshHome } from './store/paths.js'
-import { WatchlistStore } from './store/watchlist.js'
+import { ShortlistStore } from './store/shortlist.js'
 import { DEFAULT_ACCOUNT_ID } from './contract.js'
 import { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js'
 import type { FuturesMarketDataPort } from './data/futures-market-data-port.js'
@@ -65,7 +65,7 @@ export function apply(ctx: Context): void {
   const logger = ctx.logger('ft-paper-trading')
   const home = resolveDshHome()
   const repo = new AccountRepo({ home, accountId: DEFAULT_ACCOUNT_ID, logger })
-  const watchlist = new WatchlistStore(home)
+  const shortlist = new ShortlistStore(home)
 
   // One mutable slot behind a stable port: the service holds the port, the
   // FTShare adapter can appear (or disappear) later without rebuilding the
@@ -80,7 +80,7 @@ export function apply(ctx: Context): void {
     marketList: input => market.marketList(input),
   }
 
-  const service = new PaperService({ repo, data, calendar, watchlist, logger })
+  const service = new PaperService({ repo, data, calendar, shortlist, logger })
   const paperHandler = createPaperRpcHandler(service)
 
   // Futures: separate ledger, separate service, same route. The market-data

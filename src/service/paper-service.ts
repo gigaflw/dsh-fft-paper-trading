@@ -37,14 +37,14 @@ import type { AccountState, LedgerEvent, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js'
 import type { AccountStore } from '../store/port.js'
-import type { WatchlistStore } from '../store/watchlist.js'
+import type { ShortlistStore } from '../store/shortlist.js'
 import { PaperError } from './errors.js'
 
 export interface PaperServiceOptions {
   repo: AccountStore
   data: MarketDataPort
   calendar: TradingCalendarPort
-  watchlist?: WatchlistStore
+  shortlist?: ShortlistStore
   settings?: PaperSettings
   accountId?: string
   now?: () => Date
@@ -730,13 +730,13 @@ export class PaperService {
     return this.sanitiseDataNotice(result, '行情暂不可用')
   }
 
-  async watchlist(): Promise<string[]> {
-    return this.options.watchlist?.read() ?? []
+  async shortlist(): Promise<string[]> {
+    return this.options.shortlist?.read() ?? []
   }
 
-  async setWatchlist(symbols: string[]): Promise<string[]> {
-    if (this.options.watchlist === undefined) throw new PaperError('INVALID_ARGUMENT', '自选存储不可用', 503)
-    return this.options.watchlist.write(symbols)
+  async setShortlist(symbols: string[]): Promise<string[]> {
+    if (this.options.shortlist === undefined) throw new PaperError('INVALID_ARGUMENT', '备选存储不可用', 503)
+    return this.options.shortlist.write(symbols)
   }
 
   async settingsView(): Promise<PaperSettings> {

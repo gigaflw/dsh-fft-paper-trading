@@ -109,10 +109,10 @@
         { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
       ],
     }),
-    'watchlist/get': () => ({ symbols: window.__watchSymbols ?? [] }),
-    'watchlist/set': payload => {
-      window.__watchSymbols = payload.symbols
-      window.__watchCalls = [...(window.__watchCalls ?? []), payload.symbols]
+    'shortlist/get': () => ({ symbols: window.__shortlistSymbols ?? [] }),
+    'shortlist/set': payload => {
+      window.__shortlistSymbols = payload.symbols
+      window.__shortlistCalls = [...(window.__shortlistCalls ?? []), payload.symbols]
       return { symbols: payload.symbols }
     },
 
@@ -767,45 +767,45 @@
       }))
       return result
     }
-    if (name === 'market-watch') {
+    if (name === 'market-shortlist') {
       const tradeTab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '交易')
       if (tradeTab) e2e.click(tradeTab)
       await new Promise(done => setTimeout(done, 100))
       const tab = e2e.byText('行情')[0]
       e2e.click(tab)
       await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length >= 2, 5000)
-      const watchOnlyButton = e2e.byText('只看自选')[0]
-      if (watchOnlyButton && watchOnlyButton.getAttribute('data-active') === 'true') e2e.click(watchOnlyButton)
+      const shortlistOnlyButton = e2e.byText('只看备选')[0]
+      if (shortlistOnlyButton && shortlistOnlyButton.getAttribute('data-active') === 'true') e2e.click(shortlistOnlyButton)
       await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length === 2)
       result.rows = document.querySelectorAll('.pt-main tbody tr').length
       result.nextDisabled = e2e.byText('下一页')[0]?.disabled
       e2e.click(e2e.byText('☆')[0])
-      await e2e.wait(() => window.__watchSymbols?.length === 1)
-      result.added = window.__watchSymbols.slice()
-      e2e.click(e2e.byText('只看自选')[0])
+      await e2e.wait(() => window.__shortlistSymbols?.length === 1)
+      result.added = window.__shortlistSymbols.slice()
+      e2e.click(e2e.byText('只看备选')[0])
       await new Promise(done => setTimeout(done, 400))
       result.filteredRows = document.querySelectorAll('.pt-main tbody tr').length
       e2e.click(e2e.byText('★')[0])
-      await e2e.wait(() => window.__watchSymbols?.length === 0)
-      result.removed = window.__watchSymbols.slice()
-      result.calls = (window.__watchCalls ?? []).map(list => list.join(','))
+      await e2e.wait(() => window.__shortlistSymbols?.length === 0)
+      result.removed = window.__shortlistSymbols.slice()
+      result.calls = (window.__shortlistCalls ?? []).map(list => list.join(','))
       result.empty = await e2e.wait(() => {
-        const node = [...document.querySelectorAll('.pt-empty')].find(el => el.innerText.includes('还没有自选'))
+        const node = [...document.querySelectorAll('.pt-empty')].find(el => el.innerText.includes('还没有备选'))
         return node ? node.innerText.trim() : null
       }, 3000)
       return result
     }
-    if (name === 'watch-concurrent') {
+    if (name === 'shortlist-concurrent') {
       const tab = e2e.byText('行情')[0]
       e2e.click(tab)
-      const watchOnlyButton = e2e.byText('只看自选')[0]
-      if (watchOnlyButton && watchOnlyButton.getAttribute('data-active') === 'true') e2e.click(watchOnlyButton)
+      const shortlistOnlyButton = e2e.byText('只看备选')[0]
+      if (shortlistOnlyButton && shortlistOnlyButton.getAttribute('data-active') === 'true') e2e.click(shortlistOnlyButton)
       await e2e.wait(() => document.querySelectorAll('.pt-main tbody tr').length === 2)
       // Slow the write so the second click lands before the first response; a
-      // state-only implementation loses the first favourite.
-      window.__fake.on('watchlist/set', async payload => {
+      // state-only implementation loses the first shortlist entry.
+      window.__fake.on('shortlist/set', async payload => {
         await new Promise(done => setTimeout(done, 300))
-        window.__watchSymbols = payload.symbols
+        window.__shortlistSymbols = payload.symbols
         return { symbols: payload.symbols }
       })
       const stars = e2e.byText('☆')
@@ -815,10 +815,10 @@
       const second = e2e.byText('☆')[0]
       if (second) e2e.click(second)
       await new Promise(done => setTimeout(done, 1200))
-      result.symbols = window.__watchSymbols ? window.__watchSymbols.slice() : null
+      result.symbols = window.__shortlistSymbols ? window.__shortlistSymbols.slice() : null
       result.rows = [...document.querySelectorAll('.pt-main tbody tr')].map(row => row.innerText)
       result.starCount = e2e.byText('☆').length
-      result.watchedCount = e2e.byText('★').length
+      result.shortlistedCount = e2e.byText('★').length
       return result
     }
     if (name === 'search-race') {

@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PaperService } from '../lib/service/paper-service.js'
 import { AccountRepo } from '../lib/store/repo.js'
-import { WatchlistStore } from '../lib/store/watchlist.js'
+import { ShortlistStore } from '../lib/store/shortlist.js'
 import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
 
 const at = (date, hhmm) => new Date(`${date}T${hhmm}:00+08:00`)
@@ -48,7 +48,7 @@ function makeData() {
   }
 }
 
-test('p1: search, list, watchlist and status', async () => {
+test('p1: search, list, shortlist and status', async () => {
   const home = makeHome('p1-market')
   const data = makeData()
   data.setQuote('600519', 10, at('2026-10-21', '10:00').toISOString())
@@ -57,7 +57,7 @@ test('p1: search, list, watchlist and status', async () => {
     repo,
     data,
     calendar: new WeekdayTradingCalendar(),
-    watchlist: new WatchlistStore(home),
+    shortlist: new ShortlistStore(home),
     now: () => at('2026-10-21', '10:00'),
   })
   try {
@@ -71,9 +71,9 @@ test('p1: search, list, watchlist and status', async () => {
     const list = await service.marketList({ page: 1 })
     assert.equal(list.quotes.length, 2)
 
-    assert.deepEqual(await service.watchlist(), [])
-    assert.deepEqual(await service.setWatchlist(['600519', '600519', ' 300750 ']), ['600519', '300750'])
-    assert.deepEqual(await service.watchlist(), ['600519', '300750'])
+    assert.deepEqual(await service.shortlist(), [])
+    assert.deepEqual(await service.setShortlist(['600519', '600519', ' 300750 ']), ['600519', '300750'])
+    assert.deepEqual(await service.shortlist(), ['600519', '300750'])
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -89,7 +89,7 @@ test('p1: daily report, cash flow and round trips after a close', async () => {
     repo,
     data,
     calendar: new WeekdayTradingCalendar(),
-    watchlist: new WatchlistStore(home),
+    shortlist: new ShortlistStore(home),
     now: () => now.current,
   })
   try {

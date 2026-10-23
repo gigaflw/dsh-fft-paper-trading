@@ -66,7 +66,7 @@ node tests/e2e/cdp.mjs eval 'document.querySelector(".pt-receipt")?.innerText'
 node tests/e2e/cdp.mjs watch 30          # 盯面板是否被切走/是否刷新
 ```
 
-走查清单（真实行情下的 9 步）：看行情与时段 → 搜索/自选 → 输入即预览 → 下单拿回报 → 持仓/资金 →
+走查清单（真实行情下的 9 步）：看行情与时段 → 搜索/备选 → 输入即预览 → 下单拿回报 → 持仓/资金 →
 盘后改价看刷新 → 收盘看日终 → 隔夜看 T+1 与今日盈亏 → 复盘看成交/流水/回合。
 
 ## 4. 面板 UI 端到端（不开 DSH）

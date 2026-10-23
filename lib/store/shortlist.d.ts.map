@@ -1,0 +1,1 @@
+{"version":3,"file":"shortlist.d.ts","sourceRoot":"","sources":["../../src/store/shortlist.ts"],"names":[],"mappings":"AAIA,kEAAkE;AAClE,qBAAa,cAAc;IACzB,OAAO,CAAC,QAAQ,CAAC,IAAI,CAAQ;IAC7B,uFAAuF;IACvF,OAAO,CAAC,QAAQ,CAAC,QAAQ,CAAQ;gBAErB,IAAI,EAAE,MAAM;IAKlB,IAAI,IAAI,OAAO,CAAC,MAAM,EAAE,CAAC;IAWzB,KAAK,CAAC,OAAO,EAAE,MAAM,EAAE,GAAG,OAAO,CAAC,MAAM,EAAE,CAAC;CAQlD"}

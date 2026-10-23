@@ -344,7 +344,7 @@ export interface CashFlowEntry {
   ref?: string
 }
 
-export interface WatchlistView {
+export interface ShortlistView {
   symbols: string[]
 }
 

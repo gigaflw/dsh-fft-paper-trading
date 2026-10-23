@@ -295,7 +295,7 @@ export interface CashFlowEntry {
     balance: number;
     ref?: string;
 }
-export interface WatchlistView {
+export interface ShortlistView {
     symbols: string[];
 }
 /** `account/export`: the raw ledger file, so a locked account can be inspected. */

@@ -54,6 +54,7 @@ dsh plugin add /Users/ben/workspace/dsh/dsh-fft-paper-trading
 - 股票：`$DSH_HOME/paper-trading/default/events.jsonl`
 - 期货：`$DSH_HOME/paper-trading/futures/events.jsonl`
 - 期货合约索引缓存：`$DSH_HOME/paper-trading/futures/contracts.json`
+- 行情备选：`$DSH_HOME/paper-trading/shortlist.json`（UI 偏好，非账本）
 
 一行一事件（0600 权限）。重置会先备份到同目录 `backups/`，再把账本原子重写为单条 genesis。
 账户锁定时横幅直接显示失败原因与账本绝对路径，可「导出账本」或「复制路径」；Agent 侧用
