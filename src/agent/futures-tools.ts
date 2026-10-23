@@ -9,7 +9,7 @@
  */
 
 import type { ParameterSchemaSpec, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineJsonTool as defineTool } from './json-tools.js'
 import type {
   FuturesAccountView,
   FuturesContractView,

@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path'
 import type { ParameterSchemaSpec, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineJsonTool as defineTool } from './json-tools.js'
 import type { OrderDraft } from '../contract.js'
 import type { PaperService } from '../service/paper-service.js'
 import { PaperError } from '../service/errors.js'
