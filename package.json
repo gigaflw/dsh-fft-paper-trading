@@ -1,6 +1,6 @@
 {
   "name": "@ft/dsh-fft-paper-trading",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A-share paper trading plugin for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
