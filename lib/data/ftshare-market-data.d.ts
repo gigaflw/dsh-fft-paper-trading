@@ -41,6 +41,7 @@ export declare class FtshareMarketData implements MarketDataPort {
     private call;
     private quoteFor;
     private toQuote;
+    /** List rows carry the exchange too; an unknown code is dropped, never guessed. */
     private toListQuote;
     quotes(symbols: string[]): Promise<QuoteResult>;
     private suspendedSymbols;

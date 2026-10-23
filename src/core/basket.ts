@@ -11,6 +11,7 @@
 import type { BasketIssue, BasketPlanRow, PaperSettings, Quote } from '../contract.js'
 import { amountCents, roundPrice } from './money.js'
 import { computeFees } from './fees.js'
+import { isTradable, tryParseSymbol } from './symbol.js'
 
 /** v1 cap: a basket is read at a glance and quotes are fetched one by one. */
 export const MAX_BASKET_SYMBOLS = 20
@@ -90,14 +91,6 @@ function parseWeightCell(raw: string): { weight: number; percentShorthand: boole
   return { weight: value, percentShorthand: false }
 }
 
-/** `SH600519`, `600519.SH`, `600519.XSHG` or bare `600519` → `600519`. */
-function normaliseSymbol(raw: string): string | undefined {
-  const bare = halfWidth(raw.trim()).toUpperCase()
-    .replace(/^(SH|SZ|BJ)(?=\d{6}$)/, '')
-    .replace(/\.(SH|SZ|BJ|XSHG|XSHE)$/, '')
-  return /^\d{6}$/.test(bare) ? bare : undefined
-}
-
 /**
  * A header is only assumed when the first data line has a second column that
  * cannot be a weight; a one-column first line is treated as a bad data row so
@@ -140,11 +133,16 @@ export function parseBasketCsv(csv: string): BasketParseResult {
       if (looksLikeHeader(cells)) continue
     }
 
-    const symbol = normaliseSymbol(cells[0] ?? '')
-    if (symbol === undefined) {
-      issues.push({ line: lineNo, message: `证券代码无效：${cells[0] ?? ''}，需要 6 位数字` })
+    const parsed = tryParseSymbol(cells[0] ?? '')
+    if (!parsed.ok) {
+      issues.push({ line: lineNo, message: `证券代码无效：${cells[0] ?? ''}（${parsed.message}）` })
       continue
     }
+    if (!isTradable(parsed.symbol)) {
+      issues.push({ line: lineNo, message: `${parsed.symbol.id} 不是可买入的股票` })
+      continue
+    }
+    const symbol = parsed.symbol.id
     const weight = parseWeightCell(cells[1] ?? '')
     if (weight === null) {
       issues.push({ line: lineNo, message: `权重无效：${cells[1] ?? '(空)'}，需要正数或百分比` })

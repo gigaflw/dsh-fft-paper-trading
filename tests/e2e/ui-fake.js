@@ -6,14 +6,14 @@
     marketValue: 15000, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
     tradeDate: '2026-10-22', blocked: false,
     positions: [
-      { symbol: '600519.XSHG', name: '贵州茅台', qty: 100, available: 100, avgCost: 1400, lastPrice: 1450.5, marketValueCents: 14505000, unrealizedPnlCents: 505000, unrealizedPnlPct: 0.036 },
-      { symbol: '000001.XSHE', name: '平安银行', qty: 5000, available: 0, avgCost: 11.2, lastPrice: 11.3, marketValueCents: 5650000, unrealizedPnlCents: 50000, unrealizedPnlPct: 0.0089 },
+      { symbol: '600519.SH', name: '贵州茅台', qty: 100, available: 100, avgCost: 1400, lastPrice: 1450.5, marketValueCents: 14505000, unrealizedPnlCents: 505000, unrealizedPnlPct: 0.036 },
+      { symbol: '000001.SZ', name: '平安银行', qty: 5000, available: 0, avgCost: 11.2, lastPrice: 11.3, marketValueCents: 5650000, unrealizedPnlCents: 50000, unrealizedPnlPct: 0.0089 },
     ],
     settings: {},
   }
-  const quote = { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1440, marketTs: ts(), source: 'fake' }
+  const quote = { symbol: '600519.SH', name: '贵州茅台', last: 1450.5, prevClose: 1440, marketTs: ts(), source: 'fake' }
   const preview = {
-    symbol: '600519.XSHG', side: 'buy', type: 'market', qty: 100, price: 1450.5,
+    symbol: '600519.SH', side: 'buy', type: 'market', qty: 100, price: 1450.5,
     amountCents: 14505000, commissionCents: 500, stampCents: 0, transferCents: 14,
     totalFeesCents: 514, cashAfterCents: 98500000 - 14505000 - 514, availableQty: 100, maxBuyQty: 600,
     quote, warnings: [],
@@ -67,7 +67,7 @@
     'order/cancel': (payload) => {
       window.__pendingOrders = []
       return {
-        id: payload.orderId, requestId: 'r-cancel', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        id: payload.orderId, requestId: 'r-cancel', symbol: '600519.SH', side: 'buy', type: 'limit',
         qty: 100, limitPrice: 11.4, status: 'canceled', reason: '手动撤单',
         createdAt: ts(), updatedAt: ts(),
       }
@@ -80,7 +80,7 @@
     'review/roundtrips': () => [],
     'market/bars': () => ({ state: 'ok', bars: Array.from({ length: 30 }, (_, i) => ({ time: `2026-09-${String(i % 28 + 1).padStart(2, '0')}`, open: 1400 + i, high: 1420 + i, low: 1380 + i, close: 1410 + i })) }),
     'market/quote': () => ({ state: 'ok', quotes: [{ ...quote, last: window.__quoteLast ?? quote.last, marketTs: ts() }] }),
-    'market/search': query => (query === 'zzzzzz' ? [] : [{ symbol: '600519.XSHG', name: '贵州茅台' }]),
+    'market/search': query => (query === 'zzzzzz' ? [] : [{ symbol: '600519.SH', name: '贵州茅台' }]),
     'order/preview': (payload) => {
       const last = window.__quoteLast ?? quote.last
       return {
@@ -105,8 +105,8 @@
       state: 'ok',
       page: payload.page ?? 1,
       quotes: [
-        { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
-        { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+        { symbol: '600519.SH', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+        { symbol: '000001.SZ', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
       ],
     }),
     'shortlist/get': () => ({ symbols: window.__shortlistSymbols ?? [] }),
@@ -126,8 +126,8 @@
       }
       const budgetCents = typeof payload.budgetCents === 'number' ? payload.budgetCents : 100000000
       const rows = [
-        { symbol: '600519', name: '贵州茅台', weight: 0.3, targetCents: Math.floor(budgetCents * 0.3), price: 1450.5, qty: 100, amountCents: 14505000, feesCents: 3626, actualWeight: 0.145, status: 'ok' },
-        { symbol: '000001', name: '平安银行', weight: 0.2, targetCents: Math.floor(budgetCents * 0.2), price: 11.3, qty: 8800, amountCents: 9944000, feesCents: 2983, actualWeight: 0.099, status: 'ok' },
+        { symbol: '600519.SH', name: '贵州茅台', weight: 0.3, targetCents: Math.floor(budgetCents * 0.3), price: 1450.5, qty: 100, amountCents: 14505000, feesCents: 3626, actualWeight: 0.145, status: 'ok' },
+        { symbol: '000001.SZ', name: '平安银行', weight: 0.2, targetCents: Math.floor(budgetCents * 0.2), price: 11.3, qty: 8800, amountCents: 9944000, feesCents: 2983, actualWeight: 0.099, status: 'ok' },
         { symbol: '300750', name: '宁德时代', weight: 0.5, targetCents: Math.floor(budgetCents * 0.5), price: 240, qty: 0, amountCents: 0, feesCents: 0, actualWeight: 0, status: 'zero_lot', warning: '一手约 24000 元' },
       ]
       const totalAmountCents = rows.reduce((sum, row) => sum + row.amountCents, 0)
@@ -354,7 +354,7 @@
         const text = document.querySelector('.pt-ticket-form')?.innerText ?? ''
         return text.includes('行情暂不可用') || text.includes('未取到行情') ? text : null
       }, 5000)
-      window.__fake.on('market/quote', () => ({ state: 'ok', quotes: [{ ...window.__fake.quote ?? {}, symbol: '600001.XSHG', name: '邯郸钢铁', last: 10.5, prevClose: 10.4, marketTs: ts(), source: 'fake' }] }))
+      window.__fake.on('market/quote', () => ({ state: 'ok', quotes: [{ ...window.__fake.quote ?? {}, symbol: '600001.SH', name: '邯郸钢铁', last: 10.5, prevClose: 10.4, marketTs: ts(), source: 'fake' }] }))
       const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
       if (refresh) e2e.click(refresh)
       result.quote = await e2e.wait(() => {
@@ -448,7 +448,7 @@
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
       window.__pendingOrders = [{
-        id: 'o-cancel', requestId: 'r-pending', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        id: 'o-cancel', requestId: 'r-pending', symbol: '600519.SH', side: 'buy', type: 'limit',
         qty: 100, limitPrice: 11.4, status: 'queued', createdAt: ts(), updatedAt: ts(),
       }]
       const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
@@ -469,7 +469,7 @@
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
       e2e.click(tab)
       window.__pendingOrders = [{
-        id: 'o-stale-cancel', requestId: 'r-stale-cancel', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        id: 'o-stale-cancel', requestId: 'r-stale-cancel', symbol: '600519.SH', side: 'buy', type: 'limit',
         qty: 100, limitPrice: 11.4, status: 'queued', createdAt: ts(), updatedAt: ts(),
       }]
       const refresh = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '刷新')
@@ -488,14 +488,14 @@
       result.error2 = document.querySelector('.pt-error')?.innerText ?? null
       window.__fake.on('list/orders', () => window.__pendingOrders ?? stockOrders)
       window.__fake.on('order/cancel', payload => ({
-        id: payload.orderId, requestId: 'r', symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        id: payload.orderId, requestId: 'r', symbol: '600519.SH', side: 'buy', type: 'limit',
         qty: 100, limitPrice: 11.4, status: 'canceled', createdAt: ts(), updatedAt: ts(),
       }))
       return result
     }
     if (name === 'orders-truncation') {
       window.__fake.on('list/orders', () => Array.from({ length: 31 }, (_, index) => ({
-        id: `hist-${index}`, requestId: `r-hist-${index}`, symbol: '600519.XSHG', side: 'buy', type: 'limit',
+        id: `hist-${index}`, requestId: `r-hist-${index}`, symbol: '600519.SH', side: 'buy', type: 'limit',
         qty: 100, limitPrice: 10, status: 'filled', fillPrice: 10, note: '历史备注'.repeat(20), createdAt: ts(), updatedAt: ts(),
       })))
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
@@ -513,7 +513,7 @@
     }
     if (name === 'stock-reasons') {
       window.__fake.on('list/orders', () => [{
-        id: 's-reason', requestId: 'r-s-reason', symbol: '600519.XSHG', side: 'sell', type: 'market',
+        id: 's-reason', requestId: 'r-s-reason', symbol: '600519.SH', side: 'sell', type: 'market',
         qty: 100, status: 'canceled', reason: 'insufficient_position', createdAt: ts(), updatedAt: ts(),
       }])
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText.startsWith('订单'))
@@ -645,10 +645,10 @@
         { ts: '2026-10-21T02:00:00.000Z', type: 'buy', amount: -145050, balance: 0 },
       ])
       window.__fake.on('review/roundtrips', () => [
-        { symbol: '600519.XSHG', qty: 100, cost: 1450.5, proceeds: 1400, pnl: -5050, holdingDays: 2 },
+        { symbol: '600519.SH', qty: 100, cost: 1450.5, proceeds: 1400, pnl: -5050, holdingDays: 2 },
       ])
       window.__fake.on('list/trades', () => Array.from({ length: 31 }, (_, index) => ({
-        id: `t${index}`, ts: '2026-10-21T03:00:00.000Z', symbol: '600519.XSHG', side: 'sell', qty: 100,
+        id: `t${index}`, ts: '2026-10-21T03:00:00.000Z', symbol: '600519.SH', side: 'sell', qty: 100,
         price: 1400, amountCents: 14000000, feesCents: 500,
       })))
       const tab = [...document.querySelectorAll('.pt-tab')].find(item => item.innerText === '复盘')
@@ -686,8 +686,8 @@
     if (name === 'market-retry') {
       let attempts = 0
       const rows = [
-        { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
-        { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+        { symbol: '600519.SH', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+        { symbol: '000001.SZ', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
       ]
       window.__fake.on('market/list', () => {
         attempts += 1
@@ -709,8 +709,8 @@
       window.__fake.on('market/list', () => ({
         state: 'stale', notice: '行情为缓存数据', page: 1,
         quotes: [
-          { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
-          { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+          { symbol: '600519.SH', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+          { symbol: '000001.SZ', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
         ],
       }))
       const tab = e2e.byText('行情')[0]
@@ -724,8 +724,8 @@
       window.__fake.on('market/list', payload => ({
         state: 'ok', page: payload.page ?? 1,
         quotes: [
-          { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
-          { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+          { symbol: '600519.SH', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+          { symbol: '000001.SZ', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
         ],
       }))
       return result
@@ -744,7 +744,7 @@
       window.__boardCalls = []
       window.__fake.on('market/list', payload => {
         window.__boardCalls.push({ board: payload.board, page: payload.page })
-        return { state: 'ok', page: 1, quotes: [{ symbol: payload.board === 'star' ? '688001.SH' : '600519.XSHG', name: payload.board === 'star' ? '华兴源创' : '贵州茅台', last: 10, prevClose: 10, status: 'trading' }] }
+        return { state: 'ok', page: 1, quotes: [{ symbol: payload.board === 'star' ? '688001.SH' : '600519.SH', name: payload.board === 'star' ? '华兴源创' : '贵州茅台', last: 10, prevClose: 10, status: 'trading' }] }
       })
       const tab = e2e.byText('行情')[0]
       e2e.click(tab)
@@ -761,8 +761,8 @@
         state: 'ok',
         page: payload.page ?? 1,
         quotes: [
-          { symbol: '600519.XSHG', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
-          { symbol: '000001.XSHE', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
+          { symbol: '600519.SH', name: '贵州茅台', last: 1450.5, prevClose: 1430, status: 'trading' },
+          { symbol: '000001.SZ', name: '平安银行', last: 11.3, prevClose: 11.4, status: 'trading' },
         ],
       }))
       return result
@@ -831,7 +831,7 @@
       window.__fake.on('market/search', async payload => {
         const first = payload.query === 'aaa'
         await new Promise(done => setTimeout(done, first ? 300 : 50))
-        return [{ symbol: first ? '600519.XSHG' : '000001.XSHE', name: first ? '贵州茅台' : '平安银行' }]
+        return [{ symbol: first ? '600519.SH' : '000001.SZ', name: first ? '贵州茅台' : '平安银行' }]
       })
       e2e.setInput(input, 'aaa')
       await new Promise(done => setTimeout(done, 200))
@@ -841,12 +841,12 @@
       e2e.click(e2e.byText('搜索')[0])
       await new Promise(done => setTimeout(done, 600))
       result.hits = e2e.text('.pt-main .pt-card')
-      window.__fake.on('market/search', query => (query === '600519' ? [{ symbol: '600519.XSHG', name: '贵州茅台' }] : []))
+      window.__fake.on('market/search', query => (query === '600519' ? [{ symbol: '600519.SH', name: '贵州茅台' }] : []))
       return result
     }
     if (name === 'market-pages') {
       const pageRows = page => Array.from({ length: 50 }, (_, index) => ({
-        symbol: `600${String((page - 1) * 50 + index).padStart(3, '0')}.XSHG`,
+        symbol: `600${String((page - 1) * 50 + index).padStart(3, '0')}.SH`,
         name: `分页股${(page - 1) * 50 + index}`, last: 10 + index / 100, prevClose: 10,
       }))
       window.__fake.on('market/list', payload => ({ state: 'ok', page: payload.page ?? 1, quotes: pageRows(payload.page ?? 1) }))
@@ -899,7 +899,7 @@
         await e2e.wait(() => e2e.text('.pt-trade').includes(name))
       }
       const oneRow = {
-        symbol: '600519', name: '贵州茅台', weight: 1, targetCents: 10000000, price: 1450.5, qty: 100,
+        symbol: '600519.SH', name: '贵州茅台', weight: 1, targetCents: 10000000, price: 1450.5, qty: 100,
         amountCents: 14505000, feesCents: 3626, actualWeight: 0.145, status: 'ok',
       }
       window.__fake.on('basket/preview', async () => {
@@ -1055,7 +1055,7 @@
       await new Promise(done => setTimeout(done, 300))
       window.__fake.on('order/preview', (payload) => ({
         ...preview,
-        symbol: '600519.XSHG', side: 'buy', type: payload.type ?? 'market', qty: Number(payload.qty) || 1000,
+        symbol: '600519.SH', side: 'buy', type: payload.type ?? 'market', qty: Number(payload.qty) || 1000,
         price: 1318, amountCents: 131800000, commissionCents: 397, stampCents: 0, transferCents: 1318,
         totalFeesCents: 1715, cashAfterCents: -100, availableQty: 0, maxBuyQty: 0,
         quote: { ...quote, last: 1318, marketTs: ts() }, warnings: ['可用资金不足，最多可买 0 股'],
@@ -1071,7 +1071,7 @@
     if (name === 'stock-oversell') {
       window.__fake.on('order/preview', (payload) => ({
         ...preview,
-        symbol: '600519.XSHG', side: 'sell', type: 'market', qty: Number(payload.qty) || 200,
+        symbol: '600519.SH', side: 'sell', type: 'market', qty: Number(payload.qty) || 200,
         price: 1318, amountCents: 26360000, commissionCents: 79, stampCents: 13180, transferCents: 26,
         totalFeesCents: 13285, cashAfterCents: 100000000, availableQty: 100, maxBuyQty: 0,
         quote: { ...quote, last: 1318, marketTs: ts() }, warnings: ['可卖 100 股，超过部分不可卖'],
@@ -1089,7 +1089,7 @@
     if (name === 'stock-limit-band') {
       window.__fake.on('order/preview', (payload) => ({
         ...preview,
-        symbol: '600519.XSHG', side: 'buy', type: 'limit', qty: 100,
+        symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100,
         price: Number(payload.limitPrice) || 2000, amountCents: 20000000,
         commissionCents: 60, stampCents: 0, transferCents: 200, totalFeesCents: 260,
         cashAfterCents: 50000000, availableQty: 0, maxBuyQty: 0,
@@ -1119,7 +1119,7 @@
       await new Promise(done => setTimeout(done, 300))
       window.__fake.on('market/quote', () => ({ state: 'failed', quotes: [], notice: '行情暂不可用' }))
       window.__fake.on('order/preview', (payload) => ({
-        symbol: payload.symbol ?? '600000.XSHG', side: payload.side ?? 'buy', type: 'market',
+        symbol: payload.symbol ?? '600000.SH', side: payload.side ?? 'buy', type: 'market',
         qty: payload.qty ?? 100, price: 0, amountCents: 0, commissionCents: 0, stampCents: 0,
         transferCents: 0, totalFeesCents: 0, cashAfterCents: 100000000, availableQty: 0, maxBuyQty: 0,
         quote: null, warnings: ['没有可用行情，请填写参考价或改用限价单'],
@@ -1161,7 +1161,7 @@
     if (name === 'stock-suspended') {
       window.__fake.on('order/preview', (payload) => ({
         ...preview,
-        symbol: '600519.XSHG', side: 'buy', type: 'market', qty: 100,
+        symbol: '600519.SH', side: 'buy', type: 'market', qty: 100,
         price: 1318, amountCents: 13180000, commissionCents: 39, stampCents: 0, transferCents: 13,
         totalFeesCents: 52, cashAfterCents: 80000000, availableQty: 0, maxBuyQty: 0,
         quote: { ...quote, status: 'suspended', last: 1318, marketTs: ts() },
@@ -1199,7 +1199,7 @@
     if (name === 'stock-preopen') {
       window.__fake.on('order/preview', (payload) => ({
         ...preview,
-        symbol: '600519.XSHG', side: 'buy', type: 'limit', qty: 100, price: 10.5,
+        symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, price: 10.5,
         amountCents: 105000, commissionCents: 5, stampCents: 0, transferCents: 1,
         totalFeesCents: 6, cashAfterCents: 90000000, availableQty: 0, maxBuyQty: 900,
         quote: { ...quote, status: 'trading', last: 10.5, marketTs: ts() },
@@ -1371,7 +1371,7 @@
         calls += 1
         if (calls === 1) return { __error: { code: 'INTERNAL', message: '网络中断' } }
         return {
-          id: 'o-retry', requestId: payload.requestId, symbol: '600519.XSHG', side: 'buy', type: 'market',
+          id: 'o-retry', requestId: payload.requestId, symbol: '600519.SH', side: 'buy', type: 'market',
           qty: 100, status: 'filled', fillPrice: 1318.49, feesCents: 514, createdAt: ts(), updatedAt: ts(),
         }
       })
@@ -1405,7 +1405,7 @@
         window.__placeCalls += 1
         await new Promise(done => setTimeout(done, 200))
         return {
-          id: 'o-double', requestId: payload.requestId, symbol: '600519.XSHG', side: 'buy', type: 'market',
+          id: 'o-double', requestId: payload.requestId, symbol: '600519.SH', side: 'buy', type: 'market',
           qty: 100, status: 'filled', fillPrice: 1318.49, feesCents: 514, createdAt: ts(), updatedAt: ts(),
         }
       })
@@ -1938,7 +1938,7 @@
     window.__root = ReactDOM.createRoot(document.getElementById('root'))
     window.__root.render(React.createElement(main.component, { renderSlot: () => null }))
     function IdentitySlot({ onIdentity }) {
-      React.useEffect(() => { onIdentity?.('000001', '平安银行') }, [])
+      React.useEffect(() => { onIdentity?.('000001.SZ', '平安银行') }, [])
       return React.createElement('div', { className: 'dsh-kline-native-host' })
     }
     function ShadowSlot() {

@@ -83,6 +83,9 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /showFallback \? h\('div', \{ className: 'pt-row'/)
   // K-line identity must not rewrite the ticket when the symbol did not change.
   assert.match(source, /formSymbol\.current/)
+  // Every code the panel shows is the host's canonical `code.exchange` id.
+  assert.match(source, /const symbolText = quote => \[quote\?\.symbol, quote\?\.name\]/)
+  assert.ok(!source.includes('bareSymbol('), 'display must not strip the exchange suffix')
   // The stock preview effect must use the standalone quote state, not a
   // removed `setQuote` (which threw a ReferenceError on an unfinished draft).
   // The browser e2e renders a short symbol to cover the runtime path.
@@ -101,7 +104,7 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /amountFormat/)
   assert.match(source, /order\/preview/, 'preview runs automatically')
   assert.match(source, /\}, 300\)/, 'preview is debounced by 300 ms')
-  assert.match(source, /输入 6 位代码后自动计算/)
+  assert.match(source, /输入代码后自动计算/)
   assert.match(source, /计算中…/)
   // The post-submit receipt is rendered from the fill record.
   assert.match(source, /function ReceiptLine/)

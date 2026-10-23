@@ -173,7 +173,7 @@ try {
   // 4：市价买入 → 立即全成，成交价=最新价
   await submitAndExpect('成交回报', '成交：买入', '持仓 1')
   text = await panel()
-  assert('市价单立即成交', text.includes('成交：买入 000001 100 股'))
+  assert('市价单立即成交', text.includes('成交：买入 000001.SZ 平安银行 100 股'))
   assert('成交价无滑点', text.includes('价 11.30'))
   assert('成交后现金', text.includes('98864.99'))
 

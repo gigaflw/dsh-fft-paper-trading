@@ -166,7 +166,7 @@ export class AccountRepo implements AccountStore {
         const position = state.positions[quote.symbol]
         if (position !== undefined) {
           position.lastPrice = quote.last
-          position.lastTs = quote.ts
+          position.lastTs = quote.marketTs ?? undefined
         }
       }
       return state

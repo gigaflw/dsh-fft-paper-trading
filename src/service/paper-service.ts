@@ -26,8 +26,9 @@ import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
 import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, type EngineResult } from '../core/engine.js'
 import { todayTradeDate, tradeDateOf } from '../core/calendar.js'
 import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt, shanghaiClock } from '../core/session.js'
-import { m2Settings } from '../core/settings.js'
+import { normalizeSettings } from '../core/settings.js'
 import { allocateBasket, parseBasketCsv } from '../core/basket.js'
+import { requireStock, tryParseSymbol, type ListedSymbol } from '../core/symbol.js'
 import { computeFees } from '../core/fees.js'
 import { prevCloseFromBars } from '../core/price-limit.js'
 import { roundPrice } from '../core/money.js'
@@ -85,7 +86,7 @@ export class PaperService {
   private readonly now: () => Date
 
   constructor(private readonly options: PaperServiceOptions) {
-    this.settings = m2Settings(options.settings ?? DEFAULT_SETTINGS)
+    this.settings = normalizeSettings(options.settings ?? DEFAULT_SETTINGS)
     this.accountId = options.accountId ?? DEFAULT_ACCOUNT_ID
     this.now = options.now ?? (() => new Date())
   }
@@ -132,6 +133,20 @@ export class PaperService {
   private async tradeDateForNow(): Promise<string> {
     const today = todayTradeDate(this.now())
     return (await this.options.calendar.isTradingDay(today)) ? today : this.options.calendar.nextTradingDay(today)
+  }
+
+  /** Parse a symbol that may be any instrument (quote, chart, search result). */
+  private identify(symbol: string): ListedSymbol {
+    const parsed = tryParseSymbol(symbol)
+    if (!parsed.ok) throw new PaperError(parsed.code, parsed.message, 400)
+    return parsed.symbol
+  }
+
+  /** Parse a symbol that must be an A-share stock; indices and funds cannot trade. */
+  private identifyStock(symbol: string): ListedSymbol {
+    const parsed = requireStock(symbol)
+    if (!parsed.ok) throw new PaperError(parsed.code, parsed.message, 400)
+    return parsed.symbol
   }
 
   /** Symbols whose price the account cares about: open orders and held positions. */
@@ -356,7 +371,8 @@ export class PaperService {
     return state.tradeDate
   }
 
-  async preview(draft: OrderDraft): Promise<PreviewView> {
+  async preview(input: OrderDraft): Promise<PreviewView> {
+    const draft = { ...input, symbol: this.identifyStock(input.symbol).id }
     const state = await this.sync()
     const quote = await this.quoteFor(draft)
     // A limit order without a usable price is an unfinished draft, not a
@@ -369,7 +385,8 @@ export class PaperService {
     return previewOrder(state, draft, quote, state.settings, await this.marketStatusAt(state, this.ts()))
   }
 
-  async place(draft: OrderDraft, requestId: string = randomUUID()): Promise<OrderView> {
+  async place(input: OrderDraft, requestId: string = randomUUID()): Promise<OrderView> {
+    const draft = { ...input, symbol: this.identifyStock(input.symbol).id }
     const state = await this.sync()
     // A locked account must answer with the lock (and its reason) even when the
     // order would also fail the session gate; the repair path comes first.
@@ -584,8 +601,9 @@ export class PaperService {
     const seen = new Set<string>()
     const checked: BasketOrderInput[] = []
     for (const row of rows) {
-      const symbol = typeof row.symbol === 'string' ? row.symbol.trim() : ''
-      if (symbol === '') throw new PaperError('INVALID_ARGUMENT', '证券代码不能为空', 400)
+      const raw = typeof row.symbol === 'string' ? row.symbol.trim() : ''
+      if (raw === '') throw new PaperError('INVALID_ARGUMENT', '证券代码不能为空', 400)
+      const symbol = this.identifyStock(raw).id
       if (seen.has(symbol)) throw new PaperError('INVALID_ARGUMENT', `证券代码重复：${symbol}`, 400)
       seen.add(symbol)
       if (!Number.isInteger(row.qty) || row.qty <= 0) {
@@ -680,12 +698,14 @@ export class PaperService {
   }
 
   async quote(symbols: string[]): Promise<QuoteResult> {
-    return this.sanitiseDataNotice(await this.fetchQuotes(symbols), '行情暂不可用') as QuoteResult
+    const ids = symbols.map(symbol => this.identify(symbol).id)
+    return this.sanitiseDataNotice(await this.fetchQuotes(ids), '行情暂不可用') as QuoteResult
   }
 
   async dailyBars(symbol: string, limit = 60): Promise<BarsResult> {
+    const id = this.identify(symbol).id
     try {
-      const result = await this.options.data.dailyBars(symbol, Math.min(Math.max(1, limit), 250))
+      const result = await this.options.data.dailyBars(id, Math.min(Math.max(1, limit), 250))
       return this.sanitiseDataNotice(result, 'K 线数据暂不可用') as BarsResult
     } catch (error) {
       this.options.logger?.warn(`paper-trading: bars failed: ${String(error)}`)
@@ -694,8 +714,9 @@ export class PaperService {
   }
 
   async minuteBars(symbol: string, date?: string): Promise<BarsResult> {
+    const id = this.identify(symbol).id
     try {
-      const result = await this.options.data.minuteBars(symbol, date ?? todayTradeDate(this.now()))
+      const result = await this.options.data.minuteBars(id, date ?? todayTradeDate(this.now()))
       return this.sanitiseDataNotice(result, 'K 线数据暂不可用') as BarsResult
     } catch (error) {
       this.options.logger?.warn(`paper-trading: minute bars failed: ${String(error)}`)
@@ -731,12 +752,25 @@ export class PaperService {
   }
 
   async shortlist(): Promise<string[]> {
-    return this.options.shortlist?.read() ?? []
+    const stored = await this.options.shortlist?.read() ?? []
+    // Stored preferences predate the canonical id: keep the entries that still
+    // resolve, drop the rest, and never echo a bare code back to the panel.
+    const ids: string[] = []
+    for (const symbol of stored) {
+      const parsed = tryParseSymbol(symbol)
+      if (parsed.ok && !ids.includes(parsed.symbol.id)) ids.push(parsed.symbol.id)
+    }
+    return ids
   }
 
   async setShortlist(symbols: string[]): Promise<string[]> {
     if (this.options.shortlist === undefined) throw new PaperError('INVALID_ARGUMENT', '备选存储不可用', 503)
-    return this.options.shortlist.write(symbols)
+    const ids: string[] = []
+    for (const symbol of symbols) {
+      const id = this.identify(symbol).id
+      if (!ids.includes(id)) ids.push(id)
+    }
+    return this.options.shortlist.write(ids)
   }
 
   async settingsView(): Promise<PaperSettings> {
@@ -898,7 +932,7 @@ export class PaperService {
       this.options.logger?.warn(`paper-trading: reset could not replay the old ledger: ${String(error)}`)
       return undefined
     })
-    const settings = m2Settings(previous !== undefined && previous.tradeDate !== '' ? previous.settings : this.settings)
+    const settings = normalizeSettings(previous !== undefined && previous.tradeDate !== '' ? previous.settings : this.settings)
     const tradeDate = previous !== undefined && previous.tradeDate !== '' ? previous.tradeDate : await this.tradeDateForNow()
     const genesis: LedgerEvent = {
       seq: 1,

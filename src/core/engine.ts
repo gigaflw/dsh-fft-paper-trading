@@ -7,7 +7,7 @@ import { computeFees } from './fees.js'
 import { decideFill } from './matching.js'
 import { checkOrder } from './risk.js'
 import { applyEvent } from './ledger.js'
-import { m2Settings } from './settings.js'
+import { normalizeSettings } from './settings.js'
 
 export interface EngineResult {
   events: LedgerEvent[]
@@ -39,7 +39,7 @@ export function openAccount(
 ): EngineResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
-  const normalized = m2Settings(settings)
+  const normalized = normalizeSettings(settings)
   append(working, events, {
     type: 'account.opened',
     payload: { accountId, settings: normalized, initialCashCents: normalized.initialCashCents, tradeDate, ledgerVersion: PAPER_LEDGER_VERSION },
@@ -56,7 +56,7 @@ export function resetAccount(
 ): EngineResult {
   const working = clone(state)
   const events: LedgerEvent[] = []
-  const normalized = m2Settings(settings)
+  const normalized = normalizeSettings(settings)
   append(working, events, {
     type: 'account.reset',
     payload: { settings: normalized, initialCashCents: normalized.initialCashCents, tradeDate, reason },
@@ -92,7 +92,6 @@ function makeFill(
     fees: computeFees(amount, order.side, settings),
     ts,
     tradeDate: tradeDateOf(ts),
-    fillModel: settings.fillModel,
   }
 }
 
@@ -210,7 +209,7 @@ export function tick(
     const position = working.positions[quote.symbol]
     if (position !== undefined) {
       position.lastPrice = quote.last
-      position.lastTs = quote.marketTs ?? quote.ts ?? ts
+      position.lastTs = quote.marketTs ?? ts
     }
   }
 

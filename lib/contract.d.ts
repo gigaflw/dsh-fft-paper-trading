@@ -10,10 +10,10 @@ export declare const PAPER_ROUTE: "/api/ft-paper-trading";
 /** Request body cap; the route rejects anything larger before parsing. */
 export declare const PAPER_MAX_BODY_BYTES: number;
 /**
- * Ledger schema version. v2 added day.opened; v3 pins the M2 fill model
- * (slippage 0, unlimited fill at the last price) for every older ledger.
+ * Ledger schema version. v4 stores every security as its canonical
+ * `code.exchange` id; older ledgers used the raw input and are incompatible.
  */
-export declare const PAPER_LEDGER_VERSION = 3;
+export declare const PAPER_LEDGER_VERSION = 4;
 export type Side = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit';
 export type OrderStatus = 'queued' | 'pending' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired';
@@ -21,7 +21,6 @@ export type DataState = 'ok' | 'stale' | 'denied' | 'failed';
 export type Period = '7d' | '30d' | 'all';
 /** Trading phase in Asia/Shanghai; the session table lives in core/session.ts. */
 export type SessionPhase = 'pre_open' | 'continuous_am' | 'lunch' | 'continuous_pm' | 'auction_close' | 'closed';
-export type FillModel = 'volume-share' | 'unlimited';
 export interface PaperSettings {
     /** Starting cash in cents. */
     initialCashCents: number;
@@ -29,33 +28,20 @@ export interface PaperSettings {
     minCommissionCents: number;
     stampDutyRate: number;
     transferFeeRate: number;
-    /** Kept for ledger compatibility; M2 fills at `last` and never applies it. */
-    slippageBps: number;
     enableT1: boolean;
-    /** Kept for ledger compatibility; M2 has no quote TTL gate. */
-    quoteTtlSec: number;
     maxOrderNotionalCents: number;
-    /** Kept for ledger compatibility; M2 never caps a fill by bar volume. */
-    maxParticipationRate: number;
-    /** Kept for ledger compatibility; M2 only ever fills in one unlimited chunk. */
-    fillModel: FillModel;
 }
 export declare const DEFAULT_SETTINGS: PaperSettings;
 export interface Quote {
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     name?: string;
     last: number;
-    /** FTShare does not publish bid/ask; keep optional and never rely on it. */
-    bid?: number;
-    ask?: number;
     prevClose?: number;
     /** Market time of the quote/bar; null means it cannot fill. */
     marketTs?: string | null;
     /** Fetch time, for latency display only. */
     fetchedAt?: string;
-    /** @deprecated v0.1 field; treated as marketTs when marketTs is absent. */
-    ts?: string;
-    board?: string;
     st?: boolean;
     status?: string;
     source?: string;
@@ -69,6 +55,7 @@ export interface Bar {
     volume?: number;
 }
 export interface OrderDraft {
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     side: Side;
     type: OrderType;
@@ -82,6 +69,7 @@ export interface OrderDraft {
 export interface OrderView {
     id: string;
     requestId: string;
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     name?: string;
     side: Side;
@@ -104,6 +92,7 @@ export interface OrderView {
 export interface FillView {
     id: string;
     orderId: string;
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     name?: string;
     side: Side;
@@ -115,6 +104,7 @@ export interface FillView {
     tradeDate: string;
 }
 export interface PositionView {
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     name?: string;
     qty: number;
@@ -178,6 +168,7 @@ export interface BasketIssue {
 }
 /** One allocated row of `basket/preview`; the client renders this verbatim. */
 export interface BasketPlanRow {
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     name?: string;
     /** Normalised weight, 0..1. */
@@ -212,6 +203,7 @@ export interface BasketPreview {
 }
 /** One confirmed row of a basket order; the caller sends back preview quantities. */
 export interface BasketOrderInput {
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     /** 100-share multiple, > 0. */
     qty: number;
@@ -266,9 +258,9 @@ export interface PriceLimit {
     source: 'prev-close' | 'limit-list' | 'unknown';
 }
 export interface SymbolHit {
+    /** Canonical id, e.g. `000001.SZ`. */
     symbol: string;
     name: string;
-    board?: string;
 }
 export interface MarketListResult {
     state: DataState;
@@ -335,5 +327,5 @@ export interface RpcRequest {
     payload?: unknown;
 }
 export declare const DEFAULT_ACCOUNT_ID = "default";
-export type ErrorCode = 'ACCOUNT_BLOCKED' | 'INVALID_ARGUMENT' | 'INVALID_SYMBOL' | 'INVALID_QTY' | 'INVALID_LOT' | 'INSUFFICIENT_CASH' | 'INSUFFICIENT_POSITION' | 'T1_LOCKED' | 'MAX_NOTIONAL' | 'ORDER_NOT_FOUND' | 'ORDER_NOT_PENDING' | 'QUOTE_UNAVAILABLE' | 'QUOTE_STALE' | 'SESSION_CLOSED' | 'AUCTION_ONLY' | 'PRICE_LIMIT' | 'SUSPENDED' | 'INSUFFICIENT_LIQUIDITY';
+export type ErrorCode = 'ACCOUNT_BLOCKED' | 'INVALID_ARGUMENT' | 'INVALID_SYMBOL' | 'INVALID_QTY' | 'INVALID_LOT' | 'INSUFFICIENT_CASH' | 'INSUFFICIENT_POSITION' | 'T1_LOCKED' | 'MAX_NOTIONAL' | 'ORDER_NOT_FOUND' | 'ORDER_NOT_PENDING' | 'QUOTE_UNAVAILABLE' | 'SESSION_CLOSED' | 'AUCTION_ONLY' | 'PRICE_LIMIT' | 'SUSPENDED' | 'UNSUPPORTED_INSTRUMENT';
 //# sourceMappingURL=contract.d.ts.map

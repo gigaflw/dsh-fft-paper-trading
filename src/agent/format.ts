@@ -1,4 +1,5 @@
 import type { AccountView, OrderView, PositionView, PreviewView, ReviewView } from '../contract.js'
+import { formatSymbol } from '../core/symbol.js'
 
 function money(cents: number): string {
   return (cents / 100).toFixed(2)
@@ -18,7 +19,7 @@ export function renderAccount(account: AccountView): string {
   else {
     lines.push('持仓：')
     for (const position of account.positions) {
-      lines.push(`- ${position.symbol} ${position.name ?? ''} ${position.qty} 股（可卖 ${position.available}）成本 ${position.avgCost.toFixed(2)} 现价 ${position.lastPrice?.toFixed(2) ?? '—'}`)
+      lines.push(`- ${formatSymbol(position.symbol, position.name)} ${position.qty} 股（可卖 ${position.available}）成本 ${position.avgCost.toFixed(2)} 现价 ${position.lastPrice?.toFixed(2) ?? '—'}`)
     }
   }
   return lines.join('\n')
@@ -26,7 +27,7 @@ export function renderAccount(account: AccountView): string {
 
 export function renderPreview(preview: PreviewView): string {
   const lines = [
-    `预览：${preview.side === 'buy' ? '买入' : '卖出'} ${preview.symbol} ${preview.qty} 股 @ ${preview.price.toFixed(2)}`,
+    `预览：${preview.side === 'buy' ? '买入' : '卖出'} ${formatSymbol(preview.symbol, preview.quote?.name)} ${preview.qty} 股 @ ${preview.price.toFixed(2)}`,
     `金额 ${money(preview.amountCents)} · 费用 ${money(preview.totalFeesCents)}（佣金 ${money(preview.commissionCents)}，印花税 ${money(preview.stampCents)}，过户费 ${money(preview.transferCents)}）`,
     `成交后现金 ${money(preview.cashAfterCents)}`,
   ]
@@ -44,7 +45,7 @@ export function renderOrder(order: OrderView): string {
     rejected: '已拒绝',
     expired: '已过期',
   }
-  const parts = [`${status[order.status]}：${order.side === 'buy' ? '买入' : '卖出'} ${order.symbol} ${order.qty} 股`]
+  const parts = [`${status[order.status]}：${order.side === 'buy' ? '买入' : '卖出'} ${formatSymbol(order.symbol, order.name)} ${order.qty} 股`]
   if (order.type === 'limit' && order.limitPrice !== undefined) parts.push(`限价 ${order.limitPrice.toFixed(2)}`)
   if (order.fillPrice !== undefined) parts.push(`成交价 ${order.fillPrice.toFixed(2)}`)
   if (order.reason !== undefined) parts.push(`原因 ${order.reason}`)
@@ -55,7 +56,7 @@ export function renderOrder(order: OrderView): string {
 export function renderPositions(positions: PositionView[]): string {
   if (positions.length === 0) return '无持仓'
   return positions
-    .map(item => `- ${item.symbol} ${item.name ?? ''} ${item.qty} 股（可卖 ${item.available}）成本 ${item.avgCost.toFixed(2)} 现价 ${item.lastPrice?.toFixed(2) ?? '—'} 浮盈亏 ${money(item.unrealizedPnlCents ?? 0)}`)
+    .map(item => `- ${formatSymbol(item.symbol, item.name)} ${item.qty} 股（可卖 ${item.available}）成本 ${item.avgCost.toFixed(2)} 现价 ${item.lastPrice?.toFixed(2) ?? '—'} 浮盈亏 ${money(item.unrealizedPnlCents ?? 0)}`)
     .join('\n')
 }
 

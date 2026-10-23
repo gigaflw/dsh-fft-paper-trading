@@ -1,5 +1,6 @@
 import type { Bar, DataState, MarketListResult, Quote, SymbolHit } from '../contract.js'
 import { todayTradeDate } from '../core/calendar.js'
+import { tryParseSymbol } from '../core/symbol.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from './market-data-port.js'
 
 /** Structural slice of `ctx.ftshareData`; no runtime import across packages. */
@@ -29,17 +30,6 @@ interface Mapping {
 const DEFAULT_QUOTE_TOOLS = ['ft_v4_stock_realtime_day_kline', 'ft_v1_stock_candlesticks']
 const DEFAULT_KLINE_TOOLS = ['ft_v1_stock_candlesticks', 'ft_v2_stock_candlesticks_batch']
 const INTERVAL_UNITS = ['day', 'Day']
-
-function normalizeSymbol(symbol: string): string {
-  const text = symbol.trim().toUpperCase()
-  if (/\.(SH|SZ|BJ|XSHG|XSHE)$/.test(text)) return text
-  if (/^\d{6}$/.test(text)) {
-    if (text.startsWith('6')) return `${text}.SH`
-    if (text.startsWith('0') || text.startsWith('3')) return `${text}.SZ`
-    if (text.startsWith('8') || text.startsWith('4')) return `${text}.BJ`
-  }
-  return text
-}
 
 function pickNumber(row: Record<string, unknown>, keys: string[]): number | undefined {
   for (const key of keys) {
@@ -146,7 +136,9 @@ export class FtshareMarketData implements MarketDataPort {
   }
 
   private async quoteFor(symbol: string): Promise<QuoteResult> {
-    const apiSymbol = normalizeSymbol(symbol)
+    const parsed = tryParseSymbol(symbol)
+    if (!parsed.ok) return { state: 'failed', quotes: [], notice: parsed.message }
+    const apiSymbol = parsed.symbol.id
     const known = await this.available()
     const notices: string[] = []
     for (const tool of this.quoteTools) {
@@ -160,7 +152,7 @@ export class FtshareMarketData implements MarketDataPort {
             until_ts_millis: Date.now(),
           })
           if (result.rows.length > 0) {
-            const quote = this.toQuote(symbol, result.rows[result.rows.length - 1], tool)
+            const quote = this.toQuote(parsed.symbol.id, result.rows[result.rows.length - 1], tool)
             if (quote !== undefined) return { state: 'ok', quotes: [quote] }
           }
           if (result.notice !== undefined) notices.push(result.notice)
@@ -169,7 +161,7 @@ export class FtshareMarketData implements MarketDataPort {
       }
       const result = await this.call(tool, { symbols: [apiSymbol] })
       if (result.rows.length > 0) {
-        const quote = this.toQuote(symbol, result.rows[result.rows.length - 1], tool)
+        const quote = this.toQuote(parsed.symbol.id, result.rows[result.rows.length - 1], tool)
         if (quote !== undefined) return { state: 'ok', quotes: [quote] }
       }
       if (result.notice !== undefined) notices.push(result.notice)
@@ -190,24 +182,25 @@ export class FtshareMarketData implements MarketDataPort {
       prevClose,
       marketTs,
       fetchedAt: new Date().toISOString(),
-      board: pickString(row, ['board']),
       st: row.st === true,
       status: pickString(row, ['status']),
       source,
     }
   }
 
+  /** List rows carry the exchange too; an unknown code is dropped, never guessed. */
   private toListQuote(row: Record<string, unknown>): Quote | undefined {
     const last = pickNumber(row, ['close', 'last'])
     if (last === undefined) return undefined
+    const parsed = tryParseSymbol(String(row.symbol ?? row.symbol_id ?? ''))
+    if (!parsed.ok) return undefined
     return {
-      symbol: String(row.symbol ?? row.symbol_id ?? ''),
+      symbol: parsed.symbol.id,
       name: pickString(row, ['name', 'symbol_name']),
       last,
       prevClose: pickNumber(row, ['prev_close', 'pre_close']),
       marketTs: null,
       fetchedAt: new Date().toISOString(),
-      board: pickString(row, ['board']),
       st: row.st === true,
       status: pickString(row, ['status']),
       source: 'ft_v1_daec_stocks',
@@ -215,7 +208,12 @@ export class FtshareMarketData implements MarketDataPort {
   }
 
   async quotes(symbols: string[]): Promise<QuoteResult> {
-    const unique = [...new Set(symbols.map(symbol => symbol.trim()).filter(Boolean))]
+    const unique: string[] = []
+    for (const symbol of symbols) {
+      const parsed = tryParseSymbol(symbol)
+      if (!parsed.ok) return { state: 'failed', quotes: [], notice: parsed.message }
+      if (!unique.includes(parsed.symbol.id)) unique.push(parsed.symbol.id)
+    }
     if (unique.length === 0) return { state: 'ok', quotes: [] }
     const quotes: Quote[] = []
     const notices: string[] = []
@@ -243,8 +241,8 @@ export class FtshareMarketData implements MarketDataPort {
     try {
       const result = await this.call('ft_v1_suspension_list', { page: 1, page_size: 200 })
       for (const row of result.rows) {
-        const symbol = String(row.symbol ?? '').toUpperCase()
-        if (symbol !== '') symbols.add(symbol)
+        const parsed = tryParseSymbol(String(row.symbol ?? ''))
+        if (parsed.ok) symbols.add(parsed.symbol.id)
       }
     } catch {
       // The suspension list is best effort; an outage must not block quotes.
@@ -254,14 +252,17 @@ export class FtshareMarketData implements MarketDataPort {
   }
 
   async dailyBars(symbol: string, limit: number): Promise<BarsResult> {
+    const parsed = tryParseSymbol(symbol)
+    if (!parsed.ok) return { state: 'failed', bars: [], notice: parsed.message }
+    const apiSymbol = parsed.symbol.id
     const known = await this.available()
     const notices: string[] = []
     for (const tool of this.klineTools) {
       if (known !== undefined && !known.has(tool)) continue
       for (const interval of INTERVAL_UNITS) {
         const args = tool === 'ft_v2_stock_candlesticks_batch'
-          ? { symbols: [normalizeSymbol(symbol)], interval_unit: interval, limit, until_ts_millis: Date.now() }
-          : { symbol: normalizeSymbol(symbol), interval_unit: interval, limit, until_ts_millis: Date.now() }
+          ? { symbols: [apiSymbol], interval_unit: interval, limit, until_ts_millis: Date.now() }
+          : { symbol: apiSymbol, interval_unit: interval, limit, until_ts_millis: Date.now() }
         const result = await this.call(tool, args)
         if (result.rows.length > 0) {
           const bars = result.rows.map(row => this.toBar(row)).filter((bar): bar is Bar => bar !== undefined)
@@ -277,7 +278,9 @@ export class FtshareMarketData implements MarketDataPort {
   }
 
   async minuteBars(symbol: string, date?: string): Promise<BarsResult> {
-    const apiSymbol = normalizeSymbol(symbol)
+    const parsed = tryParseSymbol(symbol)
+    if (!parsed.ok) return { state: 'failed', bars: [], notice: parsed.message }
+    const apiSymbol = parsed.symbol.id
     const target = date ?? todayTradeDate()
     if (target === todayTradeDate()) {
       const result = await this.call('ft_v4_stock_realtime_minute_kline', { symbols: [apiSymbol] })
@@ -305,13 +308,15 @@ export class FtshareMarketData implements MarketDataPort {
 
   async search(query: string, limit: number): Promise<SymbolHit[]> {
     const result = await this.call('ft_v1_search', { query, limit })
-    return result.rows
-      .map(row => ({
-        symbol: String(row.symbol ?? ''),
-        name: String(row.name ?? ''),
-        board: pickString(row, ['board']),
-      }))
-      .filter(hit => hit.symbol !== '')
+    const hits: SymbolHit[] = []
+    for (const row of result.rows) {
+      const parsed = tryParseSymbol(String(row.symbol ?? ''))
+      if (!parsed.ok) continue
+      const name = String(row.name ?? '')
+      if (name === '') continue
+      hits.push({ symbol: parsed.symbol.id, name })
+    }
+    return hits
   }
 
   async marketList(input: { board?: string; page?: number; pageSize?: number } = {}): Promise<MarketListResult> {

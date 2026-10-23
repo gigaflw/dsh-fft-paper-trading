@@ -44,8 +44,8 @@ function makeData() {
 }
 
 function setQuote(data, price, ts, extra = {}) {
-  const quote = { symbol: '600519', name: '贵州茅台', last: price, marketTs: ts, fetchedAt: ts, ...extra }
-  data.prices.set('600519', quote)
+  const quote = { symbol: '600519.SH', name: '贵州茅台', last: price, marketTs: ts, fetchedAt: ts, ...extra }
+  data.prices.set('600519.SH', quote)
   return quote
 }
 
@@ -81,11 +81,11 @@ test('session: phases, gates and boundaries', () => {
 })
 
 test('price limit: board and ST ratios', () => {
-  const main = priceLimitFor('600519', '贵州茅台', 10)
+  const main = priceLimitFor('600519.SH', '贵州茅台', 10)
   assert.deepEqual({ upper: main?.upper, lower: main?.lower, ratio: main?.ratio }, { upper: 11, lower: 9, ratio: 0.1 })
-  const star = priceLimitFor('688001', '华兴源创', 10)
+  const star = priceLimitFor('688001.SH', '华兴源创', 10)
   assert.equal(star?.ratio, 0.2)
-  const st = priceLimitFor('600519', 'ST测试', 10)
+  const st = priceLimitFor('600519.SH', 'ST测试', 10)
   assert.equal(st?.ratio, 0.05)
   const bj = priceLimitFor('920001', '北交测试', 10)
   assert.equal(bj?.ratio, 0.3)
@@ -100,10 +100,10 @@ test('service: pre-open queues, opens at 09:30 and fills', async () => {
     setQuote(data, 10, now.current.toISOString())
     await service.account()
     await assert.rejects(
-      service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 }),
+      service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),
       /当前时段不接受市价单/,
     )
-    const queued = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10.5 })
+    const queued = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10.5 })
     assert.equal(queued.status, 'queued')
 
     now.current = at('2026-10-21', '09:31')
@@ -124,8 +124,8 @@ test('service: 15:00 close expires day orders, next 09:30 unlocks T+1', async ()
   try {
     setQuote(data, 10, now.current.toISOString())
     await service.account()
-    await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
-    await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 9 })
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 9 })
     const before = await service.orders()
     assert.ok(before.some(order => order.status === 'pending'))
 
@@ -164,7 +164,7 @@ test('service: offline days only backfill snapshots, never fills', async () => {
   try {
     setQuote(data, 10, now.current.toISOString())
     await service.account()
-    await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 9 })
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 9 })
     const before = await service.orders()
 
     now.current = at('2026-10-23', '10:00')
@@ -190,7 +190,7 @@ test('service: a market order fills in one chunk and never asks for minute volum
   const service = makeService(home, data, now)
   try {
     setQuote(data, 10, now.current.toISOString())
-    data.volumes.set('600519', 5_000)
+    data.volumes.set('600519.SH', 5_000)
     let minuteCalls = 0
     const minuteBars = data.minuteBars
     data.minuteBars = async (...args) => {
@@ -198,7 +198,7 @@ test('service: a market order fills in one chunk and never asks for minute volum
       return minuteBars(...args)
     }
     await service.account()
-    const order = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 1_000 })
+    const order = await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 1_000 })
     assert.equal(order.status, 'filled', 'M2 never partially fills')
     assert.equal(order.filledQty, 1_000)
     assert.equal(order.remainingQty, 0)
@@ -224,12 +224,12 @@ test('service: suspended and out-of-limit orders are rejected', async () => {
   try {
     setQuote(data, 10, now.current.toISOString(), { prevClose: 10 })
     await service.account()
-    const outOfLimit = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 12 })
+    const outOfLimit = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 12 })
     assert.equal(outOfLimit.status, 'rejected')
     assert.match(outOfLimit.reason ?? '', /PRICE_LIMIT/)
 
     setQuote(data, 10, now.current.toISOString(), { prevClose: 10, status: 'suspended' })
-    const suspended = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 })
+    const suspended = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 })
     assert.equal(suspended.status, 'rejected')
     assert.match(suspended.reason ?? '', /SUSPENDED/)
   } finally {
@@ -246,7 +246,7 @@ test('service: lunch queued limit is released at 13:00 and fills', async () => {
   try {
     setQuote(data, 10, now.current.toISOString())
     await service.account()
-    const queued = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10.5 })
+    const queued = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10.5 })
     assert.equal(queued.status, 'queued')
     assert.equal((await service.tick()).filled.length, 0)
 
@@ -269,11 +269,11 @@ test('service: pre-open sell of yesterday T+1 shares is queued, not rejected', a
   try {
     setQuote(data, 10, now.current.toISOString())
     await service.account()
-    await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
 
     now.current = at('2026-10-22', '09:20')
     setQuote(data, 10.2, now.current.toISOString(), { prevClose: 10 })
-    const queued = await service.place({ symbol: '600519', side: 'sell', type: 'limit', qty: 100, limitPrice: 10 })
+    const queued = await service.place({ symbol: '600519.SH', side: 'sell', type: 'limit', qty: 100, limitPrice: 10 })
     assert.equal(queued.status, 'queued')
     assert.equal((await service.marketStatus()).tradeDate, '2026-10-22')
 
@@ -360,7 +360,7 @@ test('service: auction-close limit orders are rejected instead of expiring at th
     setQuote(data, 10, now.current.toISOString())
     await service.account()
     await assert.rejects(
-      () => service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 }),
+      () => service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 }),
       /收盘竞价暂不支持模拟撮合/,
     )
   } finally {

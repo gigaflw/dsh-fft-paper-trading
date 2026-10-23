@@ -112,7 +112,7 @@ dsh-fft-paper-trading/       # 仓库根即包根
       calendar.ts            # 交易日（Asia/Shanghai，工作日兜底）
       matching.ts            # 市价/限价成交判定（M2：last 价、全量）
       risk.ts                # 下单前硬校验与价格估计
-      settings.ts            # 持久化配置的规范化/迁移（缺失字段回退默认）
+      settings.ts            # 持久化配置的规范化（缺失字段回退默认）
       ledger.ts              # 事件应用与账本不变量
       replay.ts              # 事件 → 状态
       engine.ts              # 命令 → 事件（纯函数）
@@ -152,7 +152,7 @@ dsh-fft-paper-trading/       # 仓库根即包根
 | `core/calendar` | 交易日、T+1 解锁 | 时间戳 → 交易日 | 网络调用 | 周末 |
 | `core/matching` | 市价/限价是否成交、成交价 | 订单、报价 → 成交判定 | 读账本、读文件 | last 价、穿越、无 TTL |
 | `core/risk` | 现金、可卖、手数、金额上限、blocked | 状态 + 订单 → 通过/拒绝码 | 网络、日志 | 各类拒绝路径 |
-| `core/settings` | 持久化配置合并 `DEFAULT_SETTINGS`，拒绝缺字段/非有限值 | 旧 payload → 完整配置 | 读写账本 | 旧账本迁移 |
+| `core/settings` | 持久化配置合并 `DEFAULT_SETTINGS`，拒绝缺字段/非有限值 | 旧 payload → 完整配置 | 读写账本 | 账本版本升级 |
 | `core/ledger` | 事件类型与不变量 | 状态、事件 → 校验结果 | 持久化 | 现金/数量不变量 |
 | `core/replay` | 事件序列 → 状态 | 事件数组 → 状态 | IO、时间 | 幂等、坏序 |
 | `core/engine` | 应用命令，产出事件 | 状态 + 命令 → `{events, state}` | IO、随机数 | 全场景 |
@@ -282,7 +282,7 @@ interface AccountState {
 | T+1 | 买入当日 `available = 0`；下一交易日 `day.closed` 解锁 |
 | 涨跌停 | 未做；`risk` 已留 `maxOrderNotionalCents` 单笔上限 |
 
-> 完整的 M2 规则与「什么时候会有挂单」见 §19.5。旧账本（< v3）重放时把 `slippageBps` / `fillModel` 钉成 `0` / `unlimited`。
+> 完整的 M2 规则与「什么时候会有挂单」见 §19.5。账本 v4 起以 `代码.市场` 记账；更早的账本直接锁户并提示重置，不做迁移。
 
 `tick` 的顺序：跨日 → 写 `day.closed` 并过期挂单 → 刷新持仓最新价 → 逐笔判断限价单 → 资金/持仓不足则撤单并给 notice。
 
@@ -305,7 +305,9 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 报价/日 K 兜底 | `ft_v1_stock_candlesticks` | `symbol`, `interval_unit=day|Day`, `limit`, `until_ts_millis` |
 | 批量日 K | `ft_v2_stock_candlesticks_batch` | `symbols[]`, `interval_unit`, `limit` |
 
-- 代码统一 `600519.SH` / `000001.SZ`；适配器补后缀，也接受已带后缀的写法。
+- **标的身份是 `代码.市场`**（`000001.SZ` 平安银行 / `000001.SH` 上证指数），账本、行情、UI 只认这一种写法；解析规则集中在 `core/symbol.ts`。
+- 裸 6 位按股票命名空间解析（`0/3` → SZ、`6` → SH、`43/83/87/88/920` → BJ）；指数/基金必须显式写市场（`000001.SH`、`510300.SH`），且只有股票可以下单，其余返回 `UNSUPPORTED_INSTRUMENT`。
+- 适配器只把 canonical id 发给 FTShare；搜索/列表返回的代码也先归一，无法解析的行直接丢弃，不猜市场。
 - 字段按候选名归一（`close/last/latest/price/收盘/最新价` 等）；分组 `items` 自动摊平。
 - `quote.ts` 是**取数时间**不是行情时间：模拟盘允许收盘后用最后收盘价，不把旧数据判成过期。
 - 交易日历接口尚未接入；`core/calendar` 用工作日兜底，节假日会多算一个交易日。
@@ -316,7 +318,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 **路由**：`POST /api/ft-paper-trading`，envelope `{ endpoint, payload }` → `{ ok, value | error }`。
 **限制**：只接受 POST；请求体 256 KiB 上限；非对象 body 直接 400。
 **并发**：同一账户的写命令（transact / append / replace / markPrices / backup）进单一 Promise 队列串行；读接口的时钟推进也走 `transact`，因此并发读只会落一份日界事件。
-**错误码**：`ACCOUNT_BLOCKED`、`INVALID_ARGUMENT`、`INVALID_SYMBOL`、`INVALID_QTY`、`INVALID_LOT`、`INSUFFICIENT_CASH`、`INSUFFICIENT_POSITION`、`T1_LOCKED`、`MAX_NOTIONAL`、`ORDER_NOT_FOUND`、`ORDER_NOT_PENDING`、`QUOTE_UNAVAILABLE`、`QUOTE_STALE`。
+**错误码**：`ACCOUNT_BLOCKED`、`INVALID_ARGUMENT`、`INVALID_SYMBOL`、`INVALID_QTY`、`INVALID_LOT`、`INSUFFICIENT_CASH`、`INSUFFICIENT_POSITION`、`T1_LOCKED`、`MAX_NOTIONAL`、`ORDER_NOT_FOUND`、`ORDER_NOT_PENDING`、`QUOTE_UNAVAILABLE`、`UNSUPPORTED_INSTRUMENT`。
 
 | endpoint | 作用 | 状态 |
 | --- | --- | --- |
@@ -392,7 +394,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 `data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 
 **刷新**：页面挂载即拉取 `account/get`、`list/orders`、`list/trades`、`review/get`；每 5 秒在 `document.visibilityState === 'visible'` 时调 `tick` 并静默重载（宿主调度器才是主驱动，见 §19.7）；提交、撤单、重置、手动刷新立即重载，重置后同时刷新日终/流水/回合。
-**文案与格式**：时间统一 `Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai' })`；状态、流水类型、撤单原因、错误码都有中文映射，错误码只留在 `title`/详情；非有限数值显示 `—`；代码统一展示 6 位。
+**文案与格式**：时间统一 `Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai' })`；状态、流水类型、撤单原因、错误码都有中文映射，错误码只留在 `title`/详情；非有限数值显示 `—`；代码一律展示 `000001.SZ 平安银行`（代码 + 市场 + 名称），表格的「代码」列不再省略市场后缀。
 **主题**：只用宿主 CSS token；交易橙读共享 `--ft-accent-warm*`，`--pt-accent*` 只是本地别名。
 **图表**：`EquityChart` 是纯函数式 SVG（等宽视口、min/max 归一），没有图表库。
 
@@ -431,7 +433,7 @@ v0.1 只读：`settings/get` 返回开户/重置时写进账本的配置；没�
 | `maxParticipationRate` | 0.10（保留字段，不再参与判定） |
 | `fillModel` | `unlimited` |
 
-`account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段回退默认值，非有限值也被拒绝。`ledgerVersion < 3` 的旧账本再由 `m2Settings` 钉成 `slippageBps: 0`、`fillModel: 'unlimited'`（旧版本没有设置入口），见 §19.5。
+`account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段回退默认值，非有限值也被拒绝。`ledgerVersion` 不是当前版本时直接锁户（`账本版本 N 与当前 4 不兼容，请重置账户`），不再猜测旧字段语义。
 
 写设置的做法见 §14.3：新增 `account.settings` 事件，随账本重放；`contract.ts` 的 `DEFAULT_SETTINGS` 只给新账户默认值。
 FTShare API Key 由全局设置服务解析，本插件不读、不展示、不修改。
@@ -509,14 +511,14 @@ $DSH_HOME/paper-trading/
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `core.test.mjs` | 费用（最低佣金/印花税）、撮合（last 价/穿越/无 TTL）、风控（手数/现金/T+1）、引擎成交与重放、限价挂单与 tick 成交、收盘过期、旧账本 M2 迁移、fillQty 满额 |
+| `core.test.mjs` | 费用（最低佣金/印花税）、撮合（last 价/穿越/无 TTL）、风控（手数/现金/T+1）、引擎成交与重放、限价挂单与 tick 成交、收盘过期、旧版本账本锁户、fillQty 满额 |
 | `service.test.mjs` | 买入 → 隔日解锁 → 卖出 → 复盘 → 重置（含备份）、幂等、无行情时的降级、预览价=行情价=成交价、并发 tick 不重复成交、市价单永不挂单 |
 | `rpc.test.mjs` | envelope、preview/place、未知 endpoint |
 | `store.test.mjs` | JSONL 追加、坏尾行隔离 |
 | `adapter.test.mjs` | 代码规范化、分组摊平、日 K 排序 |
 | `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点、无「查行情」按钮、防抖预览与成交回报 |
 | `wiring.test.mjs` | 没有 `ftshareData` 时路由与 8 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
-| `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、旧 settings 迁移、重置健壮性、日 K 补 `prevClose` |
+| `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、旧版本账本锁户、重置健壮性、日 K 补 `prevClose` |
 | `scheduler.test.mjs` | 假时钟周期调用、非重叠、start/stop 幂等、异常转 warning |
 | `brand.test.mjs` | 浏览器半读的 `--ft-*` 兜底值与品牌契约一致（本仓不依赖 settings 包） |
 
@@ -636,7 +638,7 @@ interface TradingCalendarPort {
   - 当日有效：15:00 对 `tradeDate == 当日` 的未成交单写 `order.canceled(reason=expired)`，不再等次日首次 tick；
   - 收盘后（`closed`）的限价单是**为下一交易日预埋**：订单记 `tradeDate = nextTradingDay`、状态 `queued`，不参与当日 15:00 过期，次日 09:15 起归入新交易日。
 - 撤单任意阶段可用；已成交/已过期返回 `ORDER_NOT_PENDING`。
-- 新错误码：`SESSION_CLOSED`、`AUCTION_ONLY`、`PRICE_LIMIT`、`SUSPENDED`、`INSUFFICIENT_LIQUIDITY`。
+- 新错误码：`SESSION_CLOSED`、`AUCTION_ONLY`、`PRICE_LIMIT`、`SUSPENDED`；代码无法解析返回 `INVALID_SYMBOL`，指数/基金下单返回 `UNSUPPORTED_INSTRUMENT`。
 
 **日切与补算**
 
@@ -701,8 +703,8 @@ type DayClosed = {
 ```
 
 - 事件 `ts` 写边界时间（09:30 / 15:00），`payload.recordedAt` 写实际补算时间；两者分开，重放与展示都不混淆；
-- 账本版本 `PAPER_LEDGER_VERSION` 从 1 升到 2（`day.opened`），M2 再升到 3；新账户在 `account.opened` 的 payload 写当前版本，旧日志缺这个字段按 1 处理；
-- v1 日志没有 `day.opened`，重放时按旧语义在 `day.closed` 解锁；v2 才按开盘解锁，保证老账户可读。
+- 账本版本 `PAPER_LEDGER_VERSION` = 4：v4 把标的身份统一成 canonical `代码.市场`，账本 / 行情 / UI 一致；
+- 更早版本（v1–v3 用裸代码或原始输入当 key）不再兼容，载入即锁户并提示重置；新账户在 `account.opened` 的 payload 写当前版本。
 
 ### 19.4 行情面（P1）
 
@@ -750,7 +752,7 @@ interface MarketListResult {
 }
 ```
 
-- `SymbolHit { symbol, name, exchange }`；
+- `SymbolHit { symbol, name }`，`symbol` 是 canonical id；
 - 搜索/列表/分钟都要按 `DataState` 四态归一，缺数据不抛错；
 - **没有 L1/L2**：界面只展示最新价、涨跌幅、成交量额，不展示盘口；撮合只用最新价，不伪造 spread；
 - 备选不是账本：`$DSH_HOME/paper-trading/shortlist.json`，0600 权限、原子写；交易账户重置不影响备选。
@@ -778,7 +780,7 @@ interface MarketListResult {
 
 **数量**
 
-- 一次成交吃满剩余数量，**永不产生 `partially_filled`**（类型保留，只为重放旧账本）；
+- 一次成交吃满剩余数量，**永不产生 `partially_filled`**（类型保留，当前撮合不产生）；
 - `fillModel` 默认 `unlimited`；不再按分钟成交量设上限，place/tick 都不请求分钟接口；
 - `maxParticipationRate` 保留兼容，不再参与计算；
 - 成交 ID 确定性：`fill-<orderId>-<n>`，同一订单顺序固定，重放一致。
@@ -800,10 +802,10 @@ interface MarketListResult {
 
 因此只有「限价单价格没到」和「非连续竞价时段」会产生挂单；**市价单在任何时段都不会挂单**。
 
-**账本迁移**
+**账本版本**
 
-- `PAPER_LEDGER_VERSION` = 3：v2 引入 `day.opened`，v3 钉住 M2；
-- 重放 `ledgerVersion < 3` 的 `account.opened` 时强制 `slippageBps: 0`、`fillModel: 'unlimited'`；旧版本没有设置入口，用户没设过这些值；
+- `PAPER_LEDGER_VERSION` = 4：账本身份 = canonical `代码.市场`；
+- 重放 `ledgerVersion !== 4` 的 `account.opened` 时锁定账户并要求重置，不尝试迁移旧 key；
 - `account.reset` 不带版本号，重放时同样钉住；
 - 新账本默认就是 0 / unlimited。
 
@@ -876,8 +878,8 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 - `OrderView` 增加 `filledQty/remainingQty/avgFillPrice/note`；
 - `PriceLimit { upper, lower, ratio, source }`；
 - `DayReport`、`CashFlowEntry`、`RoundTrip`、`SymbolHit`；
-- 事件：新增 `day.opened`；`order.partially_filled` 只用于重放旧账本，新撮合不再写；扩展 `day.closed`、`order.submitted`（阶段、备注）、`order.filled`（`fillModel`）；
-- 账本版本 3（M2），回放兼容 v1/v2。
+- 事件：新增 `day.opened`；`order.partially_filled` 当前撮合不再写；扩展 `day.closed`、`order.submitted`（阶段、备注）、`order.filled`；
+- 账本版本 4（canonical 标的身份），旧版本锁户并要求重置。
 
 **RPC**
 
@@ -940,14 +942,14 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 - 时段：节假日、午休、集合竞价、收盘边界、下一交易日；
 - 行情：`marketTs` 只展示；`last ≤ 0` 不可成交；盘后受时段门禁不可成交；
 - 涨跌停：主板/ST/创业板/北交所、舍入、越界拒单、一字板；
-- M2：市价 `last` 全成、限价穿越即全成、未穿越挂单、收盘过期、无 TTL、旧账本迁移成 0/unlimited；
+- M2：市价 `last` 全成、限价穿越即全成、未穿越挂单、收盘过期、无 TTL、旧版本账本锁户并提示重置；
 - 日切：15:00 快照、09:30 T+1、跳空、跨多日补算、离线不补成交；
 - 报表：日终/隔夜/回合/流水与持仓现金对账。
 
 **集成**
 
 - 用假时钟 + 假日历 + 固定行情重放用户故事 8 步；
-- 重启续跑；无行情降级；断网/服务缺失；账本 v1/v2 → v3 回放。
+- 重启续跑；无行情降级；断网/服务缺失；旧版本账本锁户 → 重置。
 
 **验收（对应用户故事）**
 
@@ -1090,7 +1092,7 @@ src/client/index.js              # 账户切换 + StockDashboard / FuturesDashbo
 
 ## 附录 A：错误码与状态机
 
-> M2 状态机见 §19.5；`partially_filled` 只为重放旧账本保留。
+> M2 状态机见 §19.5；`partially_filled` 类型保留，当前撮合不产生。
 
 订单状态：`queued → pending → filled`，以及 `canceled / rejected / expired`；只有 `pending` 能被 `tick` 改变，`queued` 在进入连续竞价后释放。
 

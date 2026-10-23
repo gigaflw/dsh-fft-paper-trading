@@ -323,12 +323,12 @@ const account = {
   date: '2026-10-21',
 }
 const positions = [
-  { symbol: '600519', name: '贵州茅台', qty: 100, available: 0, cost: '1331.88', last: '1332.00', pnl: '+12.00' },
-  { symbol: '000001', name: '平安银行', qty: 1000, available: 1000, cost: '11.45', last: '11.50', pnl: '+50.00' },
+  { symbol: '600519.SH', name: '贵州茅台', qty: 100, available: 0, cost: '1331.88', last: '1332.00', pnl: '+12.00' },
+  { symbol: '000001.SZ', name: '平安银行', qty: 1000, available: 1000, cost: '11.45', last: '11.50', pnl: '+50.00' },
 ]
 const orders = [
-  { time: '10:02', symbol: '600519', side: '买', type: '限价', qty: 100, limit: '1300.00', status: '挂单' },
-  { time: '09:41', symbol: '000001', side: '买', type: '市价', qty: 1000, limit: '—', status: '成交' },
+  { time: '10:02', symbol: '600519.SH', side: '买', type: '限价', qty: 100, limit: '1300.00', status: '挂单' },
+  { time: '09:41', symbol: '000001.SZ', side: '买', type: '市价', qty: 1000, limit: '—', status: '成交' },
 ]
 const points = [100000, 100004, 100001, 100009, 100006, 100012, 100008, 100014, 100011, 100014]
 
@@ -384,14 +384,14 @@ function template() {
           <div class="card">
             <h2>下单</h2>
             <div class="row" style="margin-bottom:10px">
-              <label class="field" style="width:110px"><span>代码</span><input value="000001"></label>
+              <label class="field" style="width:110px"><span>代码</span><input value="000001.SZ"></label>
               <div class="seg"><button class="on">买入</button><button>卖出</button></div>
               <div class="seg"><button class="on">市价</button><button>限价</button></div>
               <label class="field" style="width:92px"><span>数量</span><input type="number" value="1000"></label>
               <button class="ghost">查行情</button>
             </div>
             <div class="quote" style="margin-bottom:10px">
-              <span class="sym">000001 平安银行</span>
+              <span class="sym">000001.SZ 平安银行</span>
               <span class="px">11.50</span>
               <span class="muted">买一 11.49</span>
               <span class="muted">卖一 11.51</span>
