@@ -305,7 +305,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 报价/日 K 兜底 | `ft_v1_stock_candlesticks` | `symbol`, `interval_unit=day|Day`, `limit`, `until_ts_millis` |
 | 批量日 K | `ft_v2_stock_candlesticks_batch` | `symbols[]`, `interval_unit`, `limit` |
 
-- **标的身份是 `代码.市场`**（`000001.SZ` 平安银行 / `000001.SH` 上证指数），账本、行情、UI 只认这一种写法；解析规则集中在 `core/symbol.ts`。
+- **标的身份是 `代码.市场`**（`000001.SZ` 平安银行 / `000001.SH` 上证指数），账本、行情、UI 只认这一种写法；解析规则集中在 `core/symbol.ts`。输入别名（dsh_kline 的 `600519.XSHG` / `000001.XSHE` / `920001.BJSE`）在解析层折叠，不构成第二套身份。
 - 裸 6 位按股票命名空间解析（`0/3` → SZ、`6` → SH、`43/83/87/88/920` → BJ）；指数/基金必须显式写市场（`000001.SH`、`510300.SH`），且只有股票可以下单，其余返回 `UNSUPPORTED_INSTRUMENT`。
 - 适配器只把 canonical id 发给 FTShare；搜索/列表返回的代码也先归一，无法解析的行直接丢弃，不猜市场。
 - 字段按候选名归一（`close/last/latest/price/收盘/最新价` 等）；分组 `items` 自动摊平。
@@ -1000,6 +1000,7 @@ paper-trading main 注册
 - 槽位名 `paperTrading.kline`，props `{ symbol, onIdentity(symbol, name) }`；
 - `PaperKlinePanel` 复用 `StandaloneKlineApp`，数据、指标、画线仍由 dsh_kline 负责；
 - 在 K 线内选标的会通过 `onIdentity` 回填交易 ticket 并刷新简图；paper-trading 不直接 import dsh_kline 的运行时值（DSH 禁止跨特性包值导入）；
+- dsh_kline 的 symbol 用自家后缀（`600519.XSHG` / `000001.XSHE` / `920001.BJSE`）；回填时折叠成 canonical `600519.SH`，服务端也通过 `core/symbol.ts` 的别名表接受这些写法，同一标的不会出现第二套身份；
 - dsh_kline 侧改动在本地分支 `feat/paper-trading-panel`，发布新版本后把 bundle 的 `@ftshare-lab/dsh-kline` pin 前移即可；未发布时功能自动降级为内置简图。
 - 槽位健康检查必须穿透 open shadow root：dsh_kline 把整块图表挂在 `host.attachShadow()` 内，只查轻 DOM 会把正常图表误判为未加载并替换成简图。
 

@@ -1938,7 +1938,7 @@
     window.__root = ReactDOM.createRoot(document.getElementById('root'))
     window.__root.render(React.createElement(main.component, { renderSlot: () => null }))
     function IdentitySlot({ onIdentity }) {
-      React.useEffect(() => { onIdentity?.('000001.SZ', '平安银行') }, [])
+      React.useEffect(() => { onIdentity?.('000001.XSHE', '平安银行') }, [])
       return React.createElement('div', { className: 'dsh-kline-native-host' })
     }
     function ShadowSlot() {

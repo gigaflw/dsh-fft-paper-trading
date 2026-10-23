@@ -123,19 +123,37 @@ function problem(code: SymbolProblemCode, message: string): { ok: false; code: S
 }
 
 /**
+ * Exchange suffixes accepted on input.
+ *
+ * dsh_kline publishes its own convention (`600519.XSHG`, `000001.XSHE`,
+ * `920001.BJSE`); the ticket and the slot hand those straight over, so they are
+ * aliases for the canonical `.SH` / `.SZ` / `.BJ`, never a second identity.
+ */
+const EXCHANGE_ALIAS: Record<string, Exchange> = {
+  SH: 'SH',
+  XSHG: 'SH',
+  SZ: 'SZ',
+  XSHE: 'SZ',
+  BJ: 'BJ',
+  BJSE: 'BJ',
+}
+
+/**
  * Parse one user/model supplied symbol.
  *
- * Accepted forms: `000001`, `000001.SZ`, `SZ000001` (case and full-width digits
- * are folded). Everything else is rejected instead of guessed.
+ * Accepted forms: `000001`, `000001.SZ`, `000001.XSHE`, `SZ000001` (case and
+ * full-width digits are folded). Everything else is rejected instead of guessed.
  */
 export function tryParseSymbol(input: unknown): SymbolResult {
   if (typeof input !== 'string') return problem('INVALID_SYMBOL', '证券代码必须是字符串')
   const text = halfWidth(input).trim().toUpperCase().replace(/\s+/g, '')
   if (text === '') return problem('INVALID_SYMBOL', '证券代码不能为空')
-  const suffix = /^(\d{6})\.(SH|SZ|BJ)$/.exec(text)
-  if (suffix !== null) {
-    const [, code, exchange] = suffix
-    const symbol = classify(exchange as Exchange, code)
+  const suffix = /^(\d{6})\.([A-Z]{2,4})$/.exec(text)
+  const suffixExchange = suffix === null ? undefined : EXCHANGE_ALIAS[suffix[2]]
+  if (suffix !== null && suffixExchange !== undefined) {
+    const [, code] = suffix
+    const exchange = suffixExchange
+    const symbol = classify(exchange, code)
     return symbol === undefined
       ? problem('INVALID_SYMBOL', `${code} 不是${exchange === 'SH' ? '沪市' : exchange === 'SZ' ? '深市' : '北交所'}代码`)
       : { ok: true, symbol }

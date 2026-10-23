@@ -35,8 +35,8 @@ export type SymbolResult = {
 /**
  * Parse one user/model supplied symbol.
  *
- * Accepted forms: `000001`, `000001.SZ`, `SZ000001` (case and full-width digits
- * are folded). Everything else is rejected instead of guessed.
+ * Accepted forms: `000001`, `000001.SZ`, `000001.XSHE`, `SZ000001` (case and
+ * full-width digits are folded). Everything else is rejected instead of guessed.
  */
 export declare function tryParseSymbol(input: unknown): SymbolResult;
 /** Parse and require a tradable A-share stock. */
