@@ -202,9 +202,14 @@ interface PaperService {
   bars(symbol: string, limit?: number): Promise<BarsResult>
   settingsView(): Promise<PaperSettings>
   reset(confirm: boolean): Promise<AccountView>
+  deposit(amount: number): Promise<AccountView>      // amount 为元，落账转分
+  withdraw(amount: number): Promise<AccountView>
+  cashFlow(): Promise<CashFlowEntry[]>
   exportLedger(): Promise<LedgerExport>
 }
 ```
+
+RPC：`account/deposit`、`account/withdraw`；期货对应 `futures/account/deposit`、`futures/account/withdraw`、`futures/cash/flow`。
 
 不变量：`core` 不知道端口；`service` 不知道 JSONL；`route` / `agent` 不知道业务规则；`client` 不知道文件与行情接口。
 
@@ -222,6 +227,7 @@ interface AccountState {
   positions: Record<string, Position>
   orders: Record<string, Order>
   fills: FillRecord[]
+  cashFlows: CashFlowRecord[]   // 注资/提款，按时间追加；重放即现金变动
   tradeDate: string             // Asia/Shanghai
   blocked: boolean              // 对账失败后置真
   lastSeq: number
@@ -240,6 +246,8 @@ interface AccountState {
 | --- | --- | --- |
 | `account.opened` | 首次初始化 | 初始资金、配置快照、交易日 |
 | `account.reset` | 用户确认重置，或作为压缩后账本的单条 genesis | 配置（默认值合并后）、初始资金、交易日、原因 |
+| `cash.deposit` | 用户注资（股票或期货） | 金额（分）、交易日；只加现金，不动持仓 |
+| `cash.withdraw` | 用户提款 | 金额（分）、交易日；不超过当时可用现金/可用资金 |
 | `order.submitted` | 提交通过风控 | 订单、报价快照 |
 | `order.rejected` | 风控或校验拒绝 | 订单、拒绝码 |
 | `order.canceled` | 撤单、过期、资金/持仓不足 | 订单 ID、原因、时间 |
@@ -258,12 +266,21 @@ interface AccountState {
 
 1. 读 `events.jsonl`，末尾坏行（进程被杀）丢弃并记录 warning。
 2. 校验 `seq` 严格递增：同一 seq 且内容相同（忽略易变的 `recordedAt`）视为重复写入，丢弃后补一条 `ledger.repaired` 并把压缩结果原子写回；同一 seq 内容不同则是真损坏，保留原文件并失败关闭。
-3. 重放并校验：现金恒等式、持仓数量、可卖 ≤ 持仓、成交数量/价格/金额/费用必须是有限值、已成交订单必须有成交记录。
+3. 重放并校验：现金恒等式（`初始资金 + 净入金 + 成交现金变化`）、持仓数量、可卖 ≤ 持仓、成交数量/价格/金额/费用必须是有限值、已成交订单必须有成交记录。
 4. 失败：追加一条 `ledger.violation`，置 `blocked`；原因写进 `AccountState.blockedReason`，界面红条显示「原因 + 账本绝对路径」，可导出账本或重置；工具侧 `paper_account` / `paper_export` 同样给出原因与路径。已锁定的账户不再追加任何事件，避免每 5 秒刷一条。
 5. 写入：`transact` 在写队列内用最新状态重建事件，落盘前强制 `event.seq === state.lastSeq + 1`；不连续直接抛错，绝不写坏账本。
 6. 重置：先原样备份，再用合并默认值后的配置把账本原子替换为单条 `account.reset`（seq 从 1 开始），内存状态直接替换，不依赖旧账本重放成功。
 
 ![图 2 · 事件账本与恢复](figures/fig-2.png)
+
+### 6.4 出入金与盈亏口径
+
+- 注资/提款是追加式账本事件（`cash.deposit` / `cash.withdraw`），只改现金；总资产与权益曲线随现金变化，但盈亏剔除净入金。
+- 公式：`净入金 = Σ注资 − Σ提款`；`累计盈亏 = 总资产 − (初始资金 + 净入金)`；`累计收益率 = 累计盈亏 / (初始资金 + 净入金)`；`今日盈亏 = 总资产 − 上一交易日收盘权益 − 当日净入金`；日终报告的当日盈亏同样扣当日净入金。
+- 提款上限 = 当时可用现金（股票 `cash`；期货为可用资金，保证金已被持仓占用，提款只会推高风险度）。检查在写事务内复查，避免与并发买入/开仓竞争。
+- 权益曲线保留真实总资产（含入金台阶），出入金逐笔进复盘「资金流水」；`AccountView.netCashFlow` 给界面显示净入金。
+- 账本版本保持 4：新事件是追加式的，旧账本重放结果不变，升级无需迁移。旧版插件不认识这两个事件，会漏算出入金，所以此功能要求插件同步升级（尚未发布，无在线旧版本）。
+- 入口：账户头的「资金」按钮在头部下方展开内联面板（注资/提款、金额、快捷金额、提款上限），不做模态框、不新增页签；股票与期货共用同一个面板组件，提款上限分别取「可用现金」与「可用资金」。
 
 ## 7 撮合、费用与 T+1
 
@@ -389,7 +406,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 订单 | 挂单表（可撤单）、历史表 |
 | 复盘 | 7/30/全部区间、成交统计、最大回撤、权益曲线、成交记录 |
 
-账户头：总资产、可用现金、累计盈亏、今日盈亏、刷新、重置（`window.confirm` 二次确认）。
+账户头：总资产、可用现金、累计盈亏、今日盈亏、刷新、资金（注资/提款内联面板）、重置（`window.confirm` 二次确认）。净入金非零时在副标题追加「净入金 ±X」。
 锁定横幅显示失败原因（最后一条 `ledger.violation` 的 `actual`）与账本绝对路径，带「导出账本」（调 `account/export` 下载 JSONL 并复制路径）和「复制路径」；`AccountView` 带 `blockedReason` / `ledgerPath`，所以工具与横幅不必各自猜文件位置。
 `data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态：**选中态只表示状态**，用浅底 + 橙描边 + 正文色（`.pt-seg` 也归到这套），实心橙只属于提交动作（`.pt-btn-primary`），一屏只有一个实心橙按钮；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 

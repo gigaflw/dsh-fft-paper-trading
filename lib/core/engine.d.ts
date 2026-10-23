@@ -9,6 +9,16 @@ export declare function openAccount(state: AccountState, settings: PaperSettings
 export declare function resetAccount(state: AccountState, settings: PaperSettings, tradeDate: string, ts: string, reason: string): EngineResult;
 /** One fill takes the whole remaining quantity: M2 never partially fills. */
 export declare function fillQty(order: Order): number;
+/**
+ * Move cash in (`deposit`) or out (`withdraw`) without touching positions.
+ *
+ * The amount is validated here rather than only in the service: it lands in the
+ * ledger, where a zero, negative or fractional cent value would break replay.
+ * A withdrawal larger than the free cash is a caller bug (the service checks it
+ * inside the same transaction), so it throws instead of booking a negative cash.
+ */
+export declare function depositCash(state: AccountState, amountCents: number, ts: string): EngineResult;
+export declare function withdrawCash(state: AccountState, amountCents: number, ts: string): EngineResult;
 export interface SubmitOptions {
     /** Whether the current phase allows continuous matching. */
     matchable: boolean;

@@ -99,6 +99,10 @@ export function createPaperRpcHandler(service: PaperService): PaperRpcHandler {
           const input = record(payload ?? {})
           return ok(await service.reset(input.confirm === true))
         }
+        case 'account/deposit':
+          return ok(await service.deposit(num(record(payload).amount, 'amount')))
+        case 'account/withdraw':
+          return ok(await service.withdraw(num(record(payload).amount, 'amount')))
         case 'account/export':
           return ok(await service.exportLedger())
         case 'settings/get':

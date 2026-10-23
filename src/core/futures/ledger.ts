@@ -62,6 +62,7 @@ export function emptyState(accountId: string): FuturesAccountState {
     positions: {},
     orders: {},
     fills: [],
+    cashFlows: [],
     tradeDate: '',
     lastOpenedDate: '',
     blocked: false,
@@ -79,6 +80,7 @@ function openState(state: FuturesAccountState, settings: FuturesSettings, initia
   state.positions = {}
   state.orders = {}
   state.fills = []
+  state.cashFlows = []
   state.dayEquity = []
   state.tradeDate = tradeDate
   state.lastOpenedDate = ''
@@ -217,6 +219,18 @@ export function applyEvent(state: FuturesAccountState, event: FuturesLedgerEvent
       }
       break
     }
+    case 'cash.deposit': {
+      const { amountCents, tradeDate } = event.payload
+      state.cashCents += amountCents
+      state.cashFlows.push({ ts: event.ts, type: 'deposit', amountCents, tradeDate })
+      break
+    }
+    case 'cash.withdraw': {
+      const { amountCents, tradeDate } = event.payload
+      state.cashCents -= amountCents
+      state.cashFlows.push({ ts: event.ts, type: 'withdraw', amountCents, tradeDate })
+      break
+    }
     case 'ledger.violation': {
       state.blocked = true
       state.blockedReason = event.payload.actual === '' ? undefined : event.payload.actual
@@ -257,6 +271,12 @@ export function verify(state: FuturesAccountState): string[] {
   const fillIds = new Set<string>()
   const orderIds = new Set<string>()
   let expectedCash = state.initialCashCents
+  for (const flow of state.cashFlows) {
+    if (!Number.isInteger(flow.amountCents) || flow.amountCents <= 0) {
+      issues.push(`出入金金额非法: ${flow.amountCents}`)
+    }
+    expectedCash += flow.type === 'deposit' ? flow.amountCents : -flow.amountCents
+  }
   let expectedMargin = 0
   const netQty = new Map<string, number>()
   for (const fill of state.fills) {

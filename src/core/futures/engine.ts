@@ -97,6 +97,32 @@ export function resetAccount(
   return { events, state: working, warnings: [] }
 }
 
+/** Move free cash in (`deposit`) or out (`withdraw`); positions and margin stay put. */
+export function depositCash(state: FuturesAccountState, amountCents: number, ts: string): EngineResult {
+  assertCashAmount(amountCents)
+  const working = clone(state)
+  const events: FuturesLedgerEvent[] = []
+  append(working, events, { type: 'cash.deposit', payload: { amountCents, tradeDate: working.tradeDate } }, ts)
+  return { events, state: working, warnings: [] }
+}
+
+export function withdrawCash(state: FuturesAccountState, amountCents: number, ts: string): EngineResult {
+  assertCashAmount(amountCents)
+  // Only free cash can leave: margin already reserved by open positions is not
+  // available, and a withdrawal must not push the cash balance negative.
+  if (amountCents > state.cashCents) throw new Error(`withdraw ${amountCents} exceeds free cash ${state.cashCents}`)
+  const working = clone(state)
+  const events: FuturesLedgerEvent[] = []
+  append(working, events, { type: 'cash.withdraw', payload: { amountCents, tradeDate: working.tradeDate } }, ts)
+  return { events, state: working, warnings: [] }
+}
+
+function assertCashAmount(amountCents: number): void {
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+    throw new Error(`cash amount must be a positive integer of cents, got ${String(amountCents)}`)
+  }
+}
+
 export interface OrderInput {
   tradeDate: string
   phase: FuturesPhase

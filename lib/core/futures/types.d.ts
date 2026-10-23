@@ -164,6 +164,12 @@ export interface FuturesDayPoint {
     warnings: string[];
     recordedAt: string;
 }
+export interface FuturesCashFlowRecord {
+    ts: string;
+    type: 'deposit' | 'withdraw';
+    amountCents: number;
+    tradeDate: string;
+}
 export interface FuturesAccountState {
     accountId: string;
     version: number;
@@ -175,6 +181,8 @@ export interface FuturesAccountState {
     positions: Record<string, FuturesPosition>;
     orders: Record<string, FuturesOrder>;
     fills: FuturesFill[];
+    /** Deposits and withdrawals after the account opened, oldest first. */
+    cashFlows: FuturesCashFlowRecord[];
     tradeDate: string;
     lastOpenedDate: string;
     blocked: boolean;
@@ -270,6 +278,24 @@ export type FuturesLedgerEvent = {
     ts: string;
     type: 'day.closed';
     payload: FuturesDayPoint;
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'cash.deposit';
+    payload: {
+        amountCents: number;
+        tradeDate: string;
+    };
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'cash.withdraw';
+    payload: {
+        amountCents: number;
+        tradeDate: string;
+    };
 } | {
     seq: number;
     id: string;

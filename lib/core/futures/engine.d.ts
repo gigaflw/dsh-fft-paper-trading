@@ -19,6 +19,9 @@ export interface EngineResult {
 }
 export declare function openAccount(state: FuturesAccountState, settings: FuturesSettings, tradeDate: string, ts: string, accountId: string): EngineResult;
 export declare function resetAccount(state: FuturesAccountState, settings: FuturesSettings, tradeDate: string, ts: string, reason: string): EngineResult;
+/** Move free cash in (`deposit`) or out (`withdraw`); positions and margin stay put. */
+export declare function depositCash(state: FuturesAccountState, amountCents: number, ts: string): EngineResult;
+export declare function withdrawCash(state: FuturesAccountState, amountCents: number, ts: string): EngineResult;
 export interface OrderInput {
     tradeDate: string;
     phase: FuturesPhase;

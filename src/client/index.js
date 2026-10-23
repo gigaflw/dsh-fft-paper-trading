@@ -141,9 +141,18 @@ window.__ModuleLoader__.load({
     const CASH_TYPE_TEXT = {
       open: '初始资金',
       reset: '重置',
+      deposit: '注资',
+      withdraw: '提款',
       buy: '买入',
       sell: '卖出',
       fee: '费用',
+    }
+    const FUTURES_CASH_TYPE_TEXT = {
+      open: '初始资金',
+      deposit: '注资',
+      withdraw: '提款',
+      open_position: '开仓占用',
+      close_position: '平仓释放',
     }
     const CANCEL_REASON_TEXT = {
       user: '手动撤单',
@@ -282,6 +291,10 @@ window.__ModuleLoader__.load({
       .pt-stat-label { font-size:11px; letter-spacing:.04em; color:var(--dsw-alias-label-secondary, #49525f); }
       .pt-stat-value { font-size:16px; font-weight:500; margin-top:1px; font-variant-numeric:tabular-nums;
         font-family:"SF Mono", "JetBrains Mono", Menlo, monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .pt-cash { display:flex; flex-direction:column; gap:8px; padding:8px 10px;
+        border:0.5px solid var(--dsw-alias-border-l4, rgba(45,49,66,.12));
+        border-radius:var(--dsw-radius-sm, 8px); background:var(--dsw-alias-bg-layer-2, #f7f8fa); }
+      .pt-cash .pt-row { align-items:center; }
       .pt-up { color:var(--dsw-alias-state-error-primary, #b23b2e); }
       .pt-down { color:var(--dsw-alias-state-success-primary, #2f6b47); }
       .pt-tabs { display:flex; gap:4px; border:0; padding:0; margin-top:1px; }
@@ -462,6 +475,53 @@ window.__ModuleLoader__.load({
       h('div', { className: 'pt-stat-label' }, label),
       h('div', { className: tone ? `pt-stat-value ${tone}` : 'pt-stat-value' }, value),
     )
+
+    /** Yuan text → integer cents, or null when the input is not a usable amount. */
+    function cashAmountCents(value) {
+      const text = String(value ?? '').trim()
+      if (text === '') return null
+      const yuan = Number(text)
+      if (!Number.isFinite(yuan) || yuan <= 0) return null
+      const cents = Math.round(yuan * 100)
+      return cents > 0 ? cents : null
+    }
+
+    const CASH_QUICK_AMOUNTS = [10000, 50000, 100000]
+
+    /**
+     * Inline cash in/out panel shared by the stock and futures headers.
+     *
+     * A modal would need focus handling and new CSS; an inline strip reuses the
+     * existing `.pt-row`/`.pt-btn` atoms and can show the free-cash limit next to
+     * the confirm button.
+     */
+    function CashMovePanel({ available, side, onSide, amount, onAmount, busy, onCancel, onSubmit }) {
+      const cents = cashAmountCents(amount)
+      const limitCents = Math.round(available * 100)
+      const reason = cents === null ? '金额需为正数' : side === 'withdraw' && cents > limitCents ? '超过可提现金' : ''
+      return h('div', { className: 'pt-cash' },
+        h('div', { className: 'pt-row' },
+          h('button', { className: 'pt-btn', 'data-active': side === 'deposit', onClick: () => onSide('deposit') }, '注资'),
+          h('button', { className: 'pt-btn', 'data-active': side === 'withdraw', onClick: () => onSide('withdraw') }, '提款'),
+          h('input', {
+            className: 'pt-input', style: { width: 130 }, inputMode: 'decimal', placeholder: '金额（元）',
+            value: amount, onChange: event => onAmount(event.target.value),
+          }),
+          CASH_QUICK_AMOUNTS.map(value => h('button', {
+            key: value, className: 'pt-btn', onClick: () => onAmount(String(value)),
+          }, `${value / 10000}万`)),
+          side === 'withdraw' ? h('button', { className: 'pt-btn', onClick: () => onAmount(String(limitCents / 100)) }, '全部') : null,
+        ),
+        h('div', { className: 'pt-row' },
+          h('div', { className: 'pt-note' }, side === 'deposit' ? '注资不计盈亏' : `可提 ${money(available)}，不影响持仓`),
+          h('button', { className: 'pt-btn', onClick: onCancel, disabled: busy }, '取消'),
+          h('button', {
+            className: 'pt-btn pt-btn-primary', onClick: onSubmit, disabled: busy || reason !== '', title: reason || undefined,
+          }, busy ? '处理中…' : side === 'deposit' ? '确认注资' : '确认提款'),
+        ),
+        reason !== '' ? h('div', { className: 'pt-note pt-risk-high' }, reason) : null,
+      )
+    }
 
     function DebouncedNumber({ value, onChange, placeholder, min, step }) {
       return h('input', {
@@ -1291,6 +1351,11 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
+      // Inline cash panel (注资/提款), hidden until the header button is pressed.
+      const [cashOpen, setCashOpen] = useState(false)
+      const [cashSide, setCashSide] = useState('deposit')
+      const [cashAmount, setCashAmount] = useState('')
+      const [cashFlow, setCashFlow] = useState([])
       const submitting = useRef(false)
       const placeKey = useRef({ key: '', id: '' })
       const [searchQuery, setSearchQuery] = useState('')
@@ -1347,8 +1412,14 @@ window.__ModuleLoader__.load({
       const loadReview = useCallback(async (key = period) => {
         const seq = ++reviewSeq.current
         try {
-          const next = await rpc('futures/review', { period: key })
-          if (alive.current && seq === reviewSeq.current && key === periodRef.current) setReview(next)
+          const [next, nextCash] = await Promise.all([
+            rpc('futures/review', { period: key }),
+            rpc('futures/cash/flow'),
+          ])
+          if (alive.current && seq === reviewSeq.current && key === periodRef.current) {
+            setReview(next)
+            setCashFlow(nextCash)
+          }
         } catch (cause) {
           if (alive.current && seq === reviewSeq.current && key === periodRef.current) setError(errorOf(cause))
         }
@@ -1645,6 +1716,29 @@ window.__ModuleLoader__.load({
         }
       }, [loadAll, loadReview, tab])
 
+      /** 注资/提款只动可用资金；保证金已被持仓占用，提款上限就是可用资金。 */
+      const moveCash = useCallback(async () => {
+        const cents = cashAmountCents(cashAmount)
+        if (cents === null) return
+        const amount = cents / 100
+        const depositing = cashSide === 'deposit'
+        setBusy(true)
+        try {
+          setAccount(await rpc(depositing ? 'futures/account/deposit' : 'futures/account/withdraw', { amount }))
+          await loadAll(true)
+          if (tab === 'review') await loadReview(periodRef.current)
+          setPreviewNonce(value => value + 1)
+          setCashAmount('')
+          setCashOpen(false)
+          setError(null)
+          setNotice(depositing ? `已注资 ${money(amount)}` : `已提款 ${money(amount)}`)
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [cashAmount, cashSide, loadAll, loadReview, tab])
+
       if (account === null) {
         return h('div', { className: 'pt-inner' },
           h('div', { className: 'pt-head' },
@@ -1683,6 +1777,7 @@ window.__ModuleLoader__.load({
             : h(FuturesReviewTab, {
               review, period,
               setPeriod: key => setPeriod(key),
+              cashFlow,
             })
 
       return h('div', { className: 'pt-inner' },
@@ -1690,16 +1785,36 @@ window.__ModuleLoader__.load({
           h('div', null,
             h('h3', { className: 'pt-title' }, '模拟交易'),
             h('div', { className: 'pt-sub' },
-              `期货 · ${tradeDateText(account.tradeDate)} · ${status ? FUTURES_PHASE_TEXT[status.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
+              `期货 · ${tradeDateText(account.tradeDate)} · ${status ? FUTURES_PHASE_TEXT[status.phase] : '时段未知'} · 初始 ${money(account.initialCash)}${isFiniteNumber(account.netCashFlow) && account.netCashFlow !== 0 ? ` · 净入金 ${signed(account.netCashFlow)}` : ''} · ${account.blocked ? '已锁定' : '运行中'}`,
               status && !status.canSubmit ? h('span', { className: 'pt-note' }, '（当前时段只读）') : null,
             ),
           ),
           h('div', { className: 'pt-row' },
             accountSwitch,
             h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
+            h('button', {
+              className: 'pt-btn', 'data-active': cashOpen, disabled: busy,
+              onClick: () => {
+                setError(null)
+                setCashOpen(value => !value)
+              },
+            }, '资金'),
             h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
           ),
         ),
+        cashOpen ? h(CashMovePanel, {
+          available: account.cash,
+          side: cashSide,
+          onSide: setCashSide,
+          amount: cashAmount,
+          onAmount: setCashAmount,
+          busy,
+          onCancel: () => {
+            setCashOpen(false)
+            setCashAmount('')
+          },
+          onSubmit: moveCash,
+        }) : null,
         account.blocked ? h('div', { className: 'pt-blocked' },
           h('div', { className: 'pt-blocked-text' },
             h('div', null, '期货账本校验失败，账户已锁定。'),
@@ -1999,7 +2114,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function FuturesReviewTab({ review, period, setPeriod }) {
+    function FuturesReviewTab({ review, period, setPeriod, cashFlow }) {
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
         h('div', { className: 'pt-row' }, PERIODS.map(([key, label]) =>
           h('button', { key, className: 'pt-btn', 'data-active': period === key, onClick: () => setPeriod(key) }, label),
@@ -2026,6 +2141,19 @@ window.__ModuleLoader__.load({
                 h('td', { className: tone(item.realizedPnl) }, signed(item.realizedPnl)),
               ))),
             ),
+          ),
+          h('div', null,
+            h('div', { className: 'pt-sub' }, '资金流水'),
+            cashFlow.length === 0 ? h('div', { className: 'pt-empty' }, '暂无流水') : h(Table, null,
+              h('thead', null, h('tr', null, ['时间', '类型', '金额', '余额'].map(label => h('th', { key: label }, label)))),
+              h('tbody', null, cashFlow.slice(-30).reverse().map((row, index) => h('tr', { key: `${row.ts}-${index}` },
+                h('td', null, dateTime(row.ts)),
+                h('td', null, FUTURES_CASH_TYPE_TEXT[row.type] ?? row.type),
+                h('td', { className: tone(row.amount) }, signed(row.amount)),
+                h('td', null, money(row.balance)),
+              ))),
+            ),
+            cashFlow.length > 30 ? h('div', { className: 'pt-note' }, `仅显示最近 30 条，共 ${cashFlow.length} 条`) : null,
           ),
         ) : h('div', { className: 'pt-empty' }, '加载复盘…'),
       )
@@ -2089,6 +2217,10 @@ window.__ModuleLoader__.load({
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
       const [resetNonce, setResetNonce] = useState(0)
+      // Inline cash panel (注资/提款), hidden until the header button is pressed.
+      const [cashOpen, setCashOpen] = useState(false)
+      const [cashSide, setCashSide] = useState('deposit')
+      const [cashAmount, setCashAmount] = useState('')
       const submitting = useRef(false)
       const placeKey = useRef({ key: '', id: '' })
       const [preview, setPreview] = useState(null)
@@ -2533,6 +2665,29 @@ window.__ModuleLoader__.load({
         }
       }, [loadAll, loadReviewDetail])
 
+      /** 注资/提款：写一条账本事件，现金与总资产随之更新，盈亏剔除净入金。 */
+      const moveCash = useCallback(async () => {
+        const cents = cashAmountCents(cashAmount)
+        if (cents === null) return
+        const amount = cents / 100
+        const depositing = cashSide === 'deposit'
+        setBusy(true)
+        try {
+          setAccount(await rpc(depositing ? 'account/deposit' : 'account/withdraw', { amount }))
+          await loadAll(true)
+          await loadReviewDetail()
+          setPreviewNonce(value => value + 1)
+          setCashAmount('')
+          setCashOpen(false)
+          setError(null)
+          setNotice(depositing ? `已注资 ${money(amount)}` : `已提款 ${money(amount)}`)
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [cashAmount, cashSide, loadAll, loadReviewDetail])
+
       /** Header refresh: account/orders/trades/review plus one fresh preview. */
       const refreshAll = useCallback(async () => {
         setBusy(true)
@@ -2607,16 +2762,36 @@ window.__ModuleLoader__.load({
             h('div', null,
               h('h3', { className: 'pt-title' }, '模拟交易'),
               h('div', { className: 'pt-sub' },
-                `${tradeDateText(account.tradeDate)} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)} · ${account.blocked ? '已锁定' : '运行中'}`,
+                `${tradeDateText(account.tradeDate)} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)}${isFiniteNumber(account.netCashFlow) && account.netCashFlow !== 0 ? ` · 净入金 ${signed(account.netCashFlow)}` : ''} · ${account.blocked ? '已锁定' : '运行中'}`,
                 sessionNote(session) !== '' ? h('span', { className: 'pt-note' }, sessionNote(session)) : null,
               ),
             ),
             h('div', { className: 'pt-row' },
               accountSwitch,
               h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
+              h('button', {
+                className: 'pt-btn', 'data-active': cashOpen, disabled: busy,
+                onClick: () => {
+                  setError(null)
+                  setCashOpen(value => !value)
+                },
+              }, '资金'),
               h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
             ),
           ),
+          cashOpen ? h(CashMovePanel, {
+            available: account.cash,
+            side: cashSide,
+            onSide: setCashSide,
+            amount: cashAmount,
+            onAmount: setCashAmount,
+            busy,
+            onCancel: () => {
+              setCashOpen(false)
+              setCashAmount('')
+            },
+            onSubmit: moveCash,
+          }) : null,
           account.blocked ? h('div', { className: 'pt-blocked' },
             h('div', { className: 'pt-blocked-text' },
               h('div', null, '账本校验失败，账户已锁定。'),

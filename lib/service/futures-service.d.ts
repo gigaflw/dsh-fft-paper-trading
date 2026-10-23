@@ -8,14 +8,14 @@
  *
  * @module @ft/dsh-fft-paper-trading/service/futures-service
  */
-import type { FuturesContractQuery, FuturesContractsResult, FuturesDraft, FuturesFillView, FuturesLedgerExport, FuturesMarketStatus, FuturesOrderView, FuturesPeriod, FuturesPositionView, FuturesPreviewView, FuturesQuotesResult, FuturesReviewView, FuturesSettings, FuturesTickView } from '../futures-contract.js';
+import type { FuturesContractQuery, FuturesContractsResult, FuturesCashFlowEntry, FuturesDraft, FuturesFillView, FuturesLedgerExport, FuturesMarketStatus, FuturesOrderView, FuturesPeriod, FuturesPositionView, FuturesPreviewView, FuturesQuotesResult, FuturesReviewView, FuturesSettings, FuturesTickView } from '../futures-contract.js';
 import type { FuturesMarketDataPort } from '../data/futures-market-data-port.js';
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js';
 import { toAccountView } from '../core/futures/views.js';
 import type { FuturesStore } from '../store/futures-repo.js';
 /** Accept any published suffix (and lower case); store the market-data form. */
 export declare function normalizeFuturesSymbol(raw: string): string;
-export type FuturesServiceErrorCode = 'INSUFFICIENT_MARGIN' | 'INSUFFICIENT_POSITION' | 'CONTRACT_NOT_FOUND' | 'CONTRACT_EXPIRED' | 'NO_VOLUME' | 'LIMIT_UNAVAILABLE' | 'MARGIN_UNAVAILABLE' | 'ACCOUNT_BLOCKED' | 'INVALID_ARGUMENT' | 'ORDER_NOT_FOUND' | 'ORDER_NOT_PENDING' | 'SESSION_CLOSED' | 'INTERNAL';
+export type FuturesServiceErrorCode = 'INSUFFICIENT_MARGIN' | 'INSUFFICIENT_CASH' | 'INSUFFICIENT_POSITION' | 'CONTRACT_NOT_FOUND' | 'CONTRACT_EXPIRED' | 'NO_VOLUME' | 'LIMIT_UNAVAILABLE' | 'MARGIN_UNAVAILABLE' | 'ACCOUNT_BLOCKED' | 'INVALID_ARGUMENT' | 'ORDER_NOT_FOUND' | 'ORDER_NOT_PENDING' | 'SESSION_CLOSED' | 'INTERNAL';
 export declare class FuturesError extends Error {
     readonly code: FuturesServiceErrorCode;
     readonly status: number;
@@ -82,5 +82,14 @@ export declare class FuturesService {
     reset(confirm: boolean): Promise<ReturnType<typeof toAccountView>>;
     /** Exposed for tests: current equity in cents after advancing the clock. */
     equityCents(): Promise<number>;
+    /** Free cash in the ledger plus the cash effect of fills, oldest first. */
+    cashFlow(): Promise<FuturesCashFlowEntry[]>;
+    /** Add free cash; the amount is yuan from the UI, stored as integer cents. */
+    deposit(amount: number): Promise<ReturnType<typeof toAccountView>>;
+    /** Take free cash out; margin already reserved by positions cannot leave. */
+    withdraw(amount: number): Promise<ReturnType<typeof toAccountView>>;
+    private moveCash;
+    /** `amount` is yuan from the UI; the ledger stores integer cents. */
+    private cashAmountCents;
 }
 //# sourceMappingURL=futures-service.d.ts.map

@@ -155,6 +155,13 @@ export declare class PaperService {
      * fields. The write is an atomic temp-file rename.
      */
     reset(confirm: boolean): Promise<AccountView>;
+    /** Add cash to the account; the amount is yuan from the UI, stored as cents. */
+    deposit(amount: number): Promise<AccountView>;
+    /** Take cash out, never more than the free cash at the moment of the write. */
+    withdraw(amount: number): Promise<AccountView>;
+    private moveCash;
+    /** `amount` is yuan from the UI; the ledger stores integer cents. */
+    private cashAmountCents;
     /** Read-only export of the raw ledger, for a locked account's banner. */
     exportLedger(): Promise<LedgerExport>;
     /**

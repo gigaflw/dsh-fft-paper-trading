@@ -3,7 +3,7 @@
   const ts = () => new Date().toISOString()
   const stockAccount = {
     accountId: 'default', currency: 'CNY', initialCash: 1000000, cash: 985000,
-    marketValue: 15000, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
+    marketValue: 15000, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0, netCashFlow: 0,
     tradeDate: '2026-10-22', blocked: false,
     positions: [
       { symbol: '600519.SH', name: '贵州茅台', qty: 100, available: 100, avgCost: 1400, lastPrice: 1450.5, marketValueCents: 14505000, unrealizedPnlCents: 505000, unrealizedPnlPct: 0.036 },
@@ -35,7 +35,7 @@
   const futuresQuote = { symbol: 'RB2611.SHFE', name: '螺纹钢2611', last: 3200, preSettlement: 3150, openInterest: 120000, volume: 500000, marketTs: ts(), tradeDate: '2026-10-22' }
   const futuresStatus = { phase: 'trading', tradeDate: '2026-10-22', canSubmit: true, canMatch: true }
   const futuresState = {
-    account: { accountId: 'futures', currency: 'CNY', initialCash: 1000000, cash: 1000000, margin: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0, riskRatio: 0, tradeDate: '2026-10-22', blocked: false, positions: [], settings: { warnRiskRatio: 0.8, liquidateRiskRatio: 1 } },
+    account: { accountId: 'futures', currency: 'CNY', initialCash: 1000000, cash: 1000000, margin: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0, netCashFlow: 0, riskRatio: 0, tradeDate: '2026-10-22', blocked: false, positions: [], settings: { warnRiskRatio: 0.8, liquidateRiskRatio: 1 } },
     orders: [],
     trades: [],
     positions: [],
@@ -63,6 +63,19 @@
     'account/get': () => stockAccount,
     'account/export': () => ({ path: '/tmp/paper-trading/events.jsonl', exists: true, content: '{"type":"account.opened"}\n' }),
     'account/reset': () => stockAccount,
+    'account/deposit': (payload) => {
+      stockAccount.cash += payload.amount
+      stockAccount.equity += payload.amount
+      stockAccount.netCashFlow += payload.amount
+      return stockAccount
+    },
+    'account/withdraw': (payload) => {
+      if (payload.amount > stockAccount.cash) return { __error: { code: 'INSUFFICIENT_CASH', message: '可提现金不足' } }
+      stockAccount.cash -= payload.amount
+      stockAccount.equity -= payload.amount
+      stockAccount.netCashFlow -= payload.amount
+      return stockAccount
+    },
     'list/orders': () => window.__pendingOrders ?? stockOrders,
     'order/cancel': (payload) => {
       window.__pendingOrders = []
@@ -153,6 +166,26 @@
     'futures/account/get': () => futuresState.account,
     'futures/account/reset': () => futuresState.account,
     'futures/account/export': () => ({ path: '/tmp/futures/events.jsonl', exists: true, content: '{}' }),
+    'futures/account/deposit': (payload) => {
+      futuresState.account = {
+        ...futuresState.account,
+        cash: futuresState.account.cash + payload.amount,
+        equity: futuresState.account.equity + payload.amount,
+        netCashFlow: (futuresState.account.netCashFlow ?? 0) + payload.amount,
+      }
+      return futuresState.account
+    },
+    'futures/account/withdraw': (payload) => {
+      if (payload.amount > futuresState.account.cash) return { __error: { code: 'INSUFFICIENT_CASH', message: '可提现金不足' } }
+      futuresState.account = {
+        ...futuresState.account,
+        cash: futuresState.account.cash - payload.amount,
+        equity: futuresState.account.equity - payload.amount,
+        netCashFlow: (futuresState.account.netCashFlow ?? 0) - payload.amount,
+      }
+      return futuresState.account
+    },
+    'futures/cash/flow': () => [],
     'futures/contracts': () => ({ state: 'ok', contracts: [futuresContract, futuresContract2] }),
     'futures/quote': () => ({ state: 'ok', quotes: [{ ...futuresQuote, last: window.__futuresLast ?? futuresQuote.last, marketTs: ts() }] }),
     'futures/status': () => futuresStatus,
