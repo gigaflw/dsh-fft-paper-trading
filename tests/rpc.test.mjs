@@ -7,7 +7,7 @@ import { AccountRepo } from '../lib/store/repo.js'
 import { createPaperRpcHandler } from '../lib/service/rpc.js'
 import { createPaperRoute } from '../lib/service/route.js'
 import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
-import { WatchlistStore } from '../lib/store/watchlist.js'
+import { ShortlistStore } from '../lib/store/shortlist.js'
 
 const NOW = new Date('2026-10-19T02:00:00.000Z')
 
@@ -33,7 +33,7 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     },
   }
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), watchlist: new WatchlistStore(home), now: () => NOW })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), shortlist: new ShortlistStore(home), now: () => NOW })
   const handler = createPaperRpcHandler(service)
   const route = createPaperRoute(handler)
   try {
@@ -72,10 +72,10 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     assert.equal(status.value.tradeDate, '2026-10-19')
     assert.equal(status.value.phase, 'continuous_am')
 
-    const watch = await call('watchlist/set', { symbols: ['600519'] })
-    assert.deepEqual(watch.value.symbols, ['600519'])
-    const watched = await call('watchlist/get', {})
-    assert.deepEqual(watched.value.symbols, ['600519'])
+    const written = await call('shortlist/set', { symbols: ['600519'] })
+    assert.deepEqual(written.value.symbols, ['600519'])
+    const read = await call('shortlist/get', {})
+    assert.deepEqual(read.value.symbols, ['600519'])
 
     const bars = await call('market/bars', { symbol: '600519', interval: 'minute' })
     assert.equal(bars.ok, true)
@@ -191,7 +191,7 @@ test('route: wrong method, malformed body, oversize and bad endpoint are rejecte
     async marketList() { return { state: 'ok', quotes: [], page: 1 } },
   }
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), watchlist: new WatchlistStore(home), now: () => NOW })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), shortlist: new ShortlistStore(home), now: () => NOW })
   const route = createPaperRoute(createPaperRpcHandler(service))
   const url = 'http://127.0.0.1/api/ft-paper-trading'
   try {
@@ -236,7 +236,7 @@ test('rpc: an aborted request returns the cancellation envelope', async () => {
     async marketList() { return { state: 'ok', quotes: [], page: 1 } },
   }
   const repo = new AccountRepo({ home, accountId: 'default' })
-  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), watchlist: new WatchlistStore(home), now: () => NOW })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), shortlist: new ShortlistStore(home), now: () => NOW })
   const handler = createPaperRpcHandler(service)
   try {
     const controller = new AbortController()

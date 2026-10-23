@@ -42,7 +42,7 @@
 | 权益曲线 / 复盘统计 | 纯 SVG + 日终快照 | ● | |
 | 交易时段 / 日切 / 收盘开盘快照 | 真实节奏的基础，见 §19.2–19.3 | ○ | v0.2 P0 |
 | 行情时间语义 | `marketTs` + `fetchedAt`，见 §19.3 | ○ | v0.2 P0 |
-| 搜索 / 自选 / 列表 / 分时 / K 线 | FTShare 有数据源，见 §19.4 | ○ | v0.2 P1 |
+| 搜索 / 备选 / 列表 / 分时 / K 线 | FTShare 有数据源，见 §19.4 | ○ | v0.2 P1 |
 | 涨跌停 / 停牌 | 见 §19.5 | ○ | v0.2 P1 |
 | 日终 / 隔夜 / 回合 / 资金流水 | 从事件推导，见 §19.6 | ○ | v0.2 P1 |
 | 设置页 | 只读 `settings/get` | ○ | v0.3 写入 |
@@ -527,7 +527,7 @@ $DSH_HOME/paper-trading/
 | 版本 | 内容 |
 | --- | --- |
 | v0.1（已落地） | 左侧栏面板（交易/持仓/订单/复盘）+ 8 个工具 + 事件账本 + 权益曲线 |
-| v0.2（P0+P1，见 §19） | 交易时段/日切/收盘开盘快照、行情时间语义、M2 撮合、搜索/自选/列表/分时/K 线、涨跌停/停牌、日终/隔夜/回合/资金流水 |
+| v0.2（P0+P1，见 §19） | 交易时段/日切/收盘开盘快照、行情时间语义、M2 撮合、搜索/备选/列表/分时/K 线、涨跌停/停牌、日终/隔夜/回合/资金流水 |
 | v0.3 | 工具卡、设置写入、止损/条件单、多账户、通知、导入导出 |
 | 另议 | 保证金 / 卖空 / 强平（两融模拟，属产品范围变更） |
 
@@ -592,7 +592,7 @@ $DSH_HOME/paper-trading/
 
 **P1（随后，故事的体验）**
 
-- 搜索/自选/全市场列表/分时/K 线；
+- 搜索/备选/全市场列表/分时/K 线；
 - 涨跌停、停牌；
 - 日终/隔夜/跳空/回合统计/资金流水；
 - 委托备注，用于复盘「为什么选这个标的」。
@@ -753,11 +753,11 @@ interface MarketListResult {
 - `SymbolHit { symbol, name, exchange }`；
 - 搜索/列表/分钟都要按 `DataState` 四态归一，缺数据不抛错；
 - **没有 L1/L2**：界面只展示最新价、涨跌幅、成交量额，不展示盘口；撮合只用最新价，不伪造 spread；
-- 自选不是账本：`$DSH_HOME/paper-trading/watchlist.json`，600 权限、原子写；交易账户重置不影响自选。
+- 备选不是账本：`$DSH_HOME/paper-trading/shortlist.json`，0600 权限、原子写；交易账户重置不影响备选。
 
 **客户端**
 
-- 新增「行情」页签：搜索框、自选表、涨停/跌停/停牌池、全市场分页列表；
+- 新增「行情」页签：搜索框、备选标记（☆ 与「只看备选」）、涨停/跌停/停牌池、全市场分页列表；
 - 不做全市场「涨幅榜」：上游 `order_by` 不能可靠降序；要做得本地全量拉取（约 12 次 500 条）并缓存，P1 先不做，避免用错误排序误导用户；
 - 点击标的同时刷新报价并回填交易页；
 - 分时与日 K 复用纯 SVG；分时用 `ft_v4_stock_realtime_minute_kline`，日 K 用 `ft_v1_stock_candlesticks`；
@@ -859,7 +859,7 @@ src/core/fills.ts            # 成交序列与费用（M2 全量，无部分成�
 src/core/reports.ts          # 日终、隔夜、回合
 src/data/trading-calendar-port.ts
 src/data/ftshare-trading-calendar.ts
-src/store/watchlist.ts       # UI 偏好，不入账本
+src/store/shortlist.ts       # UI 偏好，不入账本
 src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（advanceTo 幂等补算）
 ```
 
@@ -887,7 +887,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 | `market/search` | 代码/名称搜索 |
 | `market/list` | 全市场分页列表（代码/涨跌幅，按页加载） |
 | `market/bars`（`interval`） | 日 K / 当日/历史分钟 K |
-| `watchlist/get` / `watchlist/set` | 自选读写 |
+| `shortlist/get` / `shortlist/set` | 备选读写 |
 | `review/daily` | 日终报告 |
 | `review/roundtrips` | 回合统计 |
 | `cash/flow` | 资金流水 |
@@ -956,7 +956,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 3. 离线跨日不产生成交，只补快照；
 4. 限价未穿越才挂单，收盘过期；市价单从不挂单；
 5. 涨停买入/跌停卖出/停牌有明确拒绝码；
-6. 搜索、自选、分时、日 K 可用；界面不显示盘口（数据源没有），只显示最新价；
+6. 搜索、备选、分时、日 K 可用；界面不显示盘口（数据源没有），只显示最新价；
 7. 日终、隔夜、回合、流水与账本一致，可导出。
 
 ### 19.10 参考与取舍

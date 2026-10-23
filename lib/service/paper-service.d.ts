@@ -2,12 +2,12 @@ import type { AccountView, BasketOrderInput, BasketOrderResult, BasketPreview, C
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js';
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js';
 import type { AccountStore } from '../store/port.js';
-import type { WatchlistStore } from '../store/watchlist.js';
+import type { ShortlistStore } from '../store/shortlist.js';
 export interface PaperServiceOptions {
     repo: AccountStore;
     data: MarketDataPort;
     calendar: TradingCalendarPort;
-    watchlist?: WatchlistStore;
+    shortlist?: ShortlistStore;
     settings?: PaperSettings;
     accountId?: string;
     now?: () => Date;
@@ -127,8 +127,8 @@ export declare class PaperService {
         page?: number;
         pageSize?: number;
     }): Promise<import("../contract.js").MarketListResult>;
-    watchlist(): Promise<string[]>;
-    setWatchlist(symbols: string[]): Promise<string[]>;
+    shortlist(): Promise<string[]>;
+    setShortlist(symbols: string[]): Promise<string[]>;
     settingsView(): Promise<PaperSettings>;
     private marketStatusAt;
     /**
