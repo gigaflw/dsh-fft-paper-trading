@@ -22,6 +22,7 @@ export function emptyState(accountId: string): AccountState {
     positions: {},
     orders: {},
     fills: [],
+    cashFlows: [],
     tradeDate: '',
     lastOpenedDate: '',
     blocked: false,
@@ -41,6 +42,7 @@ function openState(state: AccountState, settings: PaperSettings, initialCashCent
   state.positions = {}
   state.orders = {}
   state.fills = []
+  state.cashFlows = []
   state.dayEquity = []
   state.gaps = {}
   state.tradeDate = tradeDate
@@ -221,6 +223,18 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
       }
       break
     }
+    case 'cash.deposit': {
+      const { amountCents, tradeDate } = event.payload
+      state.cashCents += amountCents
+      state.cashFlows.push({ ts: event.ts, type: 'deposit', amountCents, tradeDate })
+      break
+    }
+    case 'cash.withdraw': {
+      const { amountCents, tradeDate } = event.payload
+      state.cashCents -= amountCents
+      state.cashFlows.push({ ts: event.ts, type: 'withdraw', amountCents, tradeDate })
+      break
+    }
     case 'ledger.violation': {
       state.blocked = true
       state.blockedReason = event.payload.actual === '' ? undefined : event.payload.actual
@@ -239,7 +253,7 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
 /** Structural invariants checked after replay and before every write. */
 export function verify(state: AccountState): string[] {
   const issues: string[] = []
-  if (!Number.isFinite(state.cashCents) || state.cashCents < 0) {
+  if (!Number.isFinite(state.cashCents) || !Number.isInteger(state.cashCents) || state.cashCents < 0) {
     issues.push(`现金为负或非法: ${state.cashCents}`)
   }
   for (const position of Object.values(state.positions)) {
@@ -249,6 +263,12 @@ export function verify(state: AccountState): string[] {
     }
   }
   let expected = state.initialCashCents
+  for (const flow of state.cashFlows) {
+    if (!Number.isInteger(flow.amountCents) || flow.amountCents <= 0) {
+      issues.push(`出入金金额非法: ${flow.amountCents}`)
+    }
+    expected += flow.type === 'deposit' ? flow.amountCents : -flow.amountCents
+  }
   for (const fill of state.fills) {
     const fees = fill.fees.totalCents
     expected += fill.side === 'buy' ? -(fill.amountCents + fees) : fill.amountCents - fees

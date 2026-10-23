@@ -14,6 +14,7 @@ import type {
   FuturesContractQuery,
   FuturesContractView,
   FuturesContractsResult,
+  FuturesCashFlowEntry,
   FuturesDraft,
   FuturesFillView,
   FuturesLedgerExport,
@@ -36,7 +37,7 @@ import type {
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js'
 import { todayTradeDate } from '../core/calendar.js'
 import { emptyState, normalizeFuturesSettings } from '../core/futures/ledger.js'
-import { cancelOrder, closeDay, openAccount, openDay, resetAccount, submit, tick as engineTick } from '../core/futures/engine.js'
+import { cancelOrder, closeDay, depositCash, openAccount, openDay, resetAccount, submit, tick as engineTick, withdrawCash } from '../core/futures/engine.js'
 import {
   daySessionsFor,
   isoAt,
@@ -47,6 +48,7 @@ import {
   type DaySessions,
 } from '../core/futures/session.js'
 import {
+  cashFlowViews,
   fillViews,
   marketStatusAt,
   orderViews,
@@ -91,6 +93,7 @@ export function normalizeFuturesSymbol(raw: string): string {
 
 export type FuturesServiceErrorCode =
   | 'INSUFFICIENT_MARGIN'
+  | 'INSUFFICIENT_CASH'
   | 'INSUFFICIENT_POSITION'
   | 'CONTRACT_NOT_FOUND'
   | 'CONTRACT_EXPIRED'
@@ -765,5 +768,53 @@ export class FuturesService {
     const state = await this.sync()
     const view = toAccountView(state)
     return Math.round(view.equity * 100)
+  }
+
+  /** Free cash in the ledger plus the cash effect of fills, oldest first. */
+  async cashFlow(): Promise<FuturesCashFlowEntry[]> {
+    return cashFlowViews(await this.sync())
+  }
+
+  /** Add free cash; the amount is yuan from the UI, stored as integer cents. */
+  async deposit(amount: number): Promise<ReturnType<typeof toAccountView>> {
+    return this.moveCash('deposit', amount)
+  }
+
+  /** Take free cash out; margin already reserved by positions cannot leave. */
+  async withdraw(amount: number): Promise<ReturnType<typeof toAccountView>> {
+    return this.moveCash('withdraw', amount)
+  }
+
+  private async moveCash(kind: 'deposit' | 'withdraw', amount: number): Promise<ReturnType<typeof toAccountView>> {
+    const amountCents = this.cashAmountCents(amount)
+    const state = await this.sync()
+    if (state.blocked) throw this.blocked(state)
+    const outcome = await this.options.repo.transact<{ blocked: boolean; insufficient: boolean }>(current => {
+      if (current.blocked) return { events: [], value: { blocked: true, insufficient: false } }
+      // Re-checked inside the transaction: a concurrent open may have reserved
+      // free cash as margin between `sync()` and this write.
+      if (kind === 'withdraw' && amountCents > current.cashCents) {
+        return { events: [], value: { blocked: false, insufficient: true } }
+      }
+      const result = kind === 'deposit'
+        ? depositCash(current, amountCents, this.ts())
+        : withdrawCash(current, amountCents, this.ts())
+      return { events: result.events, value: { blocked: false, insufficient: false } }
+    })
+    if (outcome.value.blocked === true) throw this.blocked(outcome.state)
+    if (outcome.value.insufficient === true) throw new FuturesError('INSUFFICIENT_CASH', '可提现金不足', 409)
+    return this.viewOf(outcome.state)
+  }
+
+  /** `amount` is yuan from the UI; the ledger stores integer cents. */
+  private cashAmountCents(amount: number): number {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      throw new FuturesError('INVALID_ARGUMENT', '金额必须是正数', 400)
+    }
+    const cents = Math.round(amount * 100)
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new FuturesError('INVALID_ARGUMENT', '金额至少 0.01 元', 400)
+    }
+    return cents
   }
 }

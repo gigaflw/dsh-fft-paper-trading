@@ -151,6 +151,8 @@ export interface AccountView {
   pnl: number
   pnlPct: number
   todayPnl: number
+  /** Deposits minus withdrawals after the account opened, in yuan. */
+  netCashFlow: number
   tradeDate: string
   blocked: boolean
   /** Why the account is locked, copied from the last `ledger.violation`. */
@@ -325,7 +327,7 @@ export interface DayReport {
 
 export interface CashFlowEntry {
   ts: string
-  type: 'open' | 'reset' | 'buy' | 'sell' | 'fee'
+  type: 'open' | 'reset' | 'buy' | 'sell' | 'deposit' | 'withdraw'
   amount: number
   balance: number
   ref?: string

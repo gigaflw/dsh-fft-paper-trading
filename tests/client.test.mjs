@@ -231,3 +231,23 @@ test('browser bundle: futures account switch, four tabs and the futures endpoint
   assert.match(stockHeader, /accountSwitch/)
   assert.ok(stockHeader.includes("['market', '行情']"), 'the stock market tab must stay')
 })
+
+test('browser bundle: inline 资金 panel moves cash on both accounts', () => {
+  assert.match(source, /function CashMovePanel/)
+  assert.match(source, /'注资'/)
+  assert.match(source, /'提款'/)
+  assert.match(source, /确认注资/)
+  assert.match(source, /确认提款/)
+  assert.match(source, /可提 /)
+  assert.match(source, /CASH_QUICK_AMOUNTS/)
+  assert.match(source, /netCashFlow/)
+  // The panel never promises to edit the total: money moves in or out.
+  for (const endpoint of ['account/deposit', 'account/withdraw', 'futures/account/deposit', 'futures/account/withdraw']) {
+    assert.ok(source.includes(`'${endpoint}'`), `missing endpoint ${endpoint}`)
+  }
+  assert.ok(source.includes("'资金'"), 'the header must expose the cash button')
+  // Futures review lists the cash moves, not just the equity curve.
+  assert.match(source, /futures\/cash\/flow/)
+  assert.match(source, /FUTURES_CASH_TYPE_TEXT/)
+  assert.match(source, /\.pt-cash \{/)
+})

@@ -9,6 +9,7 @@
 
 import type {
   FuturesAccountView,
+  FuturesCashFlowEntry,
   FuturesDraft,
   FuturesEquityPoint,
   FuturesFillView,
@@ -128,11 +129,65 @@ export function fillViews(state: FuturesAccountState): FuturesFillView[] {
   return [...state.fills].reverse().map(toFillView)
 }
 
+/** Deposits minus withdrawals after the account opened, in cents. */
+export function netCashFlowCents(state: FuturesAccountState): number {
+  return state.cashFlows.reduce(
+    (sum, flow) => sum + (flow.type === 'deposit' ? flow.amountCents : -flow.amountCents),
+    0,
+  )
+}
+
+/** Net cash moved on the current trade date, in cents. */
+export function todayCashFlowCents(state: FuturesAccountState): number {
+  return state.cashFlows
+    .filter(flow => flow.tradeDate === state.tradeDate)
+    .reduce((sum, flow) => sum + (flow.type === 'deposit' ? flow.amountCents : -flow.amountCents), 0)
+}
+
+/** Money in/out plus the cash effect of opening and closing positions. */
+export function cashFlowViews(state: FuturesAccountState): FuturesCashFlowEntry[] {
+  const moves: { ts: string; type: FuturesCashFlowEntry['type']; amountCents: number; ref?: string }[] = []
+  for (const flow of state.cashFlows) {
+    moves.push({
+      ts: flow.ts,
+      type: flow.type,
+      amountCents: flow.type === 'deposit' ? flow.amountCents : -flow.amountCents,
+    })
+  }
+  for (const fill of state.fills) {
+    const amount = fill.offset === 'open'
+      ? -(fill.marginCents + fill.feesCents)
+      : fill.marginCents + fill.realizedPnlCents - fill.feesCents
+    moves.push({
+      ts: fill.ts,
+      type: fill.offset === 'open' ? 'open_position' : 'close_position',
+      amountCents: amount,
+      ref: fill.orderId,
+    })
+  }
+  moves.sort((a, b) => a.ts.localeCompare(b.ts))
+  let balance = state.initialCashCents
+  const rows: FuturesCashFlowEntry[] = [
+    { ts: state.createdAt, type: 'open', amount: state.initialCashCents / 100, balance: state.initialCashCents / 100 },
+  ]
+  for (const move of moves) {
+    balance += move.amountCents
+    rows.push({ ts: move.ts, type: move.type, amount: move.amountCents / 100, balance: balance / 100, ref: move.ref })
+  }
+  return rows
+}
+
 export function toAccountView(state: FuturesAccountState, ledgerPath?: string): FuturesAccountView {
   const marks = markToMarket(state)
   const equity = marks.equityCents
   const lastPoint = state.dayEquity[state.dayEquity.length - 1]
   const baseline = lastPoint !== undefined && lastPoint.date < state.tradeDate ? lastPoint.equityCents : state.initialCashCents
+  const netCashFlow = netCashFlowCents(state)
+  const todayCashFlow = todayCashFlowCents(state)
+  // Contributions are not profit: the return denominator is the net invested
+  // capital, and today's PnL excludes cash moved in or out today.
+  const invested = state.initialCashCents + netCashFlow
+  const pnl = equity - invested
   const view: FuturesAccountView = {
     accountId: state.accountId,
     currency: 'CNY',
@@ -140,9 +195,10 @@ export function toAccountView(state: FuturesAccountState, ledgerPath?: string): 
     cash: state.cashCents / 100,
     margin: marks.marginCents / 100,
     equity: equity / 100,
-    pnl: (equity - state.initialCashCents) / 100,
-    pnlPct: state.initialCashCents > 0 ? (equity - state.initialCashCents) / state.initialCashCents : 0,
-    todayPnl: (equity - baseline) / 100,
+    pnl: pnl / 100,
+    pnlPct: invested > 0 ? pnl / invested : 0,
+    todayPnl: (equity - baseline - todayCashFlow) / 100,
+    netCashFlow: netCashFlow / 100,
     riskRatio: riskRatioView(marks.marginCents, equity),
     tradeDate: state.tradeDate,
     blocked: state.blocked,

@@ -138,6 +138,8 @@ export interface FuturesAccountView {
     pnl: number;
     pnlPct: number;
     todayPnl: number;
+    /** Deposits minus withdrawals after the account opened, in yuan. */
+    netCashFlow: number;
     /** margin / equity; 0 when equity is not positive. */
     riskRatio: number;
     tradeDate: string;
@@ -181,6 +183,14 @@ export interface FuturesTickView {
     filled: FuturesOrderView[];
     expired: FuturesOrderView[];
     notices: string[];
+}
+/** One row of the futures cash account: money in/out plus margin moves. */
+export interface FuturesCashFlowEntry {
+    ts: string;
+    type: 'open' | 'deposit' | 'withdraw' | 'open_position' | 'close_position';
+    amount: number;
+    balance: number;
+    ref?: string;
 }
 export interface FuturesEquityPoint {
     date: string;
@@ -239,5 +249,5 @@ export interface FuturesContractQuery {
     refresh?: boolean;
 }
 /** Error codes this feature adds on top of the stock contract's set. */
-export type FuturesErrorCode = 'INSUFFICIENT_MARGIN' | 'INSUFFICIENT_POSITION' | 'CONTRACT_NOT_FOUND' | 'CONTRACT_EXPIRED' | 'NO_VOLUME' | 'LIMIT_UNAVAILABLE' | 'MARGIN_UNAVAILABLE';
+export type FuturesErrorCode = 'INSUFFICIENT_MARGIN' | 'INSUFFICIENT_CASH' | 'INSUFFICIENT_POSITION' | 'CONTRACT_NOT_FOUND' | 'CONTRACT_EXPIRED' | 'NO_VOLUME' | 'LIMIT_UNAVAILABLE' | 'MARGIN_UNAVAILABLE';
 //# sourceMappingURL=futures-contract.d.ts.map

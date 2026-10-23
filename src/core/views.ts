@@ -77,6 +77,21 @@ export function toFillView(fill: FillRecord): FillView {
   }
 }
 
+/** Deposits minus withdrawals after the account opened, in cents. */
+export function netCashFlowCents(state: AccountState): number {
+  return state.cashFlows.reduce(
+    (sum, flow) => sum + (flow.type === 'deposit' ? flow.amountCents : -flow.amountCents),
+    0,
+  )
+}
+
+/** Net cash moved on the current trade date, in cents. */
+export function todayCashFlowCents(state: AccountState): number {
+  return state.cashFlows
+    .filter(flow => flow.tradeDate === state.tradeDate)
+    .reduce((sum, flow) => sum + (flow.type === 'deposit' ? flow.amountCents : -flow.amountCents), 0)
+}
+
 export function toAccountView(state: AccountState): AccountView {
   const positions = Object.values(state.positions)
     .map(toPositionView)
@@ -85,6 +100,12 @@ export function toAccountView(state: AccountState): AccountView {
   const equity = state.cashCents + marketValueCents
   const lastPoint = state.dayEquity[state.dayEquity.length - 1]
   const baseline = lastPoint !== undefined && lastPoint.date < state.tradeDate ? lastPoint.equityCents : state.initialCashCents
+  const netCashFlow = netCashFlowCents(state)
+  const todayCashFlow = todayCashFlowCents(state)
+  // Money moved in or out is not profit: subtract the net contribution from the
+  // equity change and use the net invested capital as the return denominator.
+  const invested = state.initialCashCents + netCashFlow
+  const pnl = equity - invested
   return {
     accountId: state.accountId,
     currency: 'CNY',
@@ -92,9 +113,10 @@ export function toAccountView(state: AccountState): AccountView {
     cash: state.cashCents / 100,
     marketValue: marketValueCents / 100,
     equity: equity / 100,
-    pnl: (equity - state.initialCashCents) / 100,
-    pnlPct: state.initialCashCents > 0 ? (equity - state.initialCashCents) / state.initialCashCents : 0,
-    todayPnl: (equity - baseline) / 100,
+    pnl: pnl / 100,
+    pnlPct: invested > 0 ? pnl / invested : 0,
+    todayPnl: (equity - baseline - todayCashFlow) / 100,
+    netCashFlow: netCashFlow / 100,
     tradeDate: state.tradeDate,
     blocked: state.blocked,
     blockedReason: state.blockedReason,

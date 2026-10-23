@@ -70,6 +70,37 @@ export function fillQty(order: Order): number {
   return Number.isFinite(remaining) && remaining > 0 ? remaining : 0
 }
 
+/**
+ * Move cash in (`deposit`) or out (`withdraw`) without touching positions.
+ *
+ * The amount is validated here rather than only in the service: it lands in the
+ * ledger, where a zero, negative or fractional cent value would break replay.
+ * A withdrawal larger than the free cash is a caller bug (the service checks it
+ * inside the same transaction), so it throws instead of booking a negative cash.
+ */
+export function depositCash(state: AccountState, amountCents: number, ts: string): EngineResult {
+  assertCashAmount(amountCents)
+  const working = clone(state)
+  const events: LedgerEvent[] = []
+  append(working, events, { type: 'cash.deposit', payload: { amountCents, tradeDate: working.tradeDate } }, ts)
+  return { events, state: working }
+}
+
+export function withdrawCash(state: AccountState, amountCents: number, ts: string): EngineResult {
+  assertCashAmount(amountCents)
+  if (amountCents > state.cashCents) throw new Error(`withdraw ${amountCents} exceeds cash ${state.cashCents}`)
+  const working = clone(state)
+  const events: LedgerEvent[] = []
+  append(working, events, { type: 'cash.withdraw', payload: { amountCents, tradeDate: working.tradeDate } }, ts)
+  return { events, state: working }
+}
+
+function assertCashAmount(amountCents: number): void {
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+    throw new Error(`cash amount must be a positive integer of cents, got ${String(amountCents)}`)
+  }
+}
+
 function makeFill(
   state: AccountState,
   order: Order,

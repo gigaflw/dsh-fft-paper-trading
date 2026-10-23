@@ -23,7 +23,7 @@ import type {
   SessionPhase,
 } from '../contract.js'
 import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
-import { cancelOrder, closeDay, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, type EngineResult } from '../core/engine.js'
+import { cancelOrder, closeDay, depositCash, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, withdrawCash, type EngineResult } from '../core/engine.js'
 import { todayTradeDate, tradeDateOf } from '../core/calendar.js'
 import { canMatch, canSubmit, isoAtShanghai, sessionPhaseAt, shanghaiClock } from '../core/session.js'
 import { normalizeSettings } from '../core/settings.js'
@@ -820,20 +820,28 @@ export class PaperService {
 
   async cashFlow(): Promise<CashFlowEntry[]> {
     const state = await this.sync()
-    let balance = 0
-    const rows: CashFlowEntry[] = []
-    rows.push({ ts: state.createdAt, type: 'open', amount: state.initialCashCents / 100, balance: state.initialCashCents / 100 })
-    balance = state.initialCashCents
+    const moves: { ts: string; type: CashFlowEntry['type']; amountCents: number; ref?: string }[] = []
+    for (const flow of state.cashFlows) {
+      moves.push({
+        ts: flow.ts,
+        type: flow.type,
+        amountCents: flow.type === 'deposit' ? flow.amountCents : -flow.amountCents,
+      })
+    }
     for (const fill of state.fills) {
       const gross = fill.side === 'buy' ? -(fill.amountCents + fill.fees.totalCents) : fill.amountCents - fill.fees.totalCents
-      balance += gross
-      rows.push({
-        ts: fill.ts,
-        type: fill.side === 'buy' ? 'buy' : 'sell',
-        amount: gross / 100,
-        balance: balance / 100,
-        ref: fill.orderId,
-      })
+      moves.push({ ts: fill.ts, type: fill.side === 'buy' ? 'buy' : 'sell', amountCents: gross, ref: fill.orderId })
+    }
+    // Fills and cash moves share the ledger clock; sort so the running balance
+    // matches the order the events were actually applied.
+    moves.sort((a, b) => a.ts.localeCompare(b.ts))
+    let balance = state.initialCashCents
+    const rows: CashFlowEntry[] = [
+      { ts: state.createdAt, type: 'open', amount: state.initialCashCents / 100, balance: state.initialCashCents / 100 },
+    ]
+    for (const move of moves) {
+      balance += move.amountCents
+      rows.push({ ts: move.ts, type: move.type, amount: move.amountCents / 100, balance: balance / 100, ref: move.ref })
     }
     return rows
   }
@@ -841,6 +849,13 @@ export class PaperService {
   async dailyReport(date?: string): Promise<DayReport[]> {
     const state = await this.sync()
     const points = date === undefined ? state.dayEquity : state.dayEquity.filter(point => point.date === date)
+    // A deposit or withdrawal is not a day's profit: subtract the net cash move
+    // booked on that trade date from the equity change.
+    const flowByDate = new Map<string, number>()
+    for (const flow of state.cashFlows) {
+      const signed = flow.type === 'deposit' ? flow.amountCents : -flow.amountCents
+      flowByDate.set(flow.tradeDate, (flowByDate.get(flow.tradeDate) ?? 0) + signed)
+    }
     let previous = state.initialCashCents
     const reports: DayReport[] = []
     for (const point of state.dayEquity) {
@@ -852,7 +867,7 @@ export class PaperService {
         date: point.date,
         equity: point.equityCents / 100,
         cash: point.cashCents / 100,
-        dayPnl: (point.equityCents - previous) / 100,
+        dayPnl: (point.equityCents - previous - (flowByDate.get(point.date) ?? 0)) / 100,
         fees: (point.feesCents ?? 0) / 100,
         available: point.positions?.reduce((sum, position) => sum + position.available, 0) ?? 0,
         positions: (point.positions ?? []).map(position => ({
@@ -943,6 +958,47 @@ export class PaperService {
     }
     const next = await this.options.repo.replace([genesis])
     return this.viewOf(next)
+  }
+
+  /** Add cash to the account; the amount is yuan from the UI, stored as cents. */
+  async deposit(amount: number): Promise<AccountView> {
+    return this.moveCash('deposit', amount)
+  }
+
+  /** Take cash out, never more than the free cash at the moment of the write. */
+  async withdraw(amount: number): Promise<AccountView> {
+    return this.moveCash('withdraw', amount)
+  }
+
+  private async moveCash(kind: 'deposit' | 'withdraw', amount: number): Promise<AccountView> {
+    const amountCents = this.cashAmountCents(amount)
+    const state = await this.sync()
+    if (state.blocked) throw this.blocked(state)
+    const outcome = await this.options.repo.transact<{ blocked: boolean; insufficient: boolean }>(current => {
+      if (current.blocked) return { events: [], value: { blocked: true, insufficient: false } }
+      // Re-checked inside the transaction: a concurrent buy may have spent the
+      // cash between `sync()` and this write.
+      if (kind === 'withdraw' && amountCents > current.cashCents) {
+        return { events: [], value: { blocked: false, insufficient: true } }
+      }
+      const result = kind === 'deposit' ? depositCash(current, amountCents, this.ts()) : withdrawCash(current, amountCents, this.ts())
+      return { events: result.events, value: { blocked: false, insufficient: false } }
+    })
+    if (outcome.value.blocked === true) throw this.blocked(outcome.state)
+    if (outcome.value.insufficient === true) throw new PaperError('INSUFFICIENT_CASH', '可提现金不足', 409)
+    return this.viewOf(outcome.state)
+  }
+
+  /** `amount` is yuan from the UI; the ledger stores integer cents. */
+  private cashAmountCents(amount: number): number {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      throw new PaperError('INVALID_ARGUMENT', '金额必须是正数', 400)
+    }
+    const cents = Math.round(amount * 100)
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new PaperError('INVALID_ARGUMENT', '金额至少 0.01 元', 400)
+    }
+    return cents
   }
 
   /** Read-only export of the raw ledger, for a locked account's banner. */

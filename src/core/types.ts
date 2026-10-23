@@ -91,6 +91,13 @@ export interface DayOpened {
   recordedAt: string
 }
 
+export interface CashFlowRecord {
+  ts: string
+  type: 'deposit' | 'withdraw'
+  amountCents: number
+  tradeDate: string
+}
+
 export interface AccountState {
   accountId: string
   version: number
@@ -101,6 +108,8 @@ export interface AccountState {
   positions: Record<string, Position>
   orders: Record<string, Order>
   fills: FillRecord[]
+  /** Deposits and withdrawals after the account opened, oldest first. */
+  cashFlows: CashFlowRecord[]
   tradeDate: string
   /** Last date whose day.opened event was applied. */
   lastOpenedDate: string
@@ -138,5 +147,7 @@ export type LedgerEvent =
   | { seq: number; id: string; ts: string; type: 'day.pre_opened'; payload: { date: string; at: string } }
   | { seq: number; id: string; ts: string; type: 'day.opened'; payload: DayOpened }
   | { seq: number; id: string; ts: string; type: 'day.closed'; payload: DayPoint }
+  | { seq: number; id: string; ts: string; type: 'cash.deposit'; payload: { amountCents: number; tradeDate: string } }
+  | { seq: number; id: string; ts: string; type: 'cash.withdraw'; payload: { amountCents: number; tradeDate: string } }
   | { seq: number; id: string; ts: string; type: 'ledger.violation'; payload: { check: string; expected: string; actual: string } }
   | { seq: number; id: string; ts: string; type: 'ledger.repaired'; payload: { dropped: number; issues?: string[] } }

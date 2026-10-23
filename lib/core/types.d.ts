@@ -83,6 +83,12 @@ export interface DayOpened {
     t1Unlocked: boolean;
     recordedAt: string;
 }
+export interface CashFlowRecord {
+    ts: string;
+    type: 'deposit' | 'withdraw';
+    amountCents: number;
+    tradeDate: string;
+}
 export interface AccountState {
     accountId: string;
     version: number;
@@ -93,6 +99,8 @@ export interface AccountState {
     positions: Record<string, Position>;
     orders: Record<string, Order>;
     fills: FillRecord[];
+    /** Deposits and withdrawals after the account opened, oldest first. */
+    cashFlows: CashFlowRecord[];
     tradeDate: string;
     /** Last date whose day.opened event was applied. */
     lastOpenedDate: string;
@@ -205,6 +213,24 @@ export type LedgerEvent = {
     ts: string;
     type: 'day.closed';
     payload: DayPoint;
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'cash.deposit';
+    payload: {
+        amountCents: number;
+        tradeDate: string;
+    };
+} | {
+    seq: number;
+    id: string;
+    ts: string;
+    type: 'cash.withdraw';
+    payload: {
+        amountCents: number;
+        tradeDate: string;
+    };
 } | {
     seq: number;
     id: string;
