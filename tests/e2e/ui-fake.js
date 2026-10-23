@@ -363,6 +363,35 @@
       }, 5000)
       return result
     }
+    if (name === 'quote-error-clears') {
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
+      if (tradeTab) e2e.click(tradeTab)
+      await new Promise(done => setTimeout(done, 400))
+      let failNext = true
+      window.__fake.on('market/quote', () => {
+        if (failNext) {
+          failNext = false
+          return { __error: { code: 'INVALID_SYMBOL', message: '代码格式应为 600519 或 600519.SH，收到 600519.XSH' } }
+        }
+        return { state: 'ok', quotes: [{ ...quote, last: window.__quoteLast ?? quote.last, marketTs: ts() }] }
+      })
+      const inputs = [...document.querySelectorAll('.pt-ticket-form input')]
+      e2e.setInput(inputs[0], '600519.XSH')
+      result.error = await e2e.wait(() => {
+        const error = document.querySelector('.pt-ticket-form .pt-error')
+        return error && error.innerText.includes('代码格式应为') ? error.innerText : null
+      }, 5000)
+      // Completing the draft hands the quote to the preview: the old symbol's
+      // error must disappear instead of sticking to the corrected ticket.
+      e2e.setInput(inputs[1], '100')
+      result.errorAfter = await e2e.wait(() => {
+        const error = document.querySelector('.pt-ticket-form .pt-error')
+        return error === null ? 'gone' : null
+      }, 5000)
+      e2e.setInput(inputs[1], '')
+      window.__fake.on('market/quote', () => ({ state: 'ok', quotes: [{ ...quote, last: window.__quoteLast ?? quote.last, marketTs: ts() }] }))
+      return result
+    }
     if (name === 'live-stock') {
       const tradeTab = [...document.querySelectorAll('.pt-tab')].find(tab => tab.innerText === '交易')
       if (tradeTab) e2e.click(tradeTab)
