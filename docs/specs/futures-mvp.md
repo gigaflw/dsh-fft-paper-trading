@@ -87,8 +87,8 @@ RPC（仍走 `/api/ft-paper-trading`）：
 | F10 | 杀进程重启 | 现金、持仓、订单、权益与重启前一致（重放） |
 | F11 | 无行情/接口失败 | 面板与账本可用，可看持仓与历史；可手填参考价平仓 |
 | F12 | 股票/期货并存 | 两本账互不影响，各自可重置 |
-| F13 | 一揽子买入 N 只 | 预览数量/费用/剩余现金正确；确认后 N 笔订单按序成交，总花费 ≤ 预算 |
-| F14 | 一揽子重复提交 | 同 `batchId` 不重复下单 |
+| F13 | 批量买入 N 只 | 预览数量/费用/剩余现金正确；确认后 N 笔订单按序成交，总花费 ≤ 预算 |
+| F14 | 批量重复提交 | 同 `batchId` 不重复下单 |
 | F15 | 回归 | 股票交易/行情/持仓/订单/复盘/K 线/tick 无变化 |
 
 ## 5 不在本次
@@ -99,10 +99,10 @@ RPC（仍走 `/api/ft-paper-trading`）：
 
 | 分支 | 范围 |
 | --- | --- |
-| `feat/basket` | 一揽子：core/basket + service/rpc + 测试（不含 UI） |
+| `feat/basket` | 批量：core/basket + service/rpc + 测试（不含 UI） |
 | `feat/futures` | 期货后端：contract 之后的 core/store/service/rpc/tools/index 装配 + 测试 |
 | `feat/futures-data` | 期货 FTShare 数据适配器 + 假数据测试 |
-| `feat/client-ui` | 全部客户端 UI（一揽子页签 + 期货账户切换/四个页签）+ client 测试 |
+| `feat/client-ui` | 全部客户端 UI（批量页签 + 期货账户切换/四个页签）+ client 测试 |
 | dev 集成 | Lead 合并、FTShare 适配器装配、端到端测试、文档 |
 
 分支持久化在 `.worktrees/<name>`；合并进 `dev` 用 rebase + 快进，不 push。

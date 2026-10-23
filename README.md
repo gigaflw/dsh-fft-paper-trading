@@ -1,6 +1,6 @@
 # @ft/dsh-fft-paper-trading
 
-A 股与商品期货模拟盘：输入即预览成本、下单、持仓、复盘；一揽子按 CSV 权重一次配股买入。
+A 股与商品期货模拟盘：输入即预览成本、下单、持仓、复盘；批量按 CSV 权重一次买入。
 账本是本地追加的事件文件，重启后重放恢复。
 
 本仓库是插件的独立仓库，**仓库根即包根**：既可以单独安装，也可以随 `dsh-fft-bundle`（主仓）一起安装。
@@ -8,7 +8,7 @@ A 股与商品期货模拟盘：输入即预览成本、下单、持仓、复盘
 ## 使用
 
 - 侧栏「模拟交易」：顶部 `股票 | 期货` 切换账户，两本账互不影响。
-  - 股票：交易、一揽子、行情、持仓、订单、复盘。
+  - 股票：交易、批量、行情、持仓、订单、复盘。
   - 期货：交易、持仓、订单、复盘（无行情页；交易页内搜索合约）。
 - 对话工具：
   - 股票：`paper_account`、`paper_quote`、`paper_preview`、`paper_order`、`paper_cancel`、`paper_status`、`paper_tick`、`paper_review`。
@@ -20,7 +20,7 @@ A 股与商品期货模拟盘：输入即预览成本、下单、持仓、复盘
 交割与移仓不在本期。
 
 交易页填完代码/方向/数量即自动取行情并算费用；市价按最新价一次全成，限价未穿越才挂单（宿主每 5 秒重判），当日有效。
-一揽子填预算后预览每只股数/费用/剩余现金，确认后一批成交；同一批次重试不会重复下单。
+批量填预算后预览每只股数/费用/剩余现金，确认后一批成交；同一批次重试不会重复下单。
 
 ## 安装
 
@@ -72,12 +72,12 @@ node scripts/sync-profile.mjs   # 同步到 desktop profile 的稳定副本
 端到端（详见 [tests/e2e/README.md](tests/e2e/README.md)）：
 
 ```bash
-node tests/e2e/offline-basket.mjs    # 一揽子：预览/下单/幂等
+node tests/e2e/offline-basket.mjs    # 批量：预览/下单/幂等
 node tests/e2e/futures-offline.mjs   # 期货：开仓/重启/平仓/结算
-node tests/e2e/ui-panel.mjs          # 浏览器面板：一揽子 + 期货全流程（需 react-dom UMD）
+node tests/e2e/ui-panel.mjs          # 浏览器面板：批量 + 期货全流程（需 react-dom UMD）
 ```
 
 `lib/` 是构建产物且**提交进 git**（git 安装不在安装期构建）。
 
-设计：[docs/design.md](docs/design.md) §20 期货与一揽子｜MVP 范围：[docs/mvp.md](docs/mvp.md)｜
+设计：[docs/design.md](docs/design.md) §20 期货与批量｜MVP 范围：[docs/mvp.md](docs/mvp.md)｜
 需求：[docs/specs/](docs/specs/)｜发布记录：[docs/releases.md](docs/releases.md)

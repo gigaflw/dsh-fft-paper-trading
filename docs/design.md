@@ -531,7 +531,7 @@ $DSH_HOME/paper-trading/
 | v0.3 | 工具卡、设置写入、止损/条件单、多账户、通知、导入导出 |
 | 另议 | 保证金 / 卖空 / 强平（两融模拟，属产品范围变更） |
 
-> 一揽子配股 v1（CSV 代码 + 权重、仅买入）的规格见 [basket.md](specs/basket.md)，尚未实现。
+> 批量买入 v1（CSV 代码 + 权重、仅买入）的规格见 [basket.md](specs/basket.md)，已实现（§20）。
 
 ## 17 风险与待验证
 
@@ -1011,7 +1011,7 @@ paper-trading main 注册
 - 多账户、分红送转、通知（v0.3）；
 - 时间加速/快进（永远不做）。
 
-## 20 期货 MVP 与一揽子（已实现）
+## 20 期货 MVP 与批量（已实现）
 
 > 需求与取舍：[futures-spec.md](specs/futures-spec.md)、[futures-mvp.md](specs/futures-mvp.md)、[basket.md](specs/basket.md)。
 > 本节只写落地后的模块边界、账本语义与集成点，不重复需求。
@@ -1020,14 +1020,14 @@ paper-trading main 注册
 
 - **期货独立账户**：账本 `$DSH_HOME/paper-trading/futures/events.jsonl`，版本 `futures-v1`，与股票账本互不读取；账户头切换 `股票 | 期货`。
 - 只做商品期货（SHFE/INE/DCE/CZCE/GFEX）、日盘（09:00–11:30，含 10:15–10:30 小节休息；13:30–15:00）、T+0；无夜盘、无 CFFEX/NIB、无交割/移仓/组合保证金。
-- 一揽子只做买入、市价、连续竞价，CSV 两列（代码 + 权重），一次事务批量下单。
+- 批量只做买入、市价、连续竞价，CSV 两列（代码 + 权重），一次事务批量下单。
 
 ### 20.2 模块
 
 ```
 src/futures-contract.ts          # 跨平面类型/设置/RPC 形状（无运行时依赖）
 src/core/futures/                # 纯领域：session / money / fees / margin / engine / ledger / replay / views
-src/core/basket.ts               # CSV 解析 + 权重配股纯函数
+src/core/basket.ts               # CSV 解析 + 权重分配纯函数
 src/store/futures-repo.ts        # JSONL 事务账本（EventStore 已泛型化，股票共用）
 src/data/futures-market-data-port.ts
 src/data/futures-market-data.ts  # FTShare 适配器（三套后缀归一、按日缓存、≤20 分批）
@@ -1065,7 +1065,7 @@ src/client/index.js              # 账户切换 + StockDashboard / FuturesDashbo
 
 - 壳 `Dashboard` 只管账户切换；`StockDashboard` 原样保留（等高两列、单张下单卡、底部 book、K 线右栏），`FuturesDashboard` 独立状态、RPC 与 5s 轮询。
 - 期货：交易/持仓/订单/复盘四页签（无行情页、无 K 线）；搜索选合约，右栏合约要素卡；方向 `开多/开空/平多/平空`；预览显示保证金、手续费、风险度、最多可开、平仓可平、涨跌停；底部常驻「持仓/挂单」复用 `.pt-trade-book`。
-- 一揽子：交易页签之后的独立页签，CSV `file.text()` → 宿主解析/配股 → 预览表 9 列 + 合计/剩余现金 → 生成 `batchId` 一次提交；切走即清空。
+- 批量：交易页签之后的独立页签，CSV `file.text()` → 宿主解析/分配 → 预览表 9 列 + 合计/剩余现金 → 生成 `batchId` 一次提交；切走即清空。
 
 ### 20.7 测试
 
@@ -1083,7 +1083,7 @@ src/client/index.js              # 账户切换 + StockDashboard / FuturesDashbo
 - 重启后 `account()` 不取行情，marks 用上次落盘价，首个 5s tick 前显示的浮盈可能滞后；账本与重放不受影响。
 - 合约索引/涨跌停表失败没有负缓存：掉线期间每次预览会重试上游；后续加短 TTL 负缓存。
 - 期货 `closes` 逐合约串行；持仓很多时结算会变慢，后续可换批量 K 线接口。
-- 一揽子不做卖出/再平衡/限价/盘后预埋/Agent 工具，逐步扩；客户端在预览成功时冻结 `batchId`，重试复用同一批。
+- 批量不做卖出/再平衡/限价/盘后预埋/Agent 工具，逐步扩；客户端在预览成功时冻结 `batchId`，重试复用同一批。
 - 股票/期货账户切换会卸载另一半仪表盘，表单、搜索和选中合约按设计重置；需要保留草稿时再单独做持久化。
 - 预览请求本身失败（error 包络）不阻止提交，交由下单时的服务端校验兜底；业务拒单与 RPC 错误信息优先显示宿主给的完整中文原因。
 - 窄屏（≤1100px）K 线/合约要素栏移到页签上方，交易表单会落在首屏下方；这是响应式取舍，宽屏保持左右分栏。
