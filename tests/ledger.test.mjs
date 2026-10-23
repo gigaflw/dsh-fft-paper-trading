@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { DEFAULT_SETTINGS } from '../lib/contract.js'
+import { DEFAULT_SETTINGS, PAPER_LEDGER_VERSION } from '../lib/contract.js'
 import { PaperService } from '../lib/service/paper-service.js'
 import { AccountRepo } from '../lib/store/repo.js'
 import { EventStore } from '../lib/store/event-store.js'
@@ -22,19 +22,6 @@ const bar = (date, close, extra = {}) => ({
   volume: 10_000,
   ...extra,
 })
-
-/** Settings as persisted by v0.1, before `maxParticipationRate` / `fillModel` existed. */
-const LEGACY_SETTINGS = {
-  initialCashCents: 10_000_000,
-  commissionRate: 0.00025,
-  minCommissionCents: 500,
-  stampDutyRate: 0.0005,
-  transferFeeRate: 0.00001,
-  slippageBps: 5,
-  enableT1: true,
-  quoteTtlSec: 30,
-  maxOrderNotionalCents: 0,
-}
 
 function makeHome(name) {
   return join(process.cwd(), 'tmp', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
@@ -106,12 +93,12 @@ test('p0-1: five concurrent reads write each day-boundary event once', async () 
   const now = { current: at('2026-10-21', '10:00') }
   const { service } = makeService(home, data, now)
   try {
-    data.setQuote('600519', 10, now.current.toISOString())
+    data.setQuote('600519.SH', 10, now.current.toISOString())
     await service.account()
-    await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
 
     now.current = at('2026-10-22', '09:31')
-    data.setQuote('600519', 10.2, now.current.toISOString(), { prevClose: 10 })
+    data.setQuote('600519.SH', 10.2, now.current.toISOString(), { prevClose: 10 })
     await Promise.all([
       service.account(),
       service.orders(),
@@ -154,7 +141,7 @@ test('p0-1: append refuses a non-contiguous seq instead of corrupting the file',
       id: 'evt-1',
       ts: '2026-10-19T02:00:00.000Z',
       type: 'account.opened',
-      payload: { accountId: 'default', settings: LEGACY_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-19' },
+      payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-19', ledgerVersion: PAPER_LEDGER_VERSION },
     },
   ])
   try {
@@ -178,7 +165,7 @@ test('p0-1: an old ledger with identical duplicate seq is repaired, not locked',
     id: 'evt-1',
     ts: '2026-10-19T02:00:00.000Z',
     type: 'account.opened',
-    payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-19' },
+    payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-19', ledgerVersion: PAPER_LEDGER_VERSION },
   }
   const closed = {
     seq: 2,
@@ -220,7 +207,7 @@ test('p0-1: a conflicting duplicate seq still blocks and stops appending', async
     id: 'evt-1',
     ts: '2026-10-19T02:00:00.000Z',
     type: 'account.opened',
-    payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-19' },
+    payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-19', ledgerVersion: PAPER_LEDGER_VERSION },
   }
   const first = {
     seq: 2,
@@ -254,7 +241,7 @@ test('p0-1: a conflicting duplicate seq still blocks and stops appending', async
 
     // The lock reason, not the session gate, must explain a refused order.
     await assert.rejects(
-      service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 }),
+      service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),
       /账户已锁定，请重置后继续（事件序号重复且内容不同: 2）/,
     )
 
@@ -274,43 +261,32 @@ test('p0-1: a conflicting duplicate seq still blocks and stops appending', async
   }
 })
 
-test('p0-2: legacy settings migrate to M2 and orders fill in full', async () => {
-  const home = makeHome('legacy-settings')
+test('p0-2: an older ledger version is blocked instead of replayed', async () => {
+  const home = makeHome('old-version')
   await writeLedger(home, [
     {
       seq: 1,
       id: 'evt-1',
       ts: '2026-10-20T02:00:00.000Z',
       type: 'account.opened',
-      payload: { accountId: 'default', settings: LEGACY_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: 1 },
+      payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: PAPER_LEDGER_VERSION - 1 },
     },
   ])
   const data = makeData()
   const now = { current: at('2026-10-20', '10:00') }
-  data.setVolume('600519', 5_000)
   const { service } = makeService(home, data, now)
   try {
     const account = await service.account()
-    assert.equal(account.blocked, false)
-    assert.equal(account.settings.slippageBps, 0, 'the legacy slippage is dropped')
-    assert.equal(account.settings.fillModel, 'unlimited', 'the legacy fill model is pinned to M2')
-
-    data.setQuote('600519', 10, now.current.toISOString())
-    const order = await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 1_000 })
-    assert.equal(order.status, 'filled')
-    assert.equal(order.filledQty, 1_000, 'M2 ignores the minute volume entirely')
-
-    const fills = await service.trades()
-    assert.equal(fills.length, 1)
-    assert.equal(fills[0].price, 10, 'no slippage is applied')
-    assert.ok(Number.isInteger(fills[0].qty) && fills[0].qty > 0, `fill qty must be an integer, got ${String(fills[0].qty)}`)
-    assert.ok(Number.isFinite(fills[0].amountCents))
-    assert.ok(Number.isFinite(fills[0].feesCents))
-
-    const events = (await new EventStore(eventsPath(home, 'default')).readAll()).events
-    assert.deepEqual(replay(events, 'default').issues, [])
-    assert.equal(replay(events, 'default').state.blocked, false)
-    assert.equal((await service.account()).blocked, false)
+    assert.equal(account.blocked, true)
+    assert.match(account.blockedReason ?? '', /账本版本 .* 不兼容/)
+    // The lock is the whole answer: no order may enter an unreadable ledger.
+    await assert.rejects(
+      service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),
+      /账户已锁定/,
+    )
+    const reset = await service.reset(true)
+    assert.equal(reset.blocked, false)
+    assert.equal(reset.cash, 100_000)
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -324,7 +300,7 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
       id: 'evt-1',
       ts: '2026-10-20T02:00:00.000Z',
       type: 'account.opened',
-      payload: { accountId: 'default', settings: LEGACY_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: 2 },
+      payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: PAPER_LEDGER_VERSION },
     },
     {
       seq: 2,
@@ -335,7 +311,7 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
         order: {
           id: 'ord-2026-10-20-2',
           requestId: 'r1',
-          symbol: '600519',
+          symbol: '600519.SH',
           side: 'buy',
           type: 'market',
           qty: 100,
@@ -346,7 +322,7 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
           remainingQty: 100,
           tradeDate: '2026-10-20',
         },
-        quote: { symbol: '600519', last: 10, marketTs: '2026-10-20T02:01:00.000Z' },
+        quote: { symbol: '600519.SH', last: 10, marketTs: '2026-10-20T02:01:00.000Z' },
       },
     },
     {
@@ -359,7 +335,7 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
         fill: {
           id: 'fill-ord-2026-10-20-2-1',
           orderId: 'ord-2026-10-20-2',
-          symbol: '600519',
+          symbol: '600519.SH',
           side: 'buy',
           price: 10,
           qty: null,
@@ -393,7 +369,6 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
     assert.equal(reset.cash, 100_000)
     assert.equal(reset.initialCash, 100_000)
     assert.equal(reset.positions.length, 0)
-    assert.equal(reset.settings.maxParticipationRate, DEFAULT_SETTINGS.maxParticipationRate)
 
     const rewritten = (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
     assert.equal(rewritten.length, 1, 'reset compacts the ledger to one genesis event')
@@ -408,8 +383,8 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
     assert.equal(backup, original, 'the backup keeps the pre-reset ledger byte for byte')
 
     // The fresh ledger keeps trading with finite fills.
-    data.setQuote('600519', 10, now.current.toISOString())
-    await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
+    data.setQuote('600519.SH', 10, now.current.toISOString())
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
     const after = await service.trades()
     assert.equal(after.length, 1)
     assert.ok(Number.isFinite(after[0].qty))
@@ -430,24 +405,24 @@ test('p1-1: prevClose is recovered from daily bars so price limits apply', async
   const home = makeHome('prev-close')
   const data = makeData()
   const now = { current: at('2026-10-22', '10:00') }
-  data.setBars('600519', [
+  data.setBars('600519.SH', [
     bar('2026-10-20', 11.2),
     bar('2026-10-21', 11.28),
     bar('2026-10-22', 11.3),
   ])
-  data.setQuote('600519', 11.28, now.current.toISOString())
+  data.setQuote('600519.SH', 11.28, now.current.toISOString())
   const { service } = makeService(home, data, now)
   try {
-    const preview = await service.preview({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 })
+    const preview = await service.preview({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 })
     assert.ok(preview.priceLimit, 'preview must know the price limit')
     assert.equal(preview.priceLimit.lower, 10.15)
     assert.ok(preview.warnings.some(warning => /涨跌停/.test(warning)), preview.warnings.join('；'))
 
-    const rejected = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 })
+    const rejected = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10 })
     assert.equal(rejected.status, 'rejected')
     assert.match(rejected.reason ?? '', /PRICE_LIMIT/)
 
-    const accepted = await service.place({ symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 10.3 })
+    const accepted = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10.3 })
     assert.equal(accepted.status, 'pending')
   } finally {
     await rm(home, { recursive: true, force: true })

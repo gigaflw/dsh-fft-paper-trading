@@ -39,6 +39,10 @@ export declare class PaperService {
     /** Open if needed, then advance the clock; every public read uses this. */
     private sync;
     private tradeDateForNow;
+    /** Parse a symbol that may be any instrument (quote, chart, search result). */
+    private identify;
+    /** Parse a symbol that must be an A-share stock; indices and funds cannot trade. */
+    private identifyStock;
     /** Symbols whose price the account cares about: open orders and held positions. */
     private symbolsInPlay;
     /**
@@ -82,8 +86,8 @@ export declare class PaperService {
      */
     private phaseFor;
     private orderDateFor;
-    preview(draft: OrderDraft): Promise<PreviewView>;
-    place(draft: OrderDraft, requestId?: string): Promise<OrderView>;
+    preview(input: OrderDraft): Promise<PreviewView>;
+    place(input: OrderDraft, requestId?: string): Promise<OrderView>;
     /**
      * Read-only basket preview: parse the CSV, fetch every quote in one call and
      * split the budget into lots. Parse problems ride back in `issues`; only a

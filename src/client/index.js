@@ -69,16 +69,19 @@ window.__ModuleLoader__.load({
       if (!value) return '—'
       return value > shanghaiToday() ? `下一交易日 ${value}` : value
     }
-    /** Display form is always the bare 6-digit code; the API accepts either. */
-    const bareSymbol = value => String(value ?? '').trim().toUpperCase().split('.')[0]
+    /** Canonical ids arrive from the host; the raw input keeps whatever was typed. */
     const halfWidthDigits = value => String(value ?? '')
       .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
-    // A-share codes are digits; accepting letters turned a pasted SH600519 into
-    // the six-character SH6005. Map full-width digits (Chinese IME) then keep
-    // only digits so prefixes/suffixes vanish.
-    const symbolInput = value => halfWidthDigits(value).replace(/[^0-9]/g, '').slice(0, 6)
+      .replace(/[Ａ-Ｚ]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
+    // The ticket accepts `600519`, `600519.SH` and `SH600519`; the host folds
+    // them into one canonical id, so the panel keeps letters and the dot.
+    const symbolInput = value => {
+      const text = halfWidthDigits(value).toUpperCase().replace(/[^0-9A-Z.]/g, '').slice(0, 10)
+      const prefix = /^(SH|SZ|BJ)(\d{6})$/.exec(text)
+      return prefix === null ? text : `${prefix[2]}.${prefix[1]}`
+    }
     const budgetInput = value => halfWidthDigits(value).replace(/[,，\s]/g, '')
-    const symbolText = quote => [bareSymbol(quote?.symbol), quote?.name].filter(text => text).join(' ')
+    const symbolText = quote => [quote?.symbol, quote?.name].filter(text => text).join(' ')
     /** Quote origin in human terms; the raw interface name is too technical. */
     const quoteSourceText = quote => {
       if (!quote || !quote.source) return 'FTShare'
@@ -86,8 +89,8 @@ window.__ModuleLoader__.load({
       if (quote.source === 'daily-bar') return '日K'
       return 'FTShare'
     }
-    /** Shortlist entries may carry an exchange suffix; compare on the bare code. */
-    const shortlisted = (shortlist, symbol) => shortlist.some(item => bareSymbol(item) === bareSymbol(symbol))
+    /** Both sides are canonical ids (`000001.SZ`), so compare them verbatim. */
+    const shortlisted = (shortlist, symbol) => shortlist.some(item => item === symbol)
 
     /**
      * Why the ticket cannot be previewed yet. An incomplete draft would
@@ -95,7 +98,7 @@ window.__ModuleLoader__.load({
      * order for nothing — so the panel asks for the missing field instead.
      */
     const previewBlockReason = draft => {
-      if (String(draft.symbol ?? '').trim().length < 6) return '输入 6 位代码后自动计算'
+      if (String(draft.symbol ?? '').trim().length < 6) return '输入代码后自动计算'
       const qty = Number(draft.qty)
       if (!Number.isInteger(qty) || qty <= 0) return '填写数量后自动计算'
       if (draft.type === 'limit' && !(Number(draft.limitPrice) > 0)) return '填写限价后自动计算'
@@ -185,12 +188,11 @@ window.__ModuleLoader__.load({
       ORDER_NOT_FOUND: '订单不存在',
       ORDER_NOT_PENDING: '订单不是挂单状态',
       QUOTE_UNAVAILABLE: '没有可用行情',
-      QUOTE_STALE: '行情已过期',
       SESSION_CLOSED: '当前时段不接受委托',
       AUCTION_ONLY: '当前时段不接受市价单',
       PRICE_LIMIT: '价格超出涨跌停范围',
       SUSPENDED: '标的停牌',
-      INSUFFICIENT_LIQUIDITY: '可成交量不足',
+      UNSUPPORTED_INSTRUMENT: '该标的不支持交易',
       INSUFFICIENT_MARGIN: '保证金不足',
       CONTRACT_NOT_FOUND: '合约不存在',
       CONTRACT_EXPIRED: '合约临近交割或已到期',
@@ -580,7 +582,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'pt-card pt-kline-card' },
           h('div', { className: 'pt-kline-head' },
             h('div', { className: 'pt-kline-title' },
-              h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${bareSymbol(symbol) || '—'} K线`),
+              h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${symbol || '—'} K线`),
               h('div', { className: 'pt-note' }, quote ? `${symbolText(quote)} · 现价 ${money(quote.last)}` : '等待行情'),
             ),
             showFallback ? h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
@@ -623,7 +625,7 @@ window.__ModuleLoader__.load({
       const quoteHint = quote
         ? null
         : form.symbol.trim().length < 6
-          ? '输入 6 位代码后自动取行情'
+          ? '输入代码后自动取行情'
           : previewState === 'loading'
             ? '取行情…'
             : form.type === 'limit' ? '未取到行情，可填限价' : '未取到行情，可填参考价'
@@ -635,8 +637,8 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-ticket' },
             h('div', { className: 'pt-ticket-form' },
               h(Field, { label: '代码' }, h('input', {
-                className: 'pt-input', value: form.symbol, inputMode: 'numeric', maxLength: 9,
-                placeholder: '600519',
+                className: 'pt-input', value: form.symbol, maxLength: 10, spellCheck: false,
+                placeholder: '600519 / 000001.SZ',
                 onChange: event => setForm(prev => ({ ...prev, symbol: symbolInput(event.target.value) })),
               })),
               h(Field, { label: '数量（100 股整数倍）' }, h(DebouncedNumber, {
@@ -736,7 +738,7 @@ window.__ModuleLoader__.load({
                   h('th', null, '操作'),
                 )),
                 h('tbody', null, positions.map(position => h('tr', { key: position.symbol },
-                  h('td', null, bareSymbol(position.symbol)),
+                  h('td', null, position.symbol),
                   h('td', null, position.name ?? '—'),
                   h('td', null, count(position.qty)),
                   h('td', null, count(position.available)),
@@ -757,7 +759,7 @@ window.__ModuleLoader__.load({
                   h('th', null, '操作'),
                 )),
                 h('tbody', null, pending.map(order => h('tr', { key: order.id },
-                  h('td', null, bareSymbol(order.symbol)),
+                  h('td', null, order.symbol),
                   h('td', null, order.side === 'buy' ? '买' : '卖'),
                   h('td', null, order.type === 'limit' ? '限价' : '市价'),
                   h('td', null, count(order.qty)),
@@ -778,7 +780,7 @@ window.__ModuleLoader__.load({
         )
       }
       const { order, fill, cash } = receipt
-      const symbol = bareSymbol(order.symbol)
+      const symbol = order.name ? `${order.symbol} ${order.name}` : order.symbol
       const side = order.side === 'buy' ? '买入' : '卖出'
       if (order.status === 'rejected') {
         return h('div', { className: 'pt-receipt', 'data-state': 'rejected', title: order.reason || undefined },
@@ -819,7 +821,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-row' },
             h('input', {
               className: 'pt-input', style: { flex: 1, minWidth: 200 }, value: searchQuery,
-              placeholder: '代码或名称，例如 600519 / 贵州茅台',
+              placeholder: '代码或名称，例如 600519.SH / 贵州茅台',
               onChange: event => setSearchQuery(event.target.value),
               onKeyDown: event => { if (event.key === 'Enter') void runSearch() },
             }),
@@ -830,7 +832,7 @@ window.__ModuleLoader__.load({
               h('button', {
                 className: 'pt-btn', style: { flex: 1, justifyContent: 'flex-start' },
                 onClick: () => adoptQuote(hit.symbol, null),
-              }, `${bareSymbol(hit.symbol)} ${hit.name ?? ''}`),
+              }, `${hit.symbol} ${hit.name ?? ''}`),
               h('button', { className: 'pt-btn', onClick: () => toggleShortlist(hit.symbol) }, isShortlisted(hit.symbol) ? '已备选' : '加备选'),
             )),
           ) : searchAttempted ? h('div', { className: 'pt-empty', style: { marginTop: 8 } }, '没有找到匹配标的') : null,
@@ -872,7 +874,7 @@ window.__ModuleLoader__.load({
                     key: `${item.symbol}-${item.last}`, style: { cursor: 'pointer' },
                     onClick: () => adoptQuote(item.symbol, item),
                   },
-                    h('td', null, bareSymbol(item.symbol)),
+                    h('td', null, item.symbol),
                     h('td', null, item.name ?? '—'),
                     h('td', null, money(item.last)),
                     h('td', { className: tone(change ?? 0) }, change === null ? '—' : pct(change)),
@@ -892,7 +894,7 @@ window.__ModuleLoader__.load({
           h('th', null, '操作'),
         )),
         h('tbody', null, positions.map(position => h('tr', { key: position.symbol },
-          h('td', null, bareSymbol(position.symbol)),
+          h('td', null, position.symbol),
           h('td', null, position.name ?? '—'),
           h('td', null, count(position.qty)),
           h('td', null, count(position.available)),
@@ -916,7 +918,7 @@ window.__ModuleLoader__.load({
           pending.length === 0 ? h('div', { className: 'pt-empty' }, '无挂单') : h(Table, null,
             h('thead', null, h('tr', null, ['代码', '方向', '类型', '数量', '限价', '状态', '备注', '操作'].map(label => h('th', { key: label }, label)))),
             h('tbody', null, pending.map(order => h('tr', { key: order.id },
-              h('td', null, bareSymbol(order.symbol)),
+              h('td', null, order.symbol),
               h('td', null, order.side === 'buy' ? '买' : '卖'),
               h('td', null, order.type === 'limit' ? '限价' : '市价'),
               h('td', null, count(order.qty)),
@@ -936,7 +938,7 @@ window.__ModuleLoader__.load({
             h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '限价', '状态', '成交价', '原因', '备注'].map(label => h('th', { key: label }, label)))),
             h('tbody', null, history.slice(0, 30).map(order => h('tr', { key: order.id },
               h('td', null, dateTime(order.createdAt)),
-              h('td', null, bareSymbol(order.symbol)),
+              h('td', null, order.symbol),
               h('td', null, order.side === 'buy' ? '买' : '卖'),
               h('td', null, count(order.qty)),
               h('td', null, order.limitPrice === undefined ? '—' : money(order.limitPrice)),
@@ -973,7 +975,7 @@ window.__ModuleLoader__.load({
               h('thead', null, h('tr', null, ['时间', '代码', '方向', '数量', '价格', '金额', '费用'].map(label => h('th', { key: label }, label)))),
               h('tbody', null, trades.slice(0, 30).map(trade => h('tr', { key: trade.id },
                 h('td', null, dateTime(trade.ts)),
-                h('td', null, bareSymbol(trade.symbol)),
+                h('td', null, trade.symbol),
                 h('td', null, trade.side === 'buy' ? '买' : '卖'),
                 h('td', null, count(trade.qty)),
                 h('td', null, money(trade.price)),
@@ -1015,7 +1017,7 @@ window.__ModuleLoader__.load({
             trips.length === 0 ? h('div', { className: 'pt-empty' }, '暂无已平仓记录') : h(Table, null,
               h('thead', null, h('tr', null, ['代码', '数量', '成本', '收入', '盈亏', '持有天数'].map(label => h('th', { key: label }, label)))),
               h('tbody', null, trips.slice(-30).reverse().map(trip => h('tr', { key: trip.symbol },
-                h('td', null, bareSymbol(trip.symbol)),
+                h('td', null, trip.symbol),
                 h('td', null, count(trip.qty)),
                 h('td', null, money(trip.cost)),
                 h('td', null, money(trip.proceeds)),
@@ -1188,7 +1190,7 @@ window.__ModuleLoader__.load({
           ),
           h('div', { className: 'pt-note' }, csv.trim() === ''
             ? '先选择 CSV 文件；两列「代码,权重」，最多 20 只'
-            : '两列「代码,权重」，最多 20 只；仅连续竞价时段可下单'),
+            : '两列「代码,权重」，最多 20 只，代码写 600519.SH 或 000001.SZ；仅连续竞价时段可下单'),
           error !== '' ? h('div', { className: 'pt-error', style: { marginTop: 8 } }, error) : null,
         ),
         preview !== null ? h('div', { className: 'pt-card' },
@@ -1198,7 +1200,7 @@ window.__ModuleLoader__.load({
               ['代码', '名称', '目标权重', '目标金额', '股数', '金额', '费用', '实际权重', '状态'].map(label => h('th', { key: label }, label)),
             )),
             h('tbody', null, preview.rows.map(row => h('tr', { key: row.symbol },
-              h('td', null, bareSymbol(row.symbol)),
+              h('td', null, row.symbol),
               h('td', null, row.name ?? '—'),
               h('td', null, pct(row.weight)),
               h('td', null, cents(row.targetCents)),
@@ -1236,7 +1238,7 @@ window.__ModuleLoader__.load({
               ['代码', '状态', '数量', '成交价', '原因'].map(label => h('th', { key: label }, label)),
             )),
             h('tbody', null, result.rows.map(row => h('tr', { key: row.symbol },
-              h('td', null, bareSymbol(row.symbol)),
+              h('td', null, row.symbol),
               h('td', null, row.order ? STATUS_TEXT[row.order.status] ?? row.order.status : '拒绝'),
               h('td', null, count(row.order ? row.order.qty : undefined)),
               h('td', null, row.order && row.order.fillPrice !== undefined ? money(row.order.fillPrice) : '—'),
@@ -2103,7 +2105,7 @@ window.__ModuleLoader__.load({
       useEffect(() => { shortlistRef.current = shortlist }, [shortlist])
       const [shortlistOnly, setShortlistOnly] = useState(false)
       const [form, setForm] = useState({
-        symbol: '600519',
+        symbol: '600519.SH',
         side: 'buy',
         type: 'market',
         qty: '',
@@ -2254,8 +2256,8 @@ window.__ModuleLoader__.load({
        * symbol must not pop "已从 K 线选择 …" over the user's real feedback.
        */
       const klineIdentity = useCallback((symbol, name) => {
-        const next = bareSymbol(symbol)
-        if (!next || next === bareSymbol(formSymbol.current)) return
+        const next = String(symbol ?? '').trim().toUpperCase()
+        if (!next || next === String(formSymbol.current).trim().toUpperCase()) return
         formSymbol.current = next
         setForm(prev => ({ ...prev, symbol: next }))
         setNotice(name ? `已从 K 线选择 ${name}` : '')
@@ -2277,12 +2279,12 @@ window.__ModuleLoader__.load({
       const isShortlisted = useCallback(symbol => shortlisted(shortlist, symbol), [shortlist])
 
       const toggleShortlist = useCallback(async (symbol) => {
-        const code = bareSymbol(symbol)
-        // Store the bare 6-digit code so a search hit (`600519.SH`) and a list
-        // row (`600519.XSHG`) point at the same favourite.
+        const code = symbol
+        // The server only ever sends canonical ids, and the same id is what the
+        // shortlist keeps, so one favourite cannot split across markets.
         const current = shortlistRef.current
-        const next = current.some(item => bareSymbol(item) === code)
-          ? current.filter(item => bareSymbol(item) !== code)
+        const next = current.some(item => item === code)
+          ? current.filter(item => item !== code)
           : [...current, code]
         shortlistRef.current = next
         setShortlist(next)
@@ -2307,7 +2309,7 @@ window.__ModuleLoader__.load({
       }, [])
 
       const adoptQuote = useCallback(symbol => {
-        const next = bareSymbol(symbol)
+        const next = symbol
         formSymbol.current = next
         setForm(prev => ({ ...prev, symbol: next }))
         setTab('trade')
@@ -2532,7 +2534,7 @@ window.__ModuleLoader__.load({
         if (account === null) return '加载账户中'
         if (blocked) return '账户已锁定'
         const symbol = form.symbol.trim()
-        if (symbol.length < 6) return '输入 6 位代码'
+        if (symbol.length < 6) return '输入代码'
         if (String(form.qty).trim() === '') return '填写数量'
         const qty = Number(form.qty)
         if (!Number.isInteger(qty) || qty <= 0) return '数量需为正整数'
@@ -2650,7 +2652,7 @@ window.__ModuleLoader__.load({
             ),
             h(KlinePane, {
               renderSlot,
-              symbol: form.symbol,
+              symbol: quote && quote.symbol ? quote.symbol : form.symbol,
               quote,
               bars,
               error: barError,

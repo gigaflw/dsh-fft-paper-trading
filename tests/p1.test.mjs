@@ -16,8 +16,8 @@ function makeHome(name) {
 function makeData() {
   const prices = new Map()
   const quotes = [
-    { symbol: '600519', name: '贵州茅台', last: 10, prevClose: 9.8, marketTs: '', fetchedAt: '' },
-    { symbol: '300750', name: '宁德时代', last: 20, prevClose: 19.5, marketTs: '', fetchedAt: '' },
+    { symbol: '600519.SH', name: '贵州茅台', last: 10, prevClose: 9.8, marketTs: '', fetchedAt: '' },
+    { symbol: '300750.SZ', name: '宁德时代', last: 20, prevClose: 19.5, marketTs: '', fetchedAt: '' },
   ]
   return {
     prices,
@@ -51,7 +51,7 @@ function makeData() {
 test('p1: search, list, shortlist and status', async () => {
   const home = makeHome('p1-market')
   const data = makeData()
-  data.setQuote('600519', 10, at('2026-10-21', '10:00').toISOString())
+  data.setQuote('600519.SH', 10, at('2026-10-21', '10:00').toISOString())
   const repo = new AccountRepo({ home, accountId: 'default' })
   const service = new PaperService({
     repo,
@@ -67,13 +67,14 @@ test('p1: search, list, shortlist and status', async () => {
     assert.equal(status.tradeDate, '2026-10-21')
 
     const hits = await service.search('茅台', 10)
-    assert.equal(hits[0].symbol, '600519')
+    assert.equal(hits[0].symbol, '600519.SH')
     const list = await service.marketList({ page: 1 })
     assert.equal(list.quotes.length, 2)
 
     assert.deepEqual(await service.shortlist(), [])
-    assert.deepEqual(await service.setShortlist(['600519', '600519', ' 300750 ']), ['600519', '300750'])
-    assert.deepEqual(await service.shortlist(), ['600519', '300750'])
+    // Bare and suffixed input are the same instrument; storing keeps the id.
+    assert.deepEqual(await service.setShortlist(['600519', '600519.SH', ' 300750 ']), ['600519.SH', '300750.SZ'])
+    assert.deepEqual(await service.shortlist(), ['600519.SH', '300750.SZ'])
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -83,7 +84,7 @@ test('p1: daily report, cash flow and round trips after a close', async () => {
   const home = makeHome('p1-report')
   const data = makeData()
   const now = { current: at('2026-10-21', '10:00') }
-  data.setQuote('600519', 10, now.current.toISOString())
+  data.setQuote('600519.SH', 10, now.current.toISOString())
   const repo = new AccountRepo({ home, accountId: 'default' })
   const service = new PaperService({
     repo,
@@ -94,18 +95,18 @@ test('p1: daily report, cash flow and round trips after a close', async () => {
   })
   try {
     await service.account()
-    await service.place({ symbol: '600519', side: 'buy', type: 'market', qty: 100 })
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
 
     now.current = at('2026-10-21', '15:30')
-    data.setQuote('600519', 10.5, now.current.toISOString(), { prevClose: 9.8 })
+    data.setQuote('600519.SH', 10.5, now.current.toISOString(), { prevClose: 9.8 })
     const report = await service.dailyReport('2026-10-21')
     assert.equal(report.length, 1)
     assert.equal(report[0].date, '2026-10-21')
     assert.equal(report[0].closeSource, 'last')
 
     now.current = at('2026-10-22', '10:00')
-    data.setQuote('600519', 11, now.current.toISOString(), { prevClose: 10.5 })
-    await service.place({ symbol: '600519', side: 'sell', type: 'market', qty: 100 })
+    data.setQuote('600519.SH', 11, now.current.toISOString(), { prevClose: 10.5 })
+    await service.place({ symbol: '600519.SH', side: 'sell', type: 'market', qty: 100 })
 
     const flow = await service.cashFlow()
     assert.equal(flow[0].type, 'open')
@@ -114,7 +115,7 @@ test('p1: daily report, cash flow and round trips after a close', async () => {
 
     const trips = await service.roundtrips()
     assert.equal(trips.length, 1)
-    assert.equal(trips[0].symbol, '600519')
+    assert.equal(trips[0].symbol, '600519.SH')
     assert.ok(trips[0].pnl > 0)
 
     const review = await service.review('all')

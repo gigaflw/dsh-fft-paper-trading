@@ -1,4 +1,4 @@
-import type { FillModel, PaperSettings, Quote, SessionPhase } from '../contract.js';
+import type { PaperSettings, Quote, SessionPhase } from '../contract.js';
 export interface FeeBreakdown {
     commissionCents: number;
     stampCents: number;
@@ -19,7 +19,6 @@ export interface FillRecord {
     tradeDate: string;
     /** Minute bar close time that supplied the volume, when known. */
     barTs?: string;
-    fillModel?: FillModel;
 }
 export interface Order {
     id: string;

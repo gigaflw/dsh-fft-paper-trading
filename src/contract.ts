@@ -11,10 +11,10 @@ export const PAPER_ROUTE = '/api/ft-paper-trading' as const
 /** Request body cap; the route rejects anything larger before parsing. */
 export const PAPER_MAX_BODY_BYTES = 256 * 1024
 /**
- * Ledger schema version. v2 added day.opened; v3 pins the M2 fill model
- * (slippage 0, unlimited fill at the last price) for every older ledger.
+ * Ledger schema version. v4 stores every security as its canonical
+ * `code.exchange` id; older ledgers used the raw input and are incompatible.
  */
-export const PAPER_LEDGER_VERSION = 3
+export const PAPER_LEDGER_VERSION = 4
 
 export type Side = 'buy' | 'sell'
 export type OrderType = 'market' | 'limit'
@@ -31,8 +31,6 @@ export type SessionPhase =
   | 'auction_close'
   | 'closed'
 
-export type FillModel = 'volume-share' | 'unlimited'
-
 export interface PaperSettings {
   /** Starting cash in cents. */
   initialCashCents: number
@@ -40,16 +38,8 @@ export interface PaperSettings {
   minCommissionCents: number
   stampDutyRate: number
   transferFeeRate: number
-  /** Kept for ledger compatibility; M2 fills at `last` and never applies it. */
-  slippageBps: number
   enableT1: boolean
-  /** Kept for ledger compatibility; M2 has no quote TTL gate. */
-  quoteTtlSec: number
   maxOrderNotionalCents: number
-  /** Kept for ledger compatibility; M2 never caps a fill by bar volume. */
-  maxParticipationRate: number
-  /** Kept for ledger compatibility; M2 only ever fills in one unlimited chunk. */
-  fillModel: FillModel
 }
 
 export const DEFAULT_SETTINGS: PaperSettings = {
@@ -58,29 +48,20 @@ export const DEFAULT_SETTINGS: PaperSettings = {
   minCommissionCents: 500,
   stampDutyRate: 0.0005,
   transferFeeRate: 0.00001,
-  slippageBps: 0,
   enableT1: true,
-  quoteTtlSec: 30,
   maxOrderNotionalCents: 0,
-  maxParticipationRate: 0.10,
-  fillModel: 'unlimited',
 }
 
 export interface Quote {
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   name?: string
   last: number
-  /** FTShare does not publish bid/ask; keep optional and never rely on it. */
-  bid?: number
-  ask?: number
   prevClose?: number
   /** Market time of the quote/bar; null means it cannot fill. */
   marketTs?: string | null
   /** Fetch time, for latency display only. */
   fetchedAt?: string
-  /** @deprecated v0.1 field; treated as marketTs when marketTs is absent. */
-  ts?: string
-  board?: string
   st?: boolean
   status?: string
   source?: string
@@ -96,6 +77,7 @@ export interface Bar {
 }
 
 export interface OrderDraft {
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   side: Side
   type: OrderType
@@ -110,6 +92,7 @@ export interface OrderDraft {
 export interface OrderView {
   id: string
   requestId: string
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   name?: string
   side: Side
@@ -133,6 +116,7 @@ export interface OrderView {
 export interface FillView {
   id: string
   orderId: string
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   name?: string
   side: Side
@@ -145,6 +129,7 @@ export interface FillView {
 }
 
 export interface PositionView {
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   name?: string
   qty: number
@@ -213,6 +198,7 @@ export interface BasketIssue {
 
 /** One allocated row of `basket/preview`; the client renders this verbatim. */
 export interface BasketPlanRow {
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   name?: string
   /** Normalised weight, 0..1. */
@@ -249,6 +235,7 @@ export interface BasketPreview {
 
 /** One confirmed row of a basket order; the caller sends back preview quantities. */
 export interface BasketOrderInput {
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   /** 100-share multiple, > 0. */
   qty: number
@@ -311,9 +298,9 @@ export interface PriceLimit {
 }
 
 export interface SymbolHit {
+  /** Canonical id, e.g. `000001.SZ`. */
   symbol: string
   name: string
-  board?: string
 }
 
 export interface MarketListResult {
@@ -390,9 +377,8 @@ export type ErrorCode =
   | 'ORDER_NOT_FOUND'
   | 'ORDER_NOT_PENDING'
   | 'QUOTE_UNAVAILABLE'
-  | 'QUOTE_STALE'
   | 'SESSION_CLOSED'
   | 'AUCTION_ONLY'
   | 'PRICE_LIMIT'
   | 'SUSPENDED'
-  | 'INSUFFICIENT_LIQUIDITY'
+  | 'UNSUPPORTED_INSTRUMENT'

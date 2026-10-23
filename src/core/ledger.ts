@@ -1,7 +1,7 @@
 import type { PaperSettings } from '../contract.js'
 import { PAPER_LEDGER_VERSION } from '../contract.js'
 import type { AccountState, FillRecord, LedgerEvent, Order } from './types.js'
-import { m2Settings, normalizeSettings } from './settings.js'
+import { normalizeSettings } from './settings.js'
 
 export function emptyState(accountId: string): AccountState {
   return {
@@ -16,12 +16,8 @@ export function emptyState(accountId: string): AccountState {
       minCommissionCents: 0,
       stampDutyRate: 0,
       transferFeeRate: 0,
-      slippageBps: 0,
       enableT1: true,
-      quoteTtlSec: 30,
       maxOrderNotionalCents: 0,
-      maxParticipationRate: 0.10,
-      fillModel: 'unlimited',
     },
     positions: {},
     orders: {},
@@ -123,19 +119,22 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
     case 'account.opened': {
       const { settings, initialCashCents, tradeDate, accountId, ledgerVersion } = event.payload
       const version = ledgerVersion ?? 1
-      // Ledgers older than v3 predate M2; there was no settings UI, so replay
-      // pins slippage 0 / unlimited instead of trusting what was written then.
-      openState(state, version < PAPER_LEDGER_VERSION ? m2Settings(settings) : settings, initialCashCents, tradeDate)
+      openState(state, settings, initialCashCents, tradeDate)
       state.accountId = accountId
       state.ledgerVersion = version
       state.createdAt = event.ts
+      // v4 made `code.exchange` the ledger identity. An older file keyed
+      // positions by the raw input (`000001` vs `000001.SZ` were two books), so
+      // it cannot be replayed faithfully: lock the account and ask for a reset.
+      if (version !== PAPER_LEDGER_VERSION) {
+        state.blocked = true
+        state.blockedReason = `账本版本 ${version} 与当前 ${PAPER_LEDGER_VERSION} 不兼容，请重置账户`
+      }
       break
     }
     case 'account.reset': {
       const { settings, initialCashCents, tradeDate } = event.payload
-      // `account.reset` carries no ledgerVersion; older ledgers compacted to a
-      // single reset genesis keep the same pinned M2 settings.
-      openState(state, m2Settings(settings), initialCashCents, tradeDate)
+      openState(state, settings, initialCashCents, tradeDate)
       state.ledgerVersion = PAPER_LEDGER_VERSION
       // A reset can be the genesis event of a compacted ledger; then it is the
       // only source of an account creation time.

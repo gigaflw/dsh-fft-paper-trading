@@ -13,7 +13,7 @@ const DAY1 = '2026-10-19T02:00:00.000Z'
 const DAY2 = '2026-10-20T02:00:00.000Z'
 
 function quote(price, ts = DAY1) {
-  return { symbol: '600519', name: '贵州茅台', last: price, marketTs: ts, fetchedAt: ts }
+  return { symbol: '600519.SH', name: '贵州茅台', last: price, marketTs: ts, fetchedAt: ts }
 }
 
 test('fees: minimum commission and sell-side stamp duty', () => {
@@ -28,7 +28,7 @@ test('fees: minimum commission and sell-side stamp duty', () => {
 })
 
 test('matching: M2 fills at last with no slippage, volume cap or TTL', () => {
-  const market = { id: 'o', requestId: 'r', symbol: '600519', side: 'buy', type: 'market', qty: 100, status: 'pending', createdAt: DAY1, updatedAt: DAY1, tradeDate: '2026-10-19' }
+  const market = { id: 'o', requestId: 'r', symbol: '600519.SH', side: 'buy', type: 'market', qty: 100, status: 'pending', createdAt: DAY1, updatedAt: DAY1, tradeDate: '2026-10-19' }
   const filled = decideFill(market, quote(10))
   assert.equal(filled.fill, true)
   assert.equal(filled.price, 10)
@@ -67,40 +67,40 @@ test('engine: fillQty takes the whole remaining quantity in one chunk', () => {
 
 test('risk: lot, cash and T+1 rejection codes', () => {
   let state = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't').state
-  const odd = checkOrder(state, { symbol: '600519', side: 'buy', type: 'market', qty: 150 }, quote(10), DEFAULT_SETTINGS)
+  const odd = checkOrder(state, { symbol: '600519.SH', side: 'buy', type: 'market', qty: 150 }, quote(10), DEFAULT_SETTINGS)
   assert.equal(odd.ok, false)
   assert.equal(odd.code, 'INVALID_LOT')
 
-  const tooBig = checkOrder(state, { symbol: '600519', side: 'buy', type: 'market', qty: 1_000_000 }, quote(10), DEFAULT_SETTINGS)
+  const tooBig = checkOrder(state, { symbol: '600519.SH', side: 'buy', type: 'market', qty: 1_000_000 }, quote(10), DEFAULT_SETTINGS)
   assert.equal(tooBig.ok, false)
   assert.equal(tooBig.code, 'INSUFFICIENT_CASH')
 
-  const bought = submit(state, { symbol: '600519', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
+  const bought = submit(state, { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
   state = bought.state
-  const sell = checkOrder(state, { symbol: '600519', side: 'sell', type: 'market', qty: 100 }, quote(10), DEFAULT_SETTINGS)
+  const sell = checkOrder(state, { symbol: '600519.SH', side: 'sell', type: 'market', qty: 100 }, quote(10), DEFAULT_SETTINGS)
   assert.equal(sell.ok, false)
   assert.equal(sell.code, 'T1_LOCKED')
 })
 
 test('preview: T+1 locked holdings are reported as a lock, not a missing holding', () => {
   const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
-  const bought = submit(open.state, { symbol: '600519', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
-  const locked = previewOrder(bought.state, { symbol: '600519', side: 'sell', type: 'market', qty: 100 }, quote(10), DEFAULT_SETTINGS)
+  const bought = submit(open.state, { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
+  const locked = previewOrder(bought.state, { symbol: '600519.SH', side: 'sell', type: 'market', qty: 100 }, quote(10), DEFAULT_SETTINGS)
   assert.equal(locked.availableQty, 0)
   assert.ok(locked.warnings.some(text => text.includes('T+1') && text.includes('下一交易日可卖')), JSON.stringify(locked.warnings))
 
   // Asking for more than the book holds keeps the generic shortfall wording.
-  const oversell = previewOrder(bought.state, { symbol: '600519', side: 'sell', type: 'market', qty: 200 }, quote(10), DEFAULT_SETTINGS)
+  const oversell = previewOrder(bought.state, { symbol: '600519.SH', side: 'sell', type: 'market', qty: 200 }, quote(10), DEFAULT_SETTINGS)
   assert.equal(oversell.warnings.some(text => text.includes('T+1')), false)
   assert.ok(oversell.warnings.some(text => text.includes('可卖不足')), JSON.stringify(oversell.warnings))
 })
 
 test('engine: buy fills, replay is deterministic, close/open moves the day', () => {
   const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
-  const bought = submit(open.state, { symbol: '600519', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
+  const bought = submit(open.state, { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
   assert.equal(bought.order.status, 'filled')
   assert.equal(bought.state.cashCents, 10_000_000 - 100_000 - 501)
-  assert.equal(bought.state.positions['600519'].available, 0)
+  assert.equal(bought.state.positions['600519.SH'].available, 0)
 
   const events = [...open.events, ...bought.events]
   const replayed = replay(events, 't')
@@ -118,7 +118,7 @@ test('engine: buy fills, replay is deterministic, close/open moves the day', () 
   })
   assert.equal(closed.state.dayEquity.length, 1)
   assert.equal(closed.state.dayEquity[0].date, '2026-10-19')
-  assert.equal(closed.state.positions['600519'].available, 0)
+  assert.equal(closed.state.positions['600519.SH'].available, 0)
   assert.equal(closed.state.tradeDate, '2026-10-19')
 
   const opened = openDay(closed.state, {
@@ -128,13 +128,13 @@ test('engine: buy fills, replay is deterministic, close/open moves the day', () 
     quotes: [{ ...quote(10.3, '2026-10-19T07:00:00.000Z'), prevClose: 10.2 }],
   })
   assert.equal(opened.state.tradeDate, '2026-10-20')
-  assert.equal(opened.state.positions['600519'].available, 100)
+  assert.equal(opened.state.positions['600519.SH'].available, 100)
   assert.equal(opened.state.lastOpenedDate, '2026-10-20')
 })
 
 test('engine: limit order stays pending then fills in full on tick', () => {
   const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
-  const placed = submit(open.state, { symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 9.5 }, quote(10), 'r1', DAY1)
+  const placed = submit(open.state, { symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 9.5 }, quote(10), 'r1', DAY1)
   assert.equal(placed.order.status, 'pending')
   const ticked = tick(placed.state, [quote(9.5, DAY1)], DAY1)
   assert.equal(ticked.filled.length, 1)
@@ -145,7 +145,7 @@ test('engine: limit order stays pending then fills in full on tick', () => {
 
 test('engine: an unfilled limit expires when the day closes', () => {
   const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
-  const placed = submit(open.state, { symbol: '600519', side: 'buy', type: 'limit', qty: 100, limitPrice: 9.5 }, quote(10), 'r1', DAY1)
+  const placed = submit(open.state, { symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 9.5 }, quote(10), 'r1', DAY1)
   assert.equal(placed.order.status, 'pending')
   const closed = closeDay(placed.state, {
     date: '2026-10-19',
@@ -158,7 +158,7 @@ test('engine: an unfilled limit expires when the day closes', () => {
   assert.equal(closed.state.orders[placed.order.id].status, 'expired')
 })
 
-test('ledger: replaying an old account.opened pins the M2 settings', () => {
+test('ledger: an older schema version blocks replay instead of guessing', () => {
   const old = {
     seq: 1,
     id: 'evt-1',
@@ -166,7 +166,7 @@ test('ledger: replaying an old account.opened pins the M2 settings', () => {
     type: 'account.opened',
     payload: {
       accountId: 't',
-      settings: { ...DEFAULT_SETTINGS, slippageBps: 5, fillModel: 'volume-share' },
+      settings: DEFAULT_SETTINGS,
       initialCashCents: 1_000_000,
       tradeDate: '2026-10-19',
       ledgerVersion: 1,
@@ -174,7 +174,7 @@ test('ledger: replaying an old account.opened pins the M2 settings', () => {
   }
   const { state, issues } = replay([old], 't')
   assert.deepEqual(issues, [])
-  assert.equal(state.settings.slippageBps, 0)
-  assert.equal(state.settings.fillModel, 'unlimited')
+  assert.equal(state.blocked, true)
+  assert.match(state.blockedReason ?? '', /账本版本 1 与当前/)
   assert.equal(state.ledgerVersion, 1)
 })

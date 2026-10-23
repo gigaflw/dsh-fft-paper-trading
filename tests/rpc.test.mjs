@@ -13,7 +13,7 @@ const NOW = new Date('2026-10-19T02:00:00.000Z')
 
 test('rpc: preview, place, unknown endpoint and envelope', async () => {
   const home = join(process.cwd(), 'tmp', 'paper-trading-test', `rpc-${process.pid}-${Date.now()}`)
-  const prices = new Map([['600519', { symbol: '600519', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }]])
+  const prices = new Map([['600519.SH', { symbol: '600519.SH', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }]])
   const data = {
     async quotes(symbols) {
       const rows = symbols.map(symbol => prices.get(symbol)).filter(Boolean)
@@ -46,13 +46,13 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
       assert.equal(response.status, 200)
       return response.json()
     }
-    const preview = await call('order/preview', { symbol: '600519', side: 'buy', type: 'market', qty: 100 })
+    const preview = await call('order/preview', { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
     assert.equal(preview.ok, true)
     assert.equal(preview.value.price, 10)
     assert.equal(preview.value.quote.last, 10)
 
     const placed = await call('order/place', {
-      draft: { symbol: '600519', side: 'buy', type: 'market', qty: 100 },
+      draft: { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 },
       requestId: 'rpc-1',
     })
     assert.equal(placed.ok, true)
@@ -73,11 +73,11 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
     assert.equal(status.value.phase, 'continuous_am')
 
     const written = await call('shortlist/set', { symbols: ['600519'] })
-    assert.deepEqual(written.value.symbols, ['600519'])
+    assert.deepEqual(written.value.symbols, ['600519.SH'])
     const read = await call('shortlist/get', {})
-    assert.deepEqual(read.value.symbols, ['600519'])
+    assert.deepEqual(read.value.symbols, ['600519.SH'])
 
-    const bars = await call('market/bars', { symbol: '600519', interval: 'minute' })
+    const bars = await call('market/bars', { symbol: '600519.SH', interval: 'minute' })
     assert.equal(bars.ok, true)
     const daily = await call('review/daily', {})
     assert.equal(daily.ok, true)
@@ -93,8 +93,8 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
 test('rpc: basket preview and place payloads', async () => {
   const home = join(process.cwd(), 'tmp', 'paper-trading-test', `rpc-basket-${process.pid}-${Date.now()}`)
   const prices = new Map([
-    ['600519', { symbol: '600519', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
-    ['000001', { symbol: '000001', last: 20, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
+    ['600519.SH', { symbol: '600519.SH', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
+    ['000001.SZ', { symbol: '000001.SZ', last: 20, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
   ])
   const data = {
     async quotes(symbols) {
@@ -134,26 +134,26 @@ test('rpc: basket preview and place payloads', async () => {
       assert.equal(result.error.code, 'INVALID_ARGUMENT')
     }
 
-    const preview = await call('basket/preview', { csv: '600519,50%\n000001,50%', budgetCents: 1_000_000 })
+    const preview = await call('basket/preview', { csv: '600519.SH,50%\n000001.SZ,50%', budgetCents: 1_000_000 })
     assert.equal(preview.ok, true)
     assert.equal(preview.value.budgetCents, 1_000_000)
     assert.equal(preview.value.rows.length, 2)
     assert.equal(preview.value.session.tradeDate, '2026-10-19')
 
-    const defaultBudget = await call('basket/preview', { csv: '600519,100%' })
+    const defaultBudget = await call('basket/preview', { csv: '600519.SH,100%' })
     assert.equal(defaultBudget.ok, true)
     assert.equal(defaultBudget.value.budgetCents, 10_000_000, 'budget defaults to cash')
 
     await rejects('basket/preview', {})
     await rejects('basket/preview', { csv: '   ' })
-    await rejects('basket/preview', { csv: `600519,100%\n# ${'x'.repeat(33 * 1024)}` })
-    await rejects('basket/preview', { csv: '600519,100%', budgetCents: 0 })
-    await rejects('basket/preview', { csv: '600519,100%', budgetCents: -1 })
-    await rejects('basket/preview', { csv: '600519,100%', budgetCents: 1.5 })
+    await rejects('basket/preview', { csv: `600519.SH,100%\n# ${'x'.repeat(33 * 1024)}` })
+    await rejects('basket/preview', { csv: '600519.SH,100%', budgetCents: 0 })
+    await rejects('basket/preview', { csv: '600519.SH,100%', budgetCents: -1 })
+    await rejects('basket/preview', { csv: '600519.SH,100%', budgetCents: 1.5 })
 
     const placed = await call('basket/place', {
       batchId: 'rpc-batch-1',
-      rows: [{ symbol: '600519', qty: 100 }, { symbol: '000001', qty: 100 }],
+      rows: [{ symbol: '600519.SH', qty: 100 }, { symbol: '000001.SZ', qty: 100 }],
     })
     assert.equal(placed.ok, true)
     assert.equal(placed.value.batchId, 'rpc-batch-1')
@@ -161,7 +161,7 @@ test('rpc: basket preview and place payloads', async () => {
     assert.ok(placed.value.rows.every(row => row.order.status === 'filled'))
     assert.equal(typeof placed.value.cashAfterCents, 'number')
 
-    const generated = await call('basket/place', { rows: [{ symbol: '600519', qty: 100 }] })
+    const generated = await call('basket/place', { rows: [{ symbol: '600519.SH', qty: 100 }] })
     assert.equal(generated.ok, true)
     assert.equal(typeof generated.value.batchId, 'string')
     assert.ok(generated.value.batchId.length > 0)
@@ -172,8 +172,8 @@ test('rpc: basket preview and place payloads', async () => {
     await rejects('basket/place', { rows: [] })
     await rejects('basket/place', { rows: Array.from({ length: 21 }, (_, index) => ({ symbol: `60000${index}`, qty: 100 })) })
     await rejects('basket/place', { rows: [{ qty: 100 }] })
-    await rejects('basket/place', { rows: [{ symbol: '600519', qty: 150 }] })
-    await rejects('basket/place', { rows: [{ symbol: '600519', qty: 100 }], batchId: 'x'.repeat(101) })
+    await rejects('basket/place', { rows: [{ symbol: '600519.SH', qty: 150 }] })
+    await rejects('basket/place', { rows: [{ symbol: '600519.SH', qty: 100 }], batchId: 'x'.repeat(101) })
     // Rejected payloads must not have written an order.
     assert.equal((await call('list/orders', {})).value.length, 3)
   } finally {

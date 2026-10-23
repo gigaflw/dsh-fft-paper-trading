@@ -4,6 +4,7 @@ import { defineJsonTool as defineTool } from './json-tools.js'
 import type { OrderDraft } from '../contract.js'
 import type { PaperService } from '../service/paper-service.js'
 import { PaperError } from '../service/errors.js'
+import { formatSymbol } from '../core/symbol.js'
 import { renderAccount, renderOrder, renderPreview, renderReview } from './format.js'
 
 export interface ToolsLike {
@@ -22,8 +23,8 @@ const outputSchema = {
 const noParameters = {} as const satisfies ParameterSchemaSpec
 
 const parameters = {
-  symbol: { type: 'string', description: '证券代码，例如 600519' },
-  symbols: { type: 'array', items: { type: 'string' }, description: '证券代码列表' },
+  symbol: { type: 'string', description: '证券代码（含市场），例如 600519.SH、000001.SZ；裸 6 位按股票解析' },
+  symbols: { type: 'array', items: { type: 'string' }, description: '证券代码列表（含市场），例如 [600519.SH, 000001.SZ]' },
   side: { type: 'string', description: 'buy 或 sell' },
   type: { type: 'string', description: 'market 或 limit' },
   qty: { type: 'number', description: '数量（股）' },
@@ -125,7 +126,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
       try {
         const symbols = Array.isArray(input.symbols) ? input.symbols.map(String) : [String(input.symbol ?? '')]
         const result = await service.quote(symbols.filter(Boolean))
-        const lines = result.quotes.map(quote => `${quote.symbol} ${quote.name ?? ''} 现价 ${quote.last.toFixed(2)}`)
+        const lines = result.quotes.map(quote => `${formatSymbol(quote.symbol, quote.name)} 现价 ${quote.last.toFixed(2)}`)
         return { summary: lines.length > 0 ? lines.join('\n') : `行情不可用：${result.notice ?? result.state}`, data: result }
       } catch (error) {
         return fail(error)
@@ -189,7 +190,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
         const lines = [
           renderAccount(account),
           pending.length > 0 ? `挂单 ${pending.length} 笔：\n${pending.map(renderOrder).join('\n')}` : '无挂单',
-          trades.length > 0 ? `最近成交：\n${trades.slice(0, 5).map(item => `- ${item.ts} ${item.side === 'buy' ? '买' : '卖'} ${item.symbol} ${item.qty}@${item.price.toFixed(2)}`).join('\n')}` : '无成交',
+          trades.length > 0 ? `最近成交：\n${trades.slice(0, 5).map(item => `- ${item.ts} ${item.side === 'buy' ? '买' : '卖'} ${formatSymbol(item.symbol, item.name)} ${item.qty}@${item.price.toFixed(2)}`).join('\n')}` : '无成交',
         ]
         return { summary: lines.join('\n\n'), data: { account, orders, trades } }
       } catch (error) {
@@ -233,14 +234,14 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
         }
         if (action === 'search') {
           const hits = await service.search(String(input.query ?? ''), typeof input.limit === 'number' ? input.limit : 10)
-          return { summary: hits.length === 0 ? '没有匹配的标的' : hits.map(hit => `${hit.symbol} ${hit.name}`).join('\n'), data: hits }
+          return { summary: hits.length === 0 ? '没有匹配的标的' : hits.map(hit => formatSymbol(hit.symbol, hit.name)).join('\n'), data: hits }
         }
         const page = await service.marketList({
           board: typeof input.board === 'string' ? input.board : undefined,
           page: typeof input.page === 'number' ? input.page : 1,
           pageSize: typeof input.pageSize === 'number' ? input.pageSize : 50,
         })
-        const lines = page.quotes.map(quote => `${quote.symbol} ${quote.name ?? ''} ${quote.last.toFixed(2)}`)
+        const lines = page.quotes.map(quote => `${formatSymbol(quote.symbol, quote.name)} ${quote.last.toFixed(2)}`)
         return { summary: lines.length === 0 ? (page.notice ?? '没有行情') : lines.join('\n'), data: page }
       } catch (error) {
         return fail(error)

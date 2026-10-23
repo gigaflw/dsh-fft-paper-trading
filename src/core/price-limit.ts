@@ -1,15 +1,23 @@
 import type { Bar, PriceLimit } from '../contract.js'
 import { tradeDateOf } from './calendar.js'
 import { roundPrice } from './money.js'
+import { boardOf, tryParseSymbol } from './symbol.js'
 
-/** Board ratio from the symbol prefix / ST marker; configurable in one place. */
+/** Board ratio from the canonical symbol / ST marker; configurable in one place. */
 export function limitRatioFor(symbol: string, name?: string): number {
-  const bare = symbol.trim().toUpperCase().split('.')[0]
   const label = String(name ?? '').toUpperCase()
   if (label.startsWith('*ST') || label.startsWith('ST') || label.startsWith('S*ST') || label.startsWith('SST')) return 0.05
-  if (/^(300|301|688|689)/.test(bare)) return 0.20
-  if (/^(4|8|920)/.test(bare)) return 0.30
-  return 0.10
+  const parsed = tryParseSymbol(symbol)
+  if (!parsed.ok) return 0.10
+  switch (boardOf(parsed.symbol)) {
+    case 'star':
+    case 'chi_next':
+      return 0.20
+    case 'bjse':
+      return 0.30
+    default:
+      return 0.10
+  }
 }
 
 export function priceLimitFor(symbol: string, name: string | undefined, prevClose: number | undefined): PriceLimit | undefined {

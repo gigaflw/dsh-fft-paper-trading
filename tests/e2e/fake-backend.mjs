@@ -22,6 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   AccountRepo, PaperService, WeekdayTradingCalendar, createPaperRpcHandler,
 } from '../../lib/index.js'
+import { tryParseSymbol } from '../../lib/core/symbol.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..', '..')
@@ -43,9 +44,13 @@ export async function startFakeBackend({
   const now = () => new Date(nowMs)
 
   // 两只票足够走完流程：一贵一便宜，价格/涨跌停基准都可控。
+  const canonical = symbol => {
+    const parsed = tryParseSymbol(String(symbol ?? ''))
+    return parsed.ok ? parsed.symbol.id : String(symbol ?? '')
+  }
   const quotes = new Map([
-    ['000001', { symbol: '000001', name: '平安银行', last: 11.3, prevClose: 11.2 }],
-    ['600519', { symbol: '600519', name: '贵州茅台', last: 1300, prevClose: 1290 }],
+    ['000001.SZ', { symbol: '000001.SZ', name: '平安银行', last: 11.3, prevClose: 11.2 }],
+    ['600519.SH', { symbol: '600519.SH', name: '贵州茅台', last: 1300, prevClose: 1290 }],
   ])
   const quoteOf = symbol => {
     const base = quotes.get(symbol) ?? { symbol, name: symbol, last: 10, prevClose: 10 }
@@ -67,7 +72,7 @@ export async function startFakeBackend({
     async search(query) {
       return [...quotes.values()]
         .filter(hit => hit.symbol.includes(query) || hit.name.includes(query))
-        .map(hit => ({ symbol: hit.symbol, name: hit.name, board: 'main' }))
+        .map(hit => ({ symbol: hit.symbol, name: hit.name }))
     },
     async marketList() {
       const ts = new Date(nowMs).toISOString()
@@ -112,7 +117,7 @@ export async function startFakeBackend({
     }
     if (req.method === 'POST' && url.pathname === '/quote') {
       const input = await body(req)
-      const symbol = String(input.symbol ?? '')
+      const symbol = canonical(input.symbol)
       const current = quotes.get(symbol) ?? { symbol, name: symbol, prevClose: 11.2 }
       quotes.set(symbol, { ...current, last: Number(input.last), prevClose: Number(input.prevClose ?? current.prevClose) })
       return json(res, { quote: quotes.get(symbol) })
@@ -147,8 +152,9 @@ export async function startFakeBackend({
     clock: () => new Date(nowMs),
     setClock: iso => { nowMs = Date.parse(iso) },
     setQuote: (symbol, last) => {
-      const current = quotes.get(symbol) ?? { symbol, name: symbol, prevClose: 11.2 }
-      quotes.set(symbol, { ...current, last })
+      const key = canonical(symbol)
+      const current = quotes.get(key) ?? { symbol: key, name: key, prevClose: 11.2 }
+      quotes.set(key, { ...current, last })
     },
     // 面板的 5 秒轮询只在窗口可见时跑；脚本用它模拟一次撮合心跳。
     tick: () => service.tick(),

@@ -5,7 +5,7 @@
  *   node tests/e2e/offline-matching.mjs
  *
  * 断言的就是这轮定下的规则：成交价=最新价、无滑点、无成交量上限、无行情 TTL；
- * 限价未穿越挂单、穿越即全成；旧账本迁移成 0 滑点 / unlimited。
+ * 限价未穿越挂单、穿越即全成；旧版本账本锁户，不再尝试迁移。
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -71,7 +71,7 @@ const partial = (await service.orders()).filter(order => order.status === 'parti
 assert('不产生部分成交', partial.length === 0)
 assert('市价单从不挂单', (await service.orders()).every(order => order.type !== 'market' || order.status !== 'pending'))
 
-// 旧账本（ledgerVersion 2、volume-share、5bp）重放后应按 M2 迁移
+// 旧版本账本（ledgerVersion 2）不再兼容：锁户，而不是猜着迁移
 const legacyHome = join(root, 'tmp', 'e2e-offline-matching-legacy')
 await rm(legacyHome, { recursive: true, force: true })
 await mkdir(join(legacyHome, 'paper-trading', 'default'), { recursive: true })
@@ -81,14 +81,12 @@ await writeFile(join(legacyHome, 'paper-trading', 'default', 'events.jsonl'), `$
     accountId: 'default', ledgerVersion: 2, initialCashCents: 10_000_000, tradeDate: '2026-10-20',
     settings: {
       initialCashCents: 10_000_000, commissionRate: 0.00025, minCommissionCents: 500,
-      stampDutyRate: 0.0005, transferFeeRate: 0.00001, slippageBps: 5, enableT1: true,
-      quoteTtlSec: 30, maxOrderNotionalCents: 0, maxParticipationRate: 0.1, fillModel: 'volume-share',
+      stampDutyRate: 0.0005, transferFeeRate: 0.00001, enableT1: true, maxOrderNotionalCents: 0,
     },
   },
 })}\n`)
-const migrated = await new AccountRepo({ home: legacyHome, accountId: 'default' }).current()
-assert('旧账本迁移为 0 滑点', migrated.settings.slippageBps === 0, `slippageBps=${migrated.settings.slippageBps}`)
-assert('旧账本迁移为 unlimited', migrated.settings.fillModel === 'unlimited', `fillModel=${migrated.settings.fillModel}`)
+const legacy = await new AccountRepo({ home: legacyHome, accountId: 'default', logger: { warn: () => {} } }).current()
+assert('旧版本账本锁户', legacy.blocked === true && /不兼容/.test(legacy.blockedReason ?? ''), legacy.blockedReason)
 
 console.log(failures.length === 0 ? '\nALL PASS' : `\n${failures.length} FAILED: ${failures.join(' / ')}`)
 process.exit(failures.length === 0 ? 0 : 1)
