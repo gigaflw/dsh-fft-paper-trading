@@ -1576,6 +1576,25 @@
       }, 3000)
       return result
     }
+    if (name === 'slot-shadow') {
+      // dsh_kline draws inside `host.attachShadow()`; a health check that only
+      // reads the light DOM judges that slot empty and replaces a working chart.
+      window.__remount('shadow')
+      const stockButton = e2e.byText('股票')[0]
+      if (stockButton) e2e.click(stockButton)
+      await e2e.wait(() => document.querySelector('.pt-kline-rail'))
+      await new Promise(done => setTimeout(done, 800))
+      result.slotMounted = Boolean(document.querySelector('.pt-kline-slot'))
+      result.shadowCanvas = Boolean(document.querySelector('.dsh-kline-native-host')?.shadowRoot?.querySelector('canvas'))
+      // Stay mounted past the fallback deadline: the slot must survive it.
+      await new Promise(done => setTimeout(done, 7000))
+      result.slotAfterDeadline = Boolean(document.querySelector('.pt-kline-slot'))
+      result.fallbackAfterDeadline = Boolean(document.querySelector('.pt-kline-body .pt-chart'))
+      result.hintAfterDeadline = e2e.text('.pt-kline-hint')
+      window.__remount('none')
+      await new Promise(done => setTimeout(done, 500))
+      return result
+    }
     if (name === 'slot-fallback') {
       window.__remount('empty')
       const stockButton = e2e.byText('股票')[0]
@@ -1922,12 +1941,24 @@
       React.useEffect(() => { onIdentity?.('000001', '平安银行') }, [])
       return React.createElement('div', { className: 'dsh-kline-native-host' })
     }
+    function ShadowSlot() {
+      const ref = React.useRef(null)
+      React.useEffect(() => {
+        const host = ref.current
+        if (!host) return
+        const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' })
+        root.appendChild(document.createElement('canvas'))
+      }, [])
+      return React.createElement('div', { className: 'dsh-kline-native-host', ref })
+    }
     window.__remount = slotMode => {
       const renderSlot = slotMode === 'empty'
         ? () => React.createElement('div', { className: 'dsh-kline-native-host' })
         : slotMode === 'identity'
           ? (name, props) => React.createElement(IdentitySlot, props)
-          : () => null
+          : slotMode === 'shadow'
+            ? (name, props) => React.createElement(ShadowSlot, props)
+            : () => null
       const key = slotMode === 'fresh' ? `fresh-${Date.now()}-${Math.random()}` : undefined
       window.__root.render(React.createElement(main.component, { key, renderSlot }))
     }
