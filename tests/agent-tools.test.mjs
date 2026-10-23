@@ -64,3 +64,61 @@ test('futures_order rejects an unknown side/offset/type instead of opening long'
   assert.match(placed.summary, /空/)
   assert.match(placed.summary, /RB2611/)
 })
+
+/** Mirror DSH's lossless-JSON boundary: no undefined, non-finite numbers or class instances. */
+function losslessIssues(root) {
+  const issues = []
+  const walk = (value, path) => {
+    if (value === null) return
+    const type = typeof value
+    if (type === 'string' || type === 'boolean') return
+    if (type === 'number') {
+      if (!Number.isFinite(value)) issues.push(`${path} = ${value}`)
+      return
+    }
+    if (type !== 'object') { issues.push(`${path} = ${type}`); return }
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => walk(item, `${path}[${index}]`))
+      return
+    }
+    const proto = Object.getPrototypeOf(value)
+    if (proto !== Object.prototype && proto !== null) { issues.push(`${path} = ${value.constructor?.name ?? 'class'}`); return }
+    for (const key of Object.keys(value)) walk(value[key], `${path}.${key}`)
+  }
+  walk(root, 'data')
+  return issues
+}
+
+test('tool data survives the DSH lossless-JSON boundary', async () => {
+  // Optional view fields are `undefined`; DSH rejects them and fails the whole call.
+  const account = {
+    accountId: undefined, currency: 'CNY', initialCash: 1_000_000, cash: 1_000_000,
+    marketValue: 0, equity: 1_000_000, pnl: 0, pnlPct: 0, todayPnl: 0,
+    tradeDate: '2026-10-19', blocked: false, blockedReason: undefined,
+    positions: [{ symbol: '600519', name: undefined, qty: 100, available: 0 }],
+    settings: {},
+  }
+  const preview = {
+    symbol: '600519', side: 'sell', type: 'limit', qty: 100, price: 11, amountCents: 1100,
+    commissionCents: 5, stampCents: 0, transferCents: 1, totalFeesCents: 6, cashAfterCents: 100,
+    availableQty: 0, maxBuyQty: 0, quote: undefined, priceLimit: undefined, session: undefined,
+    warnings: ['T+1：当日买入的 100 股下一交易日可卖（当前可卖 0 股）'],
+  }
+  const tools = collect(registerPaperTools, {
+    account: async () => account,
+    orders: async () => [],
+    trades: async () => [],
+    preview: async () => preview,
+    quote: async () => ({ state: 'ok', quotes: [{ symbol: '600519', name: undefined, last: 11 }] }),
+  })
+  const calls = [
+    ['paper_status', {}],
+    ['paper_preview', { symbol: '600519', side: 'sell', type: 'limit', qty: 100, limitPrice: 11 }],
+    ['paper_quote', { symbols: ['600519'] }],
+  ]
+  for (const [name, args] of calls) {
+    const result = await tools[name].execute(args)
+    const issues = losslessIssues(result.data)
+    assert.deepEqual(issues, [], `${name}: ${JSON.stringify(issues)}`)
+  }
+})
