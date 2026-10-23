@@ -231,7 +231,10 @@
     border: 0; background: none; color: var(--muted); padding: 5px 10px;
     font-size: 12px; cursor: pointer; font-family: inherit;
   }
-  .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .seg button.on {
+    background: var(--accent-soft); color: var(--text); font-weight: 600;
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
 
   button.primary {
     border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);

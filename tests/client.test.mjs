@@ -141,6 +141,13 @@ test('browser bundle: the page surface fills the column, only the content is cap
   assert.match(css, /\.pt-kline-body \{[^}]*clamp\(420px/)
   assert.match(css, /\.pt-table-wrap \{ overflow-x:auto/)
   assert.match(css, /\.pt-btn\[data-active="true"\]/, 'selected board/watch/period buttons need visible state')
+  // A selected segment is state, not action: it keeps the soft tint so the only
+  // solid orange on a page is the submit button.
+  assert.match(css, /\.pt-seg button\[data-active="true"\] \{[^}]*background:var\(--pt-accent-soft\)/)
+  assert.ok(!/\.pt-seg button\[data-active="true"\] \{[^}]*background:var\(--pt-accent\)/.test(css), 'a segment must not fill with the solid accent')
+  // Direction reads before quantity and shares one half-width row with it.
+  assert.match(css, /\.pt-field-pair \{[^}]*grid-template-columns:repeat\(2, minmax\(0, 1fr\)\)/)
+  assert.match(source, /className: 'pt-span-2 pt-field-pair'[\s\S]{0,200}label: '方向'[\s\S]{0,400}数量（100 股整数倍）/)
   // Breakpoints follow the panel width (container queries), not the window.
   assert.match(css, /\.pt-root \{[^}]*container:paper-panel \/ inline-size/)
   assert.match(css, /\.pt-main \{[^}]*container:paper-main \/ inline-size/)

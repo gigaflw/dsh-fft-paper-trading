@@ -316,8 +316,12 @@ window.__ModuleLoader__.load({
         border-radius:var(--dsw-radius-xs, 4px); overflow:hidden; }
       .pt-seg button { border:0; background:none; padding:5px 9px; cursor:pointer; font-size:12px;
         color:inherit; font-family:inherit; }
-      .pt-seg button[data-active="true"] { background:var(--pt-accent);
-        color:var(--pt-accent-ink); font-weight:500; }
+      /* A selection is state, not action: the active segment takes the soft
+         accent tint plus a thin accent edge, so the only solid orange left on a
+         page is the submit button. Same language as .pt-tab / .pt-btn. */
+      .pt-seg button[data-active="true"] { background:var(--pt-accent-soft);
+        color:var(--dsw-alias-label-primary, #171b22); font-weight:500;
+        box-shadow:inset 0 0 0 1px var(--pt-accent); }
       .pt-quote { display:flex; gap:12px; flex-wrap:wrap; padding:7px 9px; border-radius:var(--dsw-radius-sm, 8px);
         background:var(--dsw-alias-bg-layer-2, #f7f8fa); font-variant-numeric:tabular-nums;
         border:0.5px solid var(--dsw-alias-border-l4, rgba(45,49,66,.08)); }
@@ -359,6 +363,10 @@ window.__ModuleLoader__.load({
       .pt-ticket-form { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:10px 12px; align-items:start; min-width:0; }
       .pt-span-2 { grid-column:1 / -1; }
+      /* Direction and quantity read as one row of two halves at every
+         breakpoint, so they never split into rows of their own. */
+      .pt-field-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:10px 12px; }
       .pt-field .pt-seg { width:100%; }
       .pt-field .pt-seg button { flex:1 1 0; }
       .pt-ticket-form .pt-input { height:30px; }
@@ -646,20 +654,22 @@ window.__ModuleLoader__.load({
         h('div', { className: 'pt-card pt-ticket-card' },
           h('div', { className: 'pt-ticket' },
             h('div', { className: 'pt-ticket-form' },
-              h(Field, { label: '代码' }, h('input', {
+              h(Field, { label: '代码', span: true }, h('input', {
                 className: 'pt-input', value: form.symbol, maxLength: 12, spellCheck: false,
                 placeholder: '600519 / 000001.SZ',
                 onChange: event => setForm(prev => ({ ...prev, symbol: symbolInput(event.target.value) })),
               })),
-              h(Field, { label: '数量（100 股整数倍）' }, h(DebouncedNumber, {
-                value: form.qty, min: 0, step: 100,
-                onChange: value => setForm(prev => ({ ...prev, qty: value })),
-              })),
-              h(Field, { label: '方向' }, h('div', { className: 'pt-seg' },
-                [['buy', '买入'], ['sell', '卖出']].map(([key, label]) =>
-                  h('button', { key, 'data-active': form.side === key, onClick: () => setForm(prev => ({ ...prev, side: key })) }, label),
-                ),
-              )),
+              h('div', { className: 'pt-span-2 pt-field-pair' },
+                h(Field, { label: '方向' }, h('div', { className: 'pt-seg' },
+                  [['buy', '买入'], ['sell', '卖出']].map(([key, label]) =>
+                    h('button', { key, 'data-active': form.side === key, onClick: () => setForm(prev => ({ ...prev, side: key })) }, label),
+                  ),
+                )),
+                h(Field, { label: '数量（100 股整数倍）' }, h(DebouncedNumber, {
+                  value: form.qty, min: 0, step: 100,
+                  onChange: value => setForm(prev => ({ ...prev, qty: value })),
+                })),
+              ),
               h(Field, { label: '类型' }, h('div', { className: 'pt-seg' },
                 [['market', '市价'], ['limit', '限价']].map(([key, label]) =>
                   h('button', { key, 'data-active': form.type === key, onClick: () => setForm(prev => ({ ...prev, type: key })) }, label),

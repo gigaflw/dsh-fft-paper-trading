@@ -391,7 +391,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 账户头：总资产、可用现金、累计盈亏、今日盈亏、刷新、重置（`window.confirm` 二次确认）。
 锁定横幅显示失败原因（最后一条 `ledger.violation` 的 `actual`）与账本绝对路径，带「导出账本」（调 `account/export` 下载 JSONL 并复制路径）和「复制路径」；`AccountView` 带 `blockedReason` / `ledgerPath`，所以工具与横幅不必各自猜文件位置。
-`data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
+`data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态：**选中态只表示状态**，用浅底 + 橙描边 + 正文色（`.pt-seg` 也归到这套），实心橙只属于提交动作（`.pt-btn-primary`），一屏只有一个实心橙按钮；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 
 **刷新**：页面挂载即拉取 `account/get`、`list/orders`、`list/trades`、`review/get`；每 5 秒在 `document.visibilityState === 'visible'` 时调 `tick` 并静默重载（宿主调度器才是主驱动，见 §19.7）；提交、撤单、重置、手动刷新立即重载，重置后同时刷新日终/流水/回合。
 **文案与格式**：时间统一 `Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai' })`；状态、流水类型、撤单原因、错误码都有中文映射，错误码只留在 `title`/详情；非有限数值显示 `—`；代码一律展示 `000001.SZ 平安银行`（代码 + 市场 + 名称），表格的「代码」列不再省略市场后缀。
