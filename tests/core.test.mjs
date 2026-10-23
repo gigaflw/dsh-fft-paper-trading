@@ -7,6 +7,7 @@ import { checkOrder } from '../lib/core/risk.js'
 import { closeDay, fillQty, openAccount, openDay, submit, tick } from '../lib/core/engine.js'
 import { emptyState } from '../lib/core/ledger.js'
 import { replay } from '../lib/core/replay.js'
+import { previewOrder } from '../lib/core/views.js'
 
 const DAY1 = '2026-10-19T02:00:00.000Z'
 const DAY2 = '2026-10-20T02:00:00.000Z'
@@ -79,6 +80,19 @@ test('risk: lot, cash and T+1 rejection codes', () => {
   const sell = checkOrder(state, { symbol: '600519', side: 'sell', type: 'market', qty: 100 }, quote(10), DEFAULT_SETTINGS)
   assert.equal(sell.ok, false)
   assert.equal(sell.code, 'T1_LOCKED')
+})
+
+test('preview: T+1 locked holdings are reported as a lock, not a missing holding', () => {
+  const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
+  const bought = submit(open.state, { symbol: '600519', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
+  const locked = previewOrder(bought.state, { symbol: '600519', side: 'sell', type: 'market', qty: 100 }, quote(10), DEFAULT_SETTINGS)
+  assert.equal(locked.availableQty, 0)
+  assert.ok(locked.warnings.some(text => text.includes('T+1') && text.includes('下一交易日可卖')), JSON.stringify(locked.warnings))
+
+  // Asking for more than the book holds keeps the generic shortfall wording.
+  const oversell = previewOrder(bought.state, { symbol: '600519', side: 'sell', type: 'market', qty: 200 }, quote(10), DEFAULT_SETTINGS)
+  assert.equal(oversell.warnings.some(text => text.includes('T+1')), false)
+  assert.ok(oversell.warnings.some(text => text.includes('可卖不足')), JSON.stringify(oversell.warnings))
 })
 
 test('engine: buy fills, replay is deterministic, close/open moves the day', () => {
