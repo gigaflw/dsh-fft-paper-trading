@@ -59,7 +59,8 @@
     "test": "pnpm run build && node --test tests/*.test.mjs",
     "scenario": "node scripts/scenario.mjs",
     "sync-profile": "node scripts/sync-profile.mjs",
-    "pack:npm": "node scripts/pack-npm.mjs"
+    "pack:npm": "node scripts/pack-npm.mjs",
+    "public:snapshot": "node scripts/public-snapshot.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
