@@ -253,7 +253,7 @@ test('browser bundle: inline 资金 panel moves cash on both accounts', () => {
 })
 
 test('browser bundle: header badge carries the four data-source states', () => {
-  for (const text of ['数据源已配置', '免费数据源', '无数据源', '数据源无效']) {
+  for (const text of ['数据源正常', '免费数据源', '无数据源', '数据源无效']) {
     assert.ok(source.includes(`'${text}'`), `missing badge copy: ${text}`)
   }
   assert.match(source, /function DataSourceBadge/)
@@ -283,6 +283,10 @@ test('browser bundle: a data problem becomes an actionable, dismissible banner',
     assert.ok(source.includes(copy), `missing banner copy: ${copy}`)
   }
   // No-key guidance must not be mistaken for a plan problem: they use different reasons.
+  assert.ok(source.includes("'FTShare 实时'"), 'realtime quotes say 实时 next to 免费版')
+  assert.match(source, /const quoteUpdateText = quote =>/)
+  assert.match(source, /date\.slice\(5\)/)
+  assert.ok(source.includes('请在「设置」中检查'), 'settings guidance stays neutral')
   assert.match(source, /case 'plan-denied'/)
   assert.match(source, /case 'quota'/)
   assert.match(source, /const noKeyBanner =/)

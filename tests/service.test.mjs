@@ -543,9 +543,9 @@ test('service: upstream adapter internals are not exposed in data notices', asyn
     // A key problem and a spent free quota are actionable, so they survive the
     // sanitiser with a readable cause instead of the generic fallback.
     data.quotes = async () => ({ state: 'denied', quotes: [], notice: 'FTShare 无权访问 ft_v4_stock_realtime_day_kline：API Key 缺失', noticeCode: '401' })
-    assert.match((await service.quote(['600519.SH'])).notice ?? '', /需要 FTShare API Key/)
+    assert.match((await service.quote(['600519.SH'])).notice ?? '', /需要 API Key（「设置」中配置后重试）/)
     data.quotes = async () => ({ state: 'failed', quotes: [], notice: 'FTShare 调用失败（UPSTREAM_UNAVAILABLE）：最近 1 天最多访问 500 次；免费配额用尽' })
-    assert.match((await service.quote(['600519.SH'])).notice ?? '', /免费额度已用尽/)
+    assert.match((await service.quote(['600519.SH'])).notice ?? '', /免费行情额度已用尽/)
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -661,7 +661,7 @@ test('service: quotes are only polled in continuous trading and back off when de
     now.current = new Date('2026-10-21T02:02:00.000Z')
     const degraded = await service.tick()
     assert.equal(calls, 2)
-    assert.match(degraded.notices.join('；'), /免费额度已用尽/)
+    assert.match(degraded.notices.join('；'), /免费行情额度已用尽/)
     now.current = new Date('2026-10-21T02:04:00.000Z')
     await service.tick()
     assert.equal(calls, 2, 'a degraded feed waits five minutes')

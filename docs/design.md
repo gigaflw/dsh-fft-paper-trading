@@ -407,7 +407,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 复盘 | 7/30/全部区间、成交统计、最大回撤、权益曲线、成交记录 |
 
 账户头：总资产、可用现金、累计盈亏、今日盈亏、刷新、资金（注资/提款内联面板）、重置（`window.confirm` 二次确认）。净入金非零时在副标题追加「净入金 ±X」。
-账户头右侧还有**数据源状态**（`数据源已配置` / `免费数据源` / `无数据源` / `数据源无效`，圆点区分绿/橙/灰/红）：宿主只读 `ctx.ftshareSettings.apiKey.describe()` 的「是否配置 + 最近验证结果」，不读明文、不写设置、不联网、不耗额度；没有 `ftshareData` 时为「无数据源」，无 Key 为「免费数据源」（提示里写明日K收盘与匿名 500 次/天）。状态随 `account/get` 那批轮询一起刷新；本轮不做点击跳设置页（客户端没有公开的设置页跳转 API）。
+账户头右侧还有**数据源状态**（`数据源正常` / `免费数据源` / `无数据源` / `数据源无效`，圆点区分绿/橙/灰/红）：宿主只读 `ctx.ftshareSettings.apiKey.describe()` 的「是否配置 + 最近验证结果」，不读明文、不写设置、不联网、不耗额度；没有 `ftshareData` 时为「无数据源」，无 Key 为「免费数据源」（提示里写明日K收盘与额度限制，不写具体次数）。状态随 `account/get` 那批轮询一起刷新；本轮不做点击跳设置页（客户端没有公开的设置页跳转 API）。
 锁定横幅显示失败原因（最后一条 `ledger.violation` 的 `actual`）与账本绝对路径，带「导出账本」（调 `account/export` 下载 JSONL 并复制路径）和「复制路径」；`AccountView` 带 `blockedReason` / `ledgerPath`，所以工具与横幅不必各自猜文件位置。
 `data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态：**选中态只表示状态**，用浅底 + 橙描边 + 正文色（`.pt-seg` 也归到这套），实心橙只属于提交动作（`.pt-btn-primary`），一屏只有一个实心橙按钮；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 
@@ -747,10 +747,10 @@ FTShare 目录里已有的数据源（见主仓 `packages/dsh-fft-ftshare/catalo
 
 - 免费档（无 key 可用）：`ft_v1_stock_candlesticks`（历史日K）、`ft_v1_daec_stocks`、交易日历、停牌列表、期货基础数据/涨跌停/结算参数/历史K线；
 - 专业档：`ft_v4_stock_realtime_day_kline`、`ft_v4_stock_realtime_minute_kline`、`ft_v4_futures_minutes_realtime`；基础档：`ft_v2_stock_list_filter`、`ft_v2_stock_candlesticks_batch`、`ft_v2_stock_minutes`。
-- 无 key 时实时日K 返回 401，报价回退到历史日K：`Quote.source = 'daily-bar'`，面板显示「来源 FTShare 免费版」。**盘中该价是上一交易日收盘**，15:30 后才是当日收盘；撮合、预览、涨跌停（昨收来自日K）都按这个价算，所以功能可用但成交价不是实时价。
+- 无 key 时实时日K 返回 401，报价回退到历史日K：`Quote.source = 'daily-bar'`，面板显示「来源 FTShare 免费版」（实时档显示「来源 FTShare 实时」），更新时间带日期避免误读。**盘中该价是上一交易日收盘**，15:30 后才是当日收盘；撮合、预览、涨跌停（昨收来自日K）都按这个价算，所以功能可用但成交价不是实时价。
 - 匿名通道另有 500 次/天额度（滚动 1 天），额度耗尽时上游返回 429。
 - **失败原因结构化**：适配器保留上游 `notice.code`，`classifyDataProblem` 按 `state + code` 归成 `invalid-key / plan-denied / quota / network / upstream`（配额另有上游固定后缀「免费配额用尽」可识别，`UPSTREAM_UNAVAILABLE` 与真实故障同码），不再靠正文正则猜；`paper-service` 的提示文案与面板 banner 共用这套原因。
-- **面板 banner**：交易/行情页顶部一条可关闭横幅，按原因给动作：无 Key →「获取 API Key」（`https://ftai.chat/ftshare`）+ 设置位置；额度耗尽 → 配置 Key/稍后重试；套餐未开通 → 只说明可用日K；网络/上游 → 重试；无数据服务 → 提示装底座。关闭按「原因」记忆（`localStorage: paper-trading:data-banner-dismissed`），原因变化后重新出现；账本与手填参考价交易始终不受影响。
+- **面板 banner**：交易/行情页顶部一条可关闭横幅，按原因给动作：无 Key →「获取 API Key」（`https://ftai.chat/ftshare`）+ 设置位置；额度耗尽 → 配置 Key/稍后重试；套餐未开通 → 只说明可用日K；网络/上游 → 重试；无数据服务 → 提示装底座。关闭按「原因」记忆（`localStorage: paper-trading:data-banner-dismissed`），原因变化后重新出现；文案只写「设置」，不点名具体设置栏目，避免栏目改名后指引失效；账本与手填参考价交易始终不受影响。
 - 期货侧同一条 banner；`paper_quote` 的摘要对日K回退报价标「（日K收盘，免费档）」，`paper_market` 的时段摘要带日历降级说明。
 
 **已实测的数据缺口**
