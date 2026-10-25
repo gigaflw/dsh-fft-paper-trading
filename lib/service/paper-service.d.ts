@@ -27,6 +27,8 @@ export declare class PaperService {
     private readonly settings;
     private readonly accountId;
     private readonly now;
+    private readonly quoteGate;
+    private tickQuotes;
     constructor(options: PaperServiceOptions);
     private ts;
     /** Attach the on-disk location so a locked account is repairable from a reply. */

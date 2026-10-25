@@ -40,6 +40,7 @@ import type { TradingCalendarPort } from '../data/trading-calendar-port.js'
 import type { AccountStore } from '../store/port.js'
 import type { ShortlistStore } from '../store/shortlist.js'
 import { PaperError } from './errors.js'
+import { QuoteRefreshGate } from './quote-gate.js'
 
 export interface PaperServiceOptions {
   repo: AccountStore
@@ -84,6 +85,8 @@ export class PaperService {
   private readonly settings: PaperSettings
   private readonly accountId: string
   private readonly now: () => Date
+  private readonly quoteGate = new QuoteRefreshGate()
+  private tickQuotes: { key: string; quotes: Quote[] } | undefined
 
   constructor(private readonly options: PaperServiceOptions) {
     this.settings = normalizeSettings(options.settings ?? DEFAULT_SETTINGS)
@@ -652,11 +655,28 @@ export class PaperService {
     const state = await this.sync()
     const now = this.ts()
     const phase = this.phaseFor(state, now)
-    const symbols = this.symbolsInPlay(state)
-    const quotes = await this.fetchQuotes(symbols)
+    // Outside continuous trading nothing can fill and the display does not need
+    // a fresh tick either, so the upstream quote call is skipped altogether:
+    // a host scheduler beating every 5 s would otherwise drain the anonymous
+    // free-tier budget through the night and the weekend.
     if (!canMatch(phase)) {
-      await this.options.repo.markPrices(quotes.quotes)
-      return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: quotes.quotes, notices: quotes.state === 'ok' ? [] : [this.friendlyNotice(quotes.state, quotes.notice, '行情暂不可用')] }
+      return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: [], notices: [] }
+    }
+    const symbols = this.symbolsInPlay(state)
+    const key = symbols.join(',')
+    const nowMs = this.now().getTime()
+    // The panel and the host scheduler beat on the same service instance; the
+    // gate keeps them on one cadence and backs off once quotes are degraded.
+    if (symbols.length > 0 && !this.quoteGate.allow(key, nowMs)) {
+      const cached = this.tickQuotes?.key === key ? this.tickQuotes.quotes : []
+      return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: cached, notices: [] }
+    }
+    const quotes = await this.fetchQuotes(symbols)
+    if (symbols.length > 0) {
+      const live = quotes.state === 'ok' && quotes.quotes.length === symbols.length
+        && quotes.quotes.every(quote => quote.source !== 'daily-bar' && quote.source !== 'manual')
+      this.quoteGate.record(key, nowMs, live)
+      this.tickQuotes = { key, quotes: quotes.quotes }
     }
     const outcome = await this.options.repo.transact(current => {
       if (current.blocked) {
@@ -735,7 +755,16 @@ export class PaperService {
   }
 
   private friendlyNotice(state: string, notice: string | undefined, fallback: string): string {
-    if (state === 'denied') return '行情接口无权限'
+    if (state === 'denied') {
+      // Two different causes share this state: a missing/invalid key and a plan
+      // that does not include the interface. The panel must not blur them.
+      return notice !== undefined && /api\s*key|凭据|未配置|无效|未授权|401/i.test(notice)
+        ? '行情需要 FTShare API Key（设置 → 非凸金融终端）'
+        : '当前 FTShare 套餐未开通该行情接口'
+    }
+    if (notice !== undefined && /额度|配额|quota|500\s*次|rate.?limit|429/i.test(notice)) {
+      return 'FTShare 免费额度已用尽（匿名 500 次/天），配置 API Key 或稍后重试'
+    }
     if (notice === undefined || notice === '') return fallback
     // Keep short operational notices (e.g. "行情服务未就绪") but hide adapter
     // internals such as FTShare function names and parameter validation.
