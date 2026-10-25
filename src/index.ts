@@ -29,6 +29,7 @@ import { PaperService } from './service/paper-service.js'
 import { createPaperRoute, type HostConnectionLike } from './service/route.js'
 import { createPaperRpcHandler, type PaperRpcHandler } from './service/rpc.js'
 import { PaperScheduler } from './service/scheduler.js'
+import { probeDataSource, type FtshareSettingsLike } from './service/data-source.js'
 import { AccountRepo } from './store/repo.js'
 import { FuturesRepo } from './store/futures-repo.js'
 import { resolveDshHome } from './store/paths.js'
@@ -80,8 +81,15 @@ export function apply(ctx: Context): void {
     marketList: input => market.marketList(input),
   }
 
+  // Data-source state for the panel header. Both flags are filled by the lazy
+  // `ctx.inject` blocks below, so the panel can say "no source" before FTShare
+  // arrives and flip to "free/configured" when the service appears.
+  let dataService = false
+  let settings: FtshareSettingsLike | undefined
   const service = new PaperService({ repo, data, calendar, shortlist, logger })
-  const paperHandler = createPaperRpcHandler(service)
+  const paperHandler = createPaperRpcHandler(service, {
+    dataSource: () => probeDataSource({ dataService, settings }),
+  })
 
   // Futures: separate ledger, separate service, same route. The market-data
   // port stays on the degraded stand-in until the FTShare futures adapter is
@@ -145,13 +153,28 @@ export function apply(ctx: Context): void {
     market = adapter
     calendar = calendarAdapter
     futuresMarket = futuresAdapter
+    dataService = true
     scope.effect(
       () => () => {
         if (market === adapter) market = new UnavailableMarketData()
         if (calendar === calendarAdapter) calendar = new WeekdayTradingCalendar()
         if (futuresMarket === futuresAdapter) futuresMarket = new UnavailableFuturesMarketData()
+        dataService = false
       },
       'ft-paper-trading: FTShare adapter',
+    )
+  })
+
+  // The key itself never leaves the settings service: only "is a key
+  // configured, and did its last check pass" is read, for the header badge.
+  ctx.inject(['ftshareSettings'], scope => {
+    const handle = scope.get('ftshareSettings') as unknown as FtshareSettingsLike
+    settings = handle
+    scope.effect(
+      () => () => {
+        if (settings === handle) settings = undefined
+      },
+      'ft-paper-trading: FTShare key status',
     )
   })
 

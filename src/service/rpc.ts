@@ -1,4 +1,4 @@
-import type { BasketOrderInput, OrderDraft, RpcResult, Side } from '../contract.js'
+import type { BasketOrderInput, DataSourceStatus, OrderDraft, RpcResult, Side } from '../contract.js'
 import type { PaperService } from './paper-service.js'
 import { PaperError } from './errors.js'
 
@@ -85,13 +85,20 @@ function period(value: unknown): '7d' | '30d' | 'all' {
   return '30d'
 }
 
-export function createPaperRpcHandler(service: PaperService): PaperRpcHandler {
+export interface PaperRpcOptions {
+  /** Read-only data-source state for the panel header; absent means no service. */
+  dataSource?: () => Promise<DataSourceStatus>
+}
+
+export function createPaperRpcHandler(service: PaperService, options: PaperRpcOptions = {}): PaperRpcHandler {
   return async (endpoint, payload, signal) => {
     try {
       if (signal.aborted) throw new PaperError('INVALID_ARGUMENT', '请求已取消', 499)
       switch (endpoint) {
         case 'health':
           return ok({ ok: true, version: 1 })
+        case 'market/data-source':
+          return ok(await (options.dataSource?.() ?? { state: 'none' }))
         case 'account/get':
         case 'account/init':
           return ok(await service.account())

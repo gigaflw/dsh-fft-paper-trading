@@ -407,6 +407,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | 复盘 | 7/30/全部区间、成交统计、最大回撤、权益曲线、成交记录 |
 
 账户头：总资产、可用现金、累计盈亏、今日盈亏、刷新、资金（注资/提款内联面板）、重置（`window.confirm` 二次确认）。净入金非零时在副标题追加「净入金 ±X」。
+账户头右侧还有**数据源状态**（`数据源已配置` / `免费数据源` / `无数据源` / `数据源无效`，圆点区分绿/橙/灰/红）：宿主只读 `ctx.ftshareSettings.apiKey.describe()` 的「是否配置 + 最近验证结果」，不读明文、不写设置、不联网、不耗额度；没有 `ftshareData` 时为「无数据源」，无 Key 为「免费数据源」（提示里写明日K收盘与匿名 500 次/天）。状态随 `account/get` 那批轮询一起刷新；本轮不做点击跳设置页（客户端没有公开的设置页跳转 API）。
 锁定横幅显示失败原因（最后一条 `ledger.violation` 的 `actual`）与账本绝对路径，带「导出账本」（调 `account/export` 下载 JSONL 并复制路径）和「复制路径」；`AccountView` 带 `blockedReason` / `ledgerPath`，所以工具与横幅不必各自猜文件位置。
 `data-active="true"` 在 `.pt-tab` / `.pt-seg button` / `.pt-btn` 三处统一有选中态：**选中态只表示状态**，用浅底 + 橙描边 + 正文色（`.pt-seg` 也归到这套），实心橙只属于提交动作（`.pt-btn-primary`），一屏只有一个实心橙按钮；dsh_kline slot 存在时不渲染内置「日K/分时」假按钮。
 
