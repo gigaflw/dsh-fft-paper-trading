@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Paper trading">
+  <rect width="180" height="180" rx="40" fill="#cf5623"/>
+  <g stroke="#ffffff" stroke-width="8" stroke-linecap="round">
+    <path d="M57 84v12M57 126v12"/>
+    <path d="M96 66v10M96 112v12"/>
+    <path d="M135 82v8M135 104v14"/>
+  </g>
+  <g fill="#ffffff">
+    <rect x="41" y="96" width="32" height="30" rx="6"/>
+    <rect x="80" y="76" width="32" height="36" rx="6"/>
+    <rect x="119" y="90" width="32" height="14" rx="6"/>
+  </g>
+</svg>

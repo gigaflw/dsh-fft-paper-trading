@@ -19,7 +19,7 @@
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync, execFileSync } from 'node:child_process'
 
@@ -47,13 +47,38 @@ const KLINE = '@ftshare-lab/dsh-kline'
 const readManifest = dir => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
 const fail = message => { throw new Error(`pack-npm: ${message}`) }
 
+/** Expand one-level globs (`locale/*.json`) in a manifest `files` list. */
+function expandFilesEntries(sourceDir, entries) {
+  const out = []
+  for (const entry of entries) {
+    if (!entry.includes('*')) {
+      out.push(entry)
+      continue
+    }
+    const dir = dirname(entry)
+    const pattern = basename(entry)
+    const regex = new RegExp(`^${pattern.split('*').map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
+    let names = []
+    try {
+      names = readdirSync(join(sourceDir, dir))
+    } catch {
+      fail(`files entry ${JSON.stringify(entry)} points at a missing directory in ${sourceDir}`)
+    }
+    for (const name of names) {
+      if (regex.test(name)) out.push(dir === '.' ? name : join(dir, name))
+    }
+  }
+  return out
+}
+
 /** Copy one package's `files` entries into `dest`, skipping VCS and installed trees. */
 function copyPackageFiles(sourceDir, destDir) {
   const manifest = readManifest(sourceDir)
   mkdirSync(destDir, { recursive: true })
-  const entries = Array.isArray(manifest.files) && manifest.files.length > 0
+  const declared = Array.isArray(manifest.files) && manifest.files.length > 0
     ? manifest.files.filter(entry => typeof entry === 'string' && !entry.startsWith('!'))
     : ['lib', 'README.md', 'package.json']
+  const entries = expandFilesEntries(sourceDir, declared)
   for (const entry of entries) {
     const from = join(sourceDir, entry)
     if (!existsSync(from)) fail(`${manifest.name}: files entry ${JSON.stringify(entry)} is missing in ${sourceDir}`)
@@ -146,6 +171,11 @@ const published = {
   main: paper.main,
   types: paper.types,
   license: paper.license,
+  author: paper.author,
+  homepage: paper.homepage,
+  repository: paper.repository,
+  keywords: paper.keywords,
+  icon: paper.icon,
   exports: paper.exports,
   files: paper.files,
   dependencies: merged,
