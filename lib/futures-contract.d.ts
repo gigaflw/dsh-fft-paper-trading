@@ -149,6 +149,12 @@ export interface FuturesAccountView {
     positions: FuturesPositionView[];
     settings: FuturesSettings;
 }
+/** Same shape as the stock contract's calendar status; the two contracts stay independent. */
+export interface FuturesCalendarStatus {
+    source: 'ftshare' | 'fallback';
+    reason?: string;
+    checkedAt?: string;
+}
 export interface FuturesMarketStatus {
     phase: FuturesPhase;
     tradeDate: string;
@@ -156,6 +162,8 @@ export interface FuturesMarketStatus {
     canMatch: boolean;
     nextBoundary?: string;
     reason?: string;
+    /** Trading-day source; `fallback` means settlement dates are weekday estimates. */
+    calendar?: FuturesCalendarStatus;
 }
 export interface FuturesPreviewView {
     symbol: string;

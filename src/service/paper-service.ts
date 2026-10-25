@@ -815,6 +815,7 @@ export class PaperService {
       canSubmit: canSubmit(phase, 'limit'),
       canMatch: canMatch(phase),
       nextBoundary: await this.nextBoundaryFor(nowIso, phase),
+      calendar: this.options.calendar.status,
     }
   }
 

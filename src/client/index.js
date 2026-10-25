@@ -65,9 +65,23 @@ window.__ModuleLoader__.load({
     })
     const shanghaiToday = () => dateFormat.format(new Date())
     /** After the close the ledger rolls to the next trading day; say so. */
-    const tradeDateText = value => {
+    const tradeDateText = (value, estimated = false) => {
       if (!value) return '—'
-      return value > shanghaiToday() ? `下一交易日 ${value}` : value
+      return value > shanghaiToday()
+        ? `下一交易日${estimated ? '（按工作日估算）' : ''} ${value}`
+        : value
+    }
+    /**
+     * Trading-day source note for the header subtitle. Only rendered while the
+     * weekday fallback is in use, so the normal state stays quiet.
+     */
+    const calendarNote = calendar => {
+      if (calendar === null || calendar === undefined || calendar.source !== 'fallback') return null
+      const detail = calendar.reason === undefined ? '' : `（${calendar.reason}）`
+      return h('span', {
+        className: 'pt-note',
+        title: `交易日历降级：按周一至周五估算，节假日会被当作交易日，影响 T+1 可卖、挂单过期、期货结算与下一交易日${detail}`,
+      }, ' · 交易日历降级（按工作日估算）')
     }
     /** Canonical ids arrive from the host; the raw input keeps whatever was typed. */
     const halfWidthDigits = value => String(value ?? '')
@@ -1845,8 +1859,9 @@ window.__ModuleLoader__.load({
           h('div', null,
             h('h3', { className: 'pt-title' }, '模拟交易'),
             h('div', { className: 'pt-sub' },
-              `期货 · ${tradeDateText(account.tradeDate)} · ${status ? FUTURES_PHASE_TEXT[status.phase] : '时段未知'} · 初始 ${money(account.initialCash)}${isFiniteNumber(account.netCashFlow) && account.netCashFlow !== 0 ? ` · 净入金 ${signed(account.netCashFlow)}` : ''} · ${account.blocked ? '已锁定' : '运行中'}`,
+              `期货 · ${tradeDateText(account.tradeDate, status?.calendar?.source === 'fallback')} · ${status ? FUTURES_PHASE_TEXT[status.phase] : '时段未知'} · 初始 ${money(account.initialCash)}${isFiniteNumber(account.netCashFlow) && account.netCashFlow !== 0 ? ` · 净入金 ${signed(account.netCashFlow)}` : ''} · ${account.blocked ? '已锁定' : '运行中'}`,
               status && !status.canSubmit ? h('span', { className: 'pt-note' }, '（当前时段只读）') : null,
+              status !== null && status !== undefined ? calendarNote(status.calendar) : null,
             ),
           ),
           h('div', { className: 'pt-row' },
@@ -2832,8 +2847,9 @@ window.__ModuleLoader__.load({
             h('div', null,
               h('h3', { className: 'pt-title' }, '模拟交易'),
               h('div', { className: 'pt-sub' },
-                `${tradeDateText(account.tradeDate)} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)}${isFiniteNumber(account.netCashFlow) && account.netCashFlow !== 0 ? ` · 净入金 ${signed(account.netCashFlow)}` : ''} · ${account.blocked ? '已锁定' : '运行中'}`,
+                `${tradeDateText(account.tradeDate, session?.calendar?.source === 'fallback')} · ${session ? PHASE_TEXT[session.phase] : '时段未知'} · 初始 ${money(account.initialCash)}${isFiniteNumber(account.netCashFlow) && account.netCashFlow !== 0 ? ` · 净入金 ${signed(account.netCashFlow)}` : ''} · ${account.blocked ? '已锁定' : '运行中'}`,
                 sessionNote(session) !== '' ? h('span', { className: 'pt-note' }, sessionNote(session)) : null,
+                session !== null && session !== undefined ? calendarNote(session.calendar) : null,
               ),
             ),
             h('div', { className: 'pt-row' },

@@ -282,6 +282,20 @@ export interface TickView {
   notices: string[]
 }
 
+/**
+ * Which trading-day source answered, and why it degraded.
+ *
+ * `fallback` means Monday–Friday is being used instead of the exchange
+ * calendar, so holidays are treated as trading days until the source recovers.
+ */
+export interface CalendarStatus {
+  source: 'ftshare' | 'fallback'
+  /** Why the fallback is in use; present only while degraded. */
+  reason?: string
+  /** ISO-8601 of the last check against the source. */
+  checkedAt?: string
+}
+
 export interface MarketStatus {
   phase: SessionPhase
   tradeDate: string
@@ -290,6 +304,8 @@ export interface MarketStatus {
   /** ISO-8601 of the next phase boundary. */
   nextBoundary?: string
   reason?: string
+  /** Trading-day source; `fallback` means the session table is a weekday estimate. */
+  calendar?: CalendarStatus
 }
 
 export interface PriceLimit {

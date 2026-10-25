@@ -263,3 +263,11 @@ test('browser bundle: header badge carries the four data-source states', () => {
   // Both dashboards refresh the badge inside the account bundle they already poll.
   assert.equal(source.match(/rpc\('market\/data-source'\)/g).length, 2)
 })
+
+
+test('browser bundle: a degraded trading calendar is visible in the header', () => {
+  assert.match(source, /const calendarNote = calendar =>/)
+  assert.match(source, /交易日历降级（按工作日估算）/)
+  assert.match(source, /下一交易日\$\{estimated \? '（按工作日估算）'/)
+  assert.match(source, /calendar\?\.source === 'fallback'/)
+})
