@@ -20,7 +20,7 @@
     "a-share",
     "futures"
   ],
-  "icon": "./icon.svg",
+  "icon": "./icon.png",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -42,7 +42,7 @@
     "src",
     "README.md",
     "LICENSE",
-    "icon.svg",
+    "icon.png",
     "locale/*.json",
     "cordis.patch.yml",
     "package.json"
