@@ -37,6 +37,7 @@
 - docs 改动如果是一个新功能的设计文档，需要单独提交，否则允许合并到对应的功能commit中
 - skills 改动如果只修改了一个skill 需 `skills(name): `
 - chore 改动包含 .gitignore, AGENTS.md 等非功能改动
+- 定版提交标题用 `release: vX.Y.Z`，不套 `type:` 前缀；正文不写 `RN:`
 
 ## 文档
 > 与 fft bundle 共享
