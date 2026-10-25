@@ -6,7 +6,7 @@
 
 - dsh-fft-bundle：`/Users/ben/workspace/dsh-fft-bundle`, 其 AGENTS.md 部分与本仓库共享。最后同步 2026-10-22。改共享规则时两边同步
 - DSH 应用：桌面版；profile `~/.dsh/profiles/desktop`
-- DSH 源码：`~/workspace/dsh-ft/submodules/deepseek-harness`
+- DSH 源码：`~/workspace/dsh/deepseek-harness`（只读参考；origin 指向 GitHub 上游，可按 tag fetch 对应版本）
 - 插件数据：`$DSH_HOME/paper-trading/`（与仓库位置无关）
 
 ## Rules
