@@ -751,7 +751,7 @@ FTShare 目录里已有的数据源（见主仓 `packages/dsh-fft-ftshare/catalo
 - 匿名通道另有 500 次/天额度（滚动 1 天），额度耗尽时上游返回 429。
 - **失败原因结构化**：适配器保留上游 `notice.code`，`classifyDataProblem` 按 `state + code` 归成 `invalid-key / plan-denied / quota / network / upstream`（配额另有上游固定后缀「免费配额用尽」可识别，`UPSTREAM_UNAVAILABLE` 与真实故障同码），不再靠正文正则猜；`paper-service` 的提示文案与面板 banner 共用这套原因。
 - **面板 banner**：交易/行情页顶部一条可关闭横幅，按原因给动作：无 Key →「获取 API Key」（`https://ftai.chat/ftshare`）+ 设置位置；额度耗尽 → 配置 Key/稍后重试；套餐未开通 → 只说明可用日K；网络/上游 → 重试；无数据服务 → 提示装底座。关闭按「原因」记忆（`localStorage: paper-trading:data-banner-dismissed`），原因变化后重新出现；文案只写「设置」，不点名具体设置栏目，避免栏目改名后指引失效；账本与手填参考价交易始终不受影响。
-- 期货侧同一条 banner；`paper_quote` 的摘要对日K回退报价标「（日K收盘，免费档）」，`paper_market` 的时段摘要带日历降级说明。
+- 期货侧同一条 banner；期货行情、tick、预览警告与开收盘回退都走 `friendlyDataNotice` 的同一套文案（不再透出上游接口名）。`paper_quote` 的摘要对日K回退报价标「（日K收盘，免费档）」，`paper_market` 的时段摘要带日历降级说明。
 
 **已实测的数据缺口**
 

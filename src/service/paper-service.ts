@@ -42,7 +42,7 @@ import type { AccountStore } from '../store/port.js'
 import type { ShortlistStore } from '../store/shortlist.js'
 import { PaperError } from './errors.js'
 import { QuoteRefreshGate } from './quote-gate.js'
-import { classifyDataProblem } from './data-source.js'
+import { classifyDataProblem, friendlyDataNotice } from './data-source.js'
 
 export interface PaperServiceOptions {
   repo: AccountStore
@@ -777,23 +777,11 @@ export class PaperService {
   /**
    * Turn an upstream failure into one actionable sentence.
    *
-   * The reason comes from `state` + `notice.code`; message text is only used
-   * for the quota sentinel the shared FTShare bundle itself appends. Unknown
-   * causes keep a short upstream notice when it holds no adapter internals.
+   * The wording lives in `friendlyDataNotice`, shared with the futures service
+   * so both accounts explain the same failure the same way.
    */
   private friendlyNotice(state: string, notice: string | undefined, fallback: string, noticeCode?: string): string {
-    const problem = classifyDataProblem({ state, notice, noticeCode }, this.ts())
-    switch (problem?.reason) {
-      case 'invalid-key': return '行情需要 API Key（「设置」中配置后重试）'
-      case 'plan-denied': return '当前 FTShare 套餐未开通该行情接口'
-      case 'quota': return '免费行情额度已用尽，配置 API Key 或稍后重试'
-      case 'network': return '行情服务暂时不可用，请稍后重试'
-      default: break
-    }
-    if (notice === undefined || notice === '') return fallback
-    // Keep short operational notices (e.g. "行情服务未就绪") but hide adapter
-    // internals such as FTShare function names and parameter validation.
-    return /FTShare|UPSTREAM|invalid symbol|symbols\[|调用失败|参数格式|request/i.test(notice) ? fallback : notice
+    return friendlyDataNotice({ state, notice, noticeCode }, fallback, this.ts())
   }
 
   async search(query: string, limit = 10): Promise<Awaited<ReturnType<MarketDataPort['search']>>> {

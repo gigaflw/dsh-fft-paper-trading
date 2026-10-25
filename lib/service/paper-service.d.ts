@@ -133,9 +133,8 @@ export declare class PaperService {
     /**
      * Turn an upstream failure into one actionable sentence.
      *
-     * The reason comes from `state` + `notice.code`; message text is only used
-     * for the quota sentinel the shared FTShare bundle itself appends. Unknown
-     * causes keep a short upstream notice when it holds no adapter internals.
+     * The wording lives in `friendlyDataNotice`, shared with the futures service
+     * so both accounts explain the same failure the same way.
      */
     private friendlyNotice;
     search(query: string, limit?: number): Promise<Awaited<ReturnType<MarketDataPort['search']>>>;

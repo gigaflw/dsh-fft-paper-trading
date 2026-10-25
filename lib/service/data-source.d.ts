@@ -34,4 +34,19 @@ export declare function classifyDataProblem(input: {
     notice?: string;
     noticeCode?: string;
 }, at: string): DataProblem | undefined;
+/**
+ * One user-facing sentence for a failed market-data result.
+ *
+ * Shared by the stock and futures services so both accounts explain the same
+ * failure the same way. Known reasons get fixed copy; an unknown cause keeps a
+ * short upstream notice when it holds no adapter internals, otherwise `fallback`.
+ * @param input - the failed result's state, notice and upstream code.
+ * @param fallback - what to say when the cause has no better wording.
+ * @param at - ISO time used to stamp the classified problem.
+ */
+export declare function friendlyDataNotice(input: {
+    state: string;
+    notice?: string;
+    noticeCode?: string;
+}, fallback: string, at: string): string;
 //# sourceMappingURL=data-source.d.ts.map
