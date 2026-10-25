@@ -311,6 +311,21 @@ export interface RoundTrip {
     pnl: number;
     holdingDays: number;
 }
+/**
+ * Which data source the panel is pricing against.
+ *
+ * `configured` — an FTShare API key is configured and usable.
+ * `free` — no key: the anonymous free tier (daily-close quotes, 500/day).
+ * `none` — the FTShare data service is not installed.
+ * `invalid` — a key exists but cannot be used (rejected or unreadable).
+ */
+export type DataSourceState = 'configured' | 'free' | 'none' | 'invalid';
+/** Read-only data-source state for the panel header; never carries the key itself. */
+export interface DataSourceStatus {
+    state: DataSourceState;
+    /** Short, user-facing cause for `invalid` or a degraded `configured`. */
+    message?: string;
+}
 export interface RpcSuccess<T> {
     ok: true;
     value: T;

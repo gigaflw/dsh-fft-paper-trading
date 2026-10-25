@@ -249,3 +249,17 @@ test('rpc: an aborted request returns the cancellation envelope', async () => {
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('rpc: data-source reports the probe state without touching the ledger', async () => {
+  const signal = new AbortController().signal
+  const handler = createPaperRpcHandler({}, { dataSource: async () => ({ state: 'free' }) })
+  const status = await handler('market/data-source', undefined, signal)
+  assert.equal(status.ok, true)
+  assert.deepEqual(status.value, { state: 'free' })
+
+  // A handler built without a probe (tests, standalone wiring) says "no source"
+  // rather than inventing a configured one.
+  const fallback = await createPaperRpcHandler({})('market/data-source', undefined, signal)
+  assert.equal(fallback.ok, true)
+  assert.equal(fallback.value.state, 'none')
+})

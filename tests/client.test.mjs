@@ -251,3 +251,15 @@ test('browser bundle: inline 资金 panel moves cash on both accounts', () => {
   assert.match(source, /FUTURES_CASH_TYPE_TEXT/)
   assert.match(source, /\.pt-cash \{/)
 })
+
+test('browser bundle: header badge carries the four data-source states', () => {
+  for (const text of ['数据源已配置', '免费数据源', '无数据源', '数据源无效']) {
+    assert.ok(source.includes(`'${text}'`), `missing badge copy: ${text}`)
+  }
+  assert.match(source, /function DataSourceBadge/)
+  assert.match(source, /\.pt-source \{/)
+  assert.match(source, /\.pt-source\[data-state="configured"\] \.pt-source-dot/)
+  assert.match(source, /\.pt-source\[data-state="invalid"\] \.pt-source-dot/)
+  // Both dashboards refresh the badge inside the account bundle they already poll.
+  assert.equal(source.match(/rpc\('market\/data-source'\)/g).length, 2)
+})
