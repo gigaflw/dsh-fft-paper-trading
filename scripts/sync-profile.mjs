@@ -24,7 +24,7 @@ const profileDir = resolve(
 )
 if (!existsSync(join(profileDir, 'package.json'))) throw new Error('找不到 desktop profile：' + profileDir)
 
-const pkg = { name: '@ft/dsh-fft-paper-trading', src: pkgRoot }
+const pkg = { name: '@dsh-ft/dsh-fft-paper-trading', src: pkgRoot }
 const vendorRoot = join(profileDir, 'vendor')
 const target = join(vendorRoot, pkg.name.split('/').pop())
 

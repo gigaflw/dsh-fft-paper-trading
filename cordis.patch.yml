@@ -1,8 +1,25 @@
 # dsh-fft-paper-trading bundle patch
 #
-# One business row: the bare package name carries both the host half (RPC route,
-# tools) and the browser half (sidebar tab). The host entry attaches its
-# services lazily, so the browser module scan can always see this package.
+# One business row, plus the shared services and the K-line view it needs.
+#
+# This package is self-contained for standalone use: settings, ftshare and
+# kline are inlined under this package's own `node_modules` by the npm pack
+# script, so `dsh plugin add @dsh-ft/dsh-fft-paper-trading` mounts everything
+# below from that one package. Provider rows come first so their consumers
+# start against a live provider.
+#
+# When the composition bundle is installed instead, its patch mounts the same
+# rows; do not install this package separately in that profile (the rows then
+# appear twice and the plugin manager cannot address them).
 - insert:
+    - id: dsh-fft-settings
+      name: '@dsh-ft/dsh-fft-settings'
+    - id: dsh-fft-ftshare
+      name: '@dsh-ft/dsh-fft-ftshare'
+    # K-line view only: the package entry's browser half fills the
+    # `paperTrading.kline` slot. The MCP row stays out — paper-trading reads
+    # quotes through the shared `ftshareData` service, not kline's tools.
+    - id: dsh-kline-sidebar
+      name: '@ftshare-lab/dsh-kline'
     - id: ft-paper-trading
-      name: '@ft/dsh-fft-paper-trading'
+      name: '@dsh-ft/dsh-fft-paper-trading'

@@ -9,7 +9,7 @@
  * optional dependency — the ledger, the panel and the tools must stay available
  * without it, so quotes degrade to the port's `failed` state instead of taking
  * the whole row down.
- * @module @ft/dsh-fft-paper-trading
+ * @module @dsh-ft/dsh-fft-paper-trading
  */
 import type { Context } from '@deepseek-ai/cordis';
 export * from './contract.js';
@@ -29,7 +29,7 @@ export { FuturesError } from './service/futures-service.js';
 export { createFuturesRpcHandler } from './service/futures-rpc.js';
 export { FuturesRepo } from './store/futures-repo.js';
 export { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js';
-export declare const name = "@ft/dsh-fft-paper-trading";
+export declare const name = "@dsh-ft/dsh-fft-paper-trading";
 /**
  * Services are attached lazily: the browser scan needs this row's fiber, so the
  * plugin must not gate activation on optional services.

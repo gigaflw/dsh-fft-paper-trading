@@ -6,7 +6,7 @@
  * does not import the stock contract, so the two ledgers can evolve apart.
  *
  * Symbols use the market-data (CTP) suffix set: `.SHFE .INE .DCE .CZCE .GFEX`.
- * @module @ft/dsh-fft-paper-trading/futures-contract
+ * @module @dsh-ft/dsh-fft-paper-trading/futures-contract
  */
 /** Ledger schema version, independent from the stock ledger. */
 export declare const FUTURES_LEDGER_VERSION = 1;

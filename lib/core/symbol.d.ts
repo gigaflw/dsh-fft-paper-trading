@@ -10,7 +10,7 @@
  * Bare six-digit input is resolved through the *stock* namespace first
  * (`000001` → `000001.SZ`); an index or a fund always needs its suffix
  * (`000001.SH`, `510300.SH`). Only stocks are tradable.
- * @module @ft/dsh-fft-paper-trading/core/symbol
+ * @module @dsh-ft/dsh-fft-paper-trading/core/symbol
  */
 export type Exchange = 'SH' | 'SZ' | 'BJ';
 export type SymbolKind = 'stock' | 'index' | 'fund' | 'other';

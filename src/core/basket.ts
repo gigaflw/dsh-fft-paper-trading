@@ -5,7 +5,7 @@
  * market data); the service owns IO and error codes. That keeps the fee, lot
  * and normalisation rules in one testable place and lets the preview and the
  * eventual agent tool share the exact same arithmetic.
- * @module @ft/dsh-fft-paper-trading/core/basket
+ * @module @dsh-ft/dsh-fft-paper-trading/core/basket
  */
 
 import type { BasketIssue, BasketPlanRow, PaperSettings, Quote } from '../contract.js'

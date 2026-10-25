@@ -5,7 +5,7 @@
  * Every derived amount is rounded once, at the point it becomes cents, so
  * replay and preview agree exactly.
  *
- * @module @ft/dsh-fft-paper-trading/core/futures/money
+ * @module @dsh-ft/dsh-fft-paper-trading/core/futures/money
  */
 
 /** Decimal places carried by a tick size (0.005 → 3, 0.2 → 1, 2 → 0). */

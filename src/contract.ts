@@ -3,7 +3,7 @@
  *
  * Browser half and host half compile against these shapes; this module must stay
  * free of runtime dependencies so both sides can import it as types.
- * @module @ft/dsh-fft-paper-trading/contract
+ * @module @dsh-ft/dsh-fft-paper-trading/contract
  */
 
 /** Exact Fetch route used by the browser half. */
