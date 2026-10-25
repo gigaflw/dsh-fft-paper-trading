@@ -3,7 +3,7 @@
 > 状态：v0.1 已落地；v0.2 P0/P1 已实施（独立仓库 `main`），并完成账本并发/迁移/重置修复、宿主撮合调度与 UI 本地化（§6、§9、§19.7、§19.11），K 线视图由 dsh_kline 的 slot 提供，详见 §19.12。
 > 本文写架构、模块边界、账本与扩展方式；v0.1 的范围与验收见 [mvp.md](mvp.md)。
 > 配图：图 1–3 见文内。
-> 目标包：`@ft/dsh-fft-paper-trading`
+> 目标包：`@dsh-ft/dsh-fft-paper-trading`
 
 ## 1 目标与产品边界
 
@@ -64,7 +64,7 @@
 
 **技术选择**
 
-- 独立子包 `@ft/dsh-fft-paper-trading`，一行宿主入口 + 浏览器半。
+- 独立子包 `@dsh-ft/dsh-fft-paper-trading`，一行宿主入口 + 浏览器半。
 - 宿主 `tsc` 到 `lib/`；浏览器半是手写单文件 JS，构建时原样复制为 `lib/client.js`，带 `window.__ModuleLoader__.load` banner。
 - 依赖：`ftshareData`（可选行情）、`tools`（Agent 工具）、`connection`（RPC 路由）、`slots`（UI 位置）。
 - 存储：`$DSH_HOME/paper-trading/` 的 JSONL 事件文件，不引数据库。
@@ -520,7 +520,7 @@ $DSH_HOME/paper-trading/
 
 1. 全局行继续提供浏览器半与 RPC 路由，并把 service `ctx.provide('paperTrading', service)`。
 2. 新增 `./agent` 子路径导出，只注册工具，`inject: ['paperTrading']`。
-3. 在 bundle 仓库（主仓）的 `cordis.patch.yml` 的 `preset-ft-finance.plugins` 里加一行 `@ft/dsh-fft-paper-trading/agent`。
+3. 在 bundle 仓库（主仓）的 `cordis.patch.yml` 的 `preset-ft-finance.plugins` 里加一行 `@dsh-ft/dsh-fft-paper-trading/agent`。
 4. 不要给 preset 行加裸包名，否则浏览器半会挂到 preset 的 detached 子树、在模块扫描里消失（主仓 `tests/patch.test.mjs` 挡住）。
 
 ## 15 测试策略

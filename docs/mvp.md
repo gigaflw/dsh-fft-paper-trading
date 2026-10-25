@@ -2,7 +2,7 @@
 
 > 状态：已交付（分支 `feat/paper-trading`，包版本 `0.1.0`）。架构、账本规则与扩展点见 [design.md](design.md)；
 > 本文只写「做了什么」和「怎么验」，不重复设计。
-> 目标包：`@ft/dsh-fft-paper-trading`
+> 目标包：`@dsh-ft/dsh-fft-paper-trading`
 
 ## 1 目标与判定
 
