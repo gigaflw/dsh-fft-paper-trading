@@ -86,18 +86,21 @@ interface CallOutcome {
   state: 'ok' | 'denied' | 'failed'
   rows: Record<string, unknown>[]
   notice?: string
+  noticeCode?: string
 }
 
 interface MinuteRows {
   state: 'ok' | 'denied' | 'failed'
   rows: Map<string, Record<string, unknown>[]>
   notice?: string
+  noticeCode?: string
 }
 
 interface TableRows {
   state: 'ok' | 'denied' | 'failed'
   rows: Record<string, unknown>[]
   notice?: string
+  noticeCode?: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -379,7 +382,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     const unique = uniqueSymbols(symbols)
     if (unique.length === 0) return { state: 'ok', value: [] }
     const minutes = await this.fetchMinuteRows(unique)
-    if (minutes.state !== 'ok') return { state: minutes.state, notice: minutes.notice }
+    if (minutes.state !== 'ok') return { state: minutes.state, notice: minutes.notice, ...(minutes.noticeCode === undefined ? {} : { noticeCode: minutes.noticeCode }) }
     const value: FuturesRawQuote[] = []
     const missing: string[] = []
     for (const symbol of unique) {
@@ -465,7 +468,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     const missing: string[] = []
     if (fallbackSymbols.length > 0) {
       const minutes = await this.fetchMinuteRows(fallbackSymbols)
-      if (minutes.state !== 'ok') return { state: minutes.state, notice: minutes.notice }
+      if (minutes.state !== 'ok') return { state: minutes.state, notice: minutes.notice, ...(minutes.noticeCode === undefined ? {} : { noticeCode: minutes.noticeCode }) }
       for (const symbol of fallbackSymbols) {
         const row = lastMinuteRow(minutes.rows.get(symbol))
         const upper = row === undefined ? undefined : pickPositive(row, ['high_limit_price', 'up_limit', 'upper_limit'])
@@ -517,7 +520,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     const missing: string[] = [...unknown]
     for (const [exchange, group] of byExchange) {
       const table = await this.fetchExchangeTable(SETTLE_TOOL, exchange)
-      if (table.state !== 'ok') return { state: table.state, notice: table.notice ?? '结算参数不可用' }
+      if (table.state !== 'ok') return { state: table.state, notice: table.notice ?? '结算参数不可用', ...(table.noticeCode === undefined ? {} : { noticeCode: table.noticeCode }) }
       const rows = new Map<string, Record<string, unknown>>()
       for (const row of table.rows) {
         const raw = pickString(row, ['ts_code', 'symbol', 'contract'])
@@ -593,7 +596,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     const missing: string[] = []
     if (fallback.length > 0) {
       const minutes = await this.fetchMinuteRows(fallback)
-      if (minutes.state !== 'ok') return { state: minutes.state, notice: minutes.notice }
+      if (minutes.state !== 'ok') return { state: minutes.state, notice: minutes.notice, ...(minutes.noticeCode === undefined ? {} : { noticeCode: minutes.noticeCode }) }
       for (const symbol of fallback) {
         const row = lastMinuteRow(minutes.rows.get(symbol))
         const close = row === undefined ? undefined : pickPositive(row, ['close', 'last', 'latest', 'price'])
@@ -638,7 +641,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     const rows: Record<string, unknown>[] = []
     for (let page = 1; page <= CONTRACTS_MAX_PAGES; page += 1) {
       const outcome = await this.call(CONTRACTS_TOOL, { page, page_size: CONTRACTS_PAGE_SIZE })
-      if (outcome.state !== 'ok') return { state: outcome.state, rows: [], notice: outcome.notice }
+      if (outcome.state !== 'ok') return { state: outcome.state, rows: [], notice: outcome.notice, ...(outcome.noticeCode === undefined ? {} : { noticeCode: outcome.noticeCode }) }
       rows.push(...outcome.rows)
       if (outcome.rows.length < CONTRACTS_PAGE_SIZE) break
     }
@@ -695,7 +698,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     const rows = new Map<string, Record<string, unknown>[]>()
     for (const batch of chunks(symbols, SYMBOL_BATCH)) {
       const outcome = await this.call(MINUTES_TOOL, { symbols: batch })
-      if (outcome.state !== 'ok') return { state: outcome.state, rows: new Map(), notice: outcome.notice }
+      if (outcome.state !== 'ok') return { state: outcome.state, rows: new Map(), notice: outcome.notice, ...(outcome.noticeCode === undefined ? {} : { noticeCode: outcome.noticeCode }) }
       const grouped = this.groupMinuteRows(outcome.rows)
       for (const symbol of batch) {
         // Real minute rows carry a bare lowercase code plus an `exchange`
@@ -777,7 +780,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
         page,
         page_size: TABLE_PAGE_SIZE,
       })
-      if (outcome.state !== 'ok') return { state: outcome.state, rows: [], notice: outcome.notice }
+      if (outcome.state !== 'ok') return { state: outcome.state, rows: [], notice: outcome.notice, ...(outcome.noticeCode === undefined ? {} : { noticeCode: outcome.noticeCode }) }
       rows.push(...outcome.rows)
       if (outcome.rows.length < TABLE_PAGE_SIZE) break
     }
@@ -818,10 +821,10 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     try {
       const result = await this.service.call(tool, args)
       if (result.state === 'denied') {
-        return { state: 'denied', rows: [], notice: result.notice?.message ?? '接口无权限' }
+        return { state: 'denied', rows: [], notice: result.notice?.message ?? '接口无权限', ...(result.notice?.code === undefined ? {} : { noticeCode: result.notice.code }) }
       }
       if (result.state === 'failed') {
-        return { state: 'failed', rows: [], notice: result.notice?.message ?? '接口调用失败' }
+        return { state: 'failed', rows: [], notice: result.notice?.message ?? '接口调用失败', ...(result.notice?.code === undefined ? {} : { noticeCode: result.notice.code }) }
       }
       return { state: 'ok', rows: flattenRows(result.rows ?? []) }
     } catch (error) {

@@ -191,14 +191,20 @@ export class FtshareMarketData implements MarketDataPort {
     return this.known
   }
 
-  private async call(tool: string, args: Record<string, unknown>): Promise<{ rows: Record<string, unknown>[]; state: DataState; notice?: string }> {
+  private async call(tool: string, args: Record<string, unknown>): Promise<{
+    rows: Record<string, unknown>[]
+    state: DataState
+    notice?: string
+    /** Upstream classification code (401/route_not_allowed/UPSTREAM_UNAVAILABLE…). */
+    code?: string
+  }> {
     try {
       const result = await this.service.call(tool, args)
       if (result.state === 'denied') {
-        return { rows: [], state: 'denied', notice: result.notice?.message ?? '接口无权限' }
+        return { rows: [], state: 'denied', notice: result.notice?.message ?? '接口无权限', code: result.notice?.code }
       }
       if (result.state === 'failed') {
-        return { rows: [], state: 'failed', notice: result.notice?.message ?? '接口调用失败' }
+        return { rows: [], state: 'failed', notice: result.notice?.message ?? '接口调用失败', code: result.notice?.code }
       }
       return { rows: flatten(result.rows), state: 'ok' }
     } catch (error) {
@@ -212,6 +218,7 @@ export class FtshareMarketData implements MarketDataPort {
     const apiSymbol = parsed.symbol.id
     const known = await this.available()
     const notices: string[] = []
+    const codes: string[] = []
     for (const tool of this.quoteTools) {
       if (known !== undefined && !known.has(tool)) continue
       if (tool === 'ft_v1_stock_candlesticks' || tool === 'ft_v2_stock_candlesticks_batch') {
@@ -227,6 +234,7 @@ export class FtshareMarketData implements MarketDataPort {
             if (quote !== undefined) return { state: 'ok', quotes: [quote] }
           }
           if (result.notice !== undefined) notices.push(result.notice)
+          if (result.code !== undefined) codes.push(result.code)
         }
         continue
       }
@@ -236,9 +244,15 @@ export class FtshareMarketData implements MarketDataPort {
         if (quote !== undefined) return { state: 'ok', quotes: [quote] }
       }
       if (result.notice !== undefined) notices.push(result.notice)
+      if (result.code !== undefined) codes.push(result.code)
     }
     const denied = notices.some(notice => /权限|denied|route_not_allowed/i.test(notice))
-    return { state: denied ? 'denied' : 'failed', quotes: [], notice: notices.join('；') || `没有 ${symbol} 的行情` }
+    return {
+      state: denied ? 'denied' : 'failed',
+      quotes: [],
+      notice: notices.join('；') || `没有 ${symbol} 的行情`,
+      ...(codes.length === 0 ? {} : { noticeCode: codes[0] }),
+    }
   }
 
   private toQuote(symbol: string, row: Record<string, unknown>, source: string): Quote | undefined {
@@ -289,14 +303,21 @@ export class FtshareMarketData implements MarketDataPort {
     const quotes: Quote[] = []
     const notices: string[] = []
     let denied = false
+    let noticeCode: string | undefined
     for (const symbol of unique) {
       const result = await this.quoteFor(symbol)
       quotes.push(...result.quotes)
       if (result.state === 'denied') denied = true
+      if (result.noticeCode !== undefined && noticeCode === undefined) noticeCode = result.noticeCode
       if (result.notice !== undefined && result.quotes.length === 0) notices.push(result.notice)
     }
     if (quotes.length === 0) {
-      return { state: denied ? 'denied' : 'failed', quotes, notice: notices.join('；') || '行情不可用' }
+      return {
+        state: denied ? 'denied' : 'failed',
+        quotes,
+        notice: notices.join('；') || '行情不可用',
+        ...(noticeCode === undefined ? {} : { noticeCode }),
+      }
     }
     const suspended = await this.suspendedSymbols()
     for (const quote of quotes) {
@@ -328,6 +349,7 @@ export class FtshareMarketData implements MarketDataPort {
     const apiSymbol = parsed.symbol.id
     const known = await this.available()
     const notices: string[] = []
+    const codes: string[] = []
     for (const tool of this.klineTools) {
       if (known !== undefined && !known.has(tool)) continue
       for (const interval of INTERVAL_UNITS) {
@@ -343,9 +365,15 @@ export class FtshareMarketData implements MarketDataPort {
           }
         }
         if (result.notice !== undefined) notices.push(result.notice)
+        if (result.code !== undefined) codes.push(result.code)
       }
     }
-    return { state: 'failed', bars: [], notice: notices.join('；') || `没有 ${symbol} 的日 K 数据` }
+    return {
+      state: 'failed',
+      bars: [],
+      notice: notices.join('；') || `没有 ${symbol} 的日 K 数据`,
+      ...(codes.length === 0 ? {} : { noticeCode: codes[0] }),
+    }
   }
 
   async minuteBars(symbol: string, date?: string): Promise<BarsResult> {
@@ -360,7 +388,9 @@ export class FtshareMarketData implements MarketDataPort {
         bars.sort((a, b) => a.time.localeCompare(b.time))
         return { state: 'ok', bars }
       }
-      if (result.notice !== undefined) return { state: result.state, bars: [], notice: result.notice }
+      if (result.notice !== undefined) {
+        return { state: result.state, bars: [], notice: result.notice, ...(result.code === undefined ? {} : { noticeCode: result.code }) }
+      }
     }
     const start = Date.parse(`${target}T00:00:00+08:00`)
     const result = await this.call('ft_v2_stock_minutes', {
@@ -374,7 +404,12 @@ export class FtshareMarketData implements MarketDataPort {
       bars.sort((a, b) => a.time.localeCompare(b.time))
       return { state: 'ok', bars }
     }
-    return { state: result.state, bars: [], notice: result.notice ?? `没有 ${symbol} 的分钟数据` }
+    return {
+      state: result.state,
+      bars: [],
+      notice: result.notice ?? `没有 ${symbol} 的分钟数据`,
+      ...(result.code === undefined ? {} : { noticeCode: result.code }),
+    }
   }
 
   async search(query: string, limit: number): Promise<SymbolHit[]> {
@@ -409,6 +444,7 @@ export class FtshareMarketData implements MarketDataPort {
     const rows: Record<string, unknown>[] = []
     let state: DataState = 'ok'
     let notice: string | undefined
+    let noticeCode: string | undefined
     let rawPage = 1
     while (rows.length < wanted && rawPage <= LIST_MAX_RAW_PAGES) {
       const result = await this.call('ft_v1_daec_stocks', {
@@ -419,6 +455,7 @@ export class FtshareMarketData implements MarketDataPort {
       if (result.state !== 'ok') {
         state = result.state
         notice = result.notice
+        noticeCode = result.code
         break
       }
       for (const row of result.rows) {
@@ -437,6 +474,7 @@ export class FtshareMarketData implements MarketDataPort {
         .filter((quote): quote is Quote => quote !== undefined),
       page,
       notice,
+      ...(noticeCode === undefined ? {} : { noticeCode }),
     }
   }
 

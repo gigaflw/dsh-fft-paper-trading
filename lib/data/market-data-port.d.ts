@@ -3,11 +3,15 @@ export interface QuoteResult {
     state: DataState;
     quotes: Quote[];
     notice?: string;
+    /** Upstream error code, passed through for the banner reason. */
+    noticeCode?: string;
 }
 export interface BarsResult {
     state: DataState;
     bars: Bar[];
     notice?: string;
+    /** Upstream error code, passed through for the banner reason. */
+    noticeCode?: string;
 }
 /** The only market-data dependency of the service; tests provide a fake. */
 export interface MarketDataPort {

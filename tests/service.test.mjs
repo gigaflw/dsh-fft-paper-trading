@@ -542,7 +542,7 @@ test('service: upstream adapter internals are not exposed in data notices', asyn
 
     // A key problem and a spent free quota are actionable, so they survive the
     // sanitiser with a readable cause instead of the generic fallback.
-    data.quotes = async () => ({ state: 'denied', quotes: [], notice: 'FTShare 无权访问 ft_v4_stock_realtime_day_kline：API Key 缺失' })
+    data.quotes = async () => ({ state: 'denied', quotes: [], notice: 'FTShare 无权访问 ft_v4_stock_realtime_day_kline：API Key 缺失', noticeCode: '401' })
     assert.match((await service.quote(['600519.SH'])).notice ?? '', /需要 FTShare API Key/)
     data.quotes = async () => ({ state: 'failed', quotes: [], notice: 'FTShare 调用失败（UPSTREAM_UNAVAILABLE）：最近 1 天最多访问 500 次；免费配额用尽' })
     assert.match((await service.quote(['600519.SH'])).notice ?? '', /免费额度已用尽/)
@@ -668,6 +668,28 @@ test('service: quotes are only polled in continuous trading and back off when de
     now.current = new Date('2026-10-21T02:07:10.000Z')
     await service.tick()
     assert.equal(calls, 3)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: a failed quote records the banner reason and a success clears it', async () => {
+  const home = makeHome('service-problem')
+  const data = makeData()
+  const service = new PaperService({ repo: new AccountRepo({ home, accountId: 'default' }), data, calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
+  try {
+    const original = data.quotes
+    data.quotes = async () => ({ state: 'denied', quotes: [], notice: 'API Key 未配置', noticeCode: '401' })
+    await service.quote(['600519.SH'])
+    const problem = service.problem()
+    assert.equal(problem.reason, 'invalid-key')
+    assert.match(problem.message, /API Key/)
+    assert.equal(problem.at, DAY1_ISO)
+
+    data.quotes = original
+    setQuote(data, 10, DAY1_ISO)
+    await service.quote(['600519.SH'])
+    assert.equal(service.problem(), undefined, 'the next successful quote clears the banner')
   } finally {
     await rm(home, { recursive: true, force: true })
   }

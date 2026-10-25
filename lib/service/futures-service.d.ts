@@ -12,6 +12,7 @@ import type { FuturesContractQuery, FuturesContractsResult, FuturesCashFlowEntry
 import type { FuturesMarketDataPort } from '../data/futures-market-data-port.js';
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js';
 import { toAccountView } from '../core/futures/views.js';
+import type { DataProblem } from '../contract.js';
 import type { FuturesStore } from '../store/futures-repo.js';
 /** Accept any published suffix (and lower case); store the market-data form. */
 export declare function normalizeFuturesSymbol(raw: string): string;
@@ -40,6 +41,7 @@ export declare class FuturesService {
     private readonly now;
     private contractsCache;
     private readonly quoteGate;
+    private dataProblem;
     constructor(options: FuturesServiceOptions);
     private ts;
     private viewOf;
@@ -58,6 +60,9 @@ export declare class FuturesService {
     /** Symbols whose price the account cares about: open orders and held positions. */
     private symbolsInPlay;
     private callBatched;
+    /** Latest observed market-data failure; drives the panel banner. */
+    problem(): DataProblem | undefined;
+    private noteDataProblem;
     private fetchQuoteMap;
     private fetchLimitMap;
     private fetchSettleMap;

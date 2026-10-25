@@ -1,4 +1,4 @@
-import type { AccountView, BasketOrderInput, BasketOrderResult, BasketPreview, CashFlowEntry, DayReport, FillView, LedgerExport, MarketStatus, OrderDraft, OrderView, PaperSettings, PreviewView, ReviewView, RoundTrip, TickView } from '../contract.js';
+import type { AccountView, BasketOrderInput, BasketOrderResult, BasketPreview, CashFlowEntry, DayReport, FillView, LedgerExport, MarketStatus, OrderDraft, OrderView, PaperSettings, PreviewView, ReviewView, RoundTrip, TickView, DataProblem } from '../contract.js';
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js';
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js';
 import type { AccountStore } from '../store/port.js';
@@ -29,6 +29,7 @@ export declare class PaperService {
     private readonly now;
     private readonly quoteGate;
     private tickQuotes;
+    private dataProblem;
     constructor(options: PaperServiceOptions);
     private ts;
     /** Attach the on-disk location so a locked account is repairable from a reply. */
@@ -51,6 +52,9 @@ export declare class PaperService {
      * Fetch quotes once and normalise failures into the port's four-state result,
      * so every caller (preview, place, tick, day boundaries) reports the same shape.
      */
+    /** Latest observed market-data failure; drives the panel banner. */
+    problem(): DataProblem | undefined;
+    private noteDataProblem;
     private fetchQuotes;
     private fetchBars;
     private boundaryQuotes;
@@ -126,6 +130,13 @@ export declare class PaperService {
      * reading a tool result), so the user-facing notice stays short.
      */
     private sanitiseDataNotice;
+    /**
+     * Turn an upstream failure into one actionable sentence.
+     *
+     * The reason comes from `state` + `notice.code`; message text is only used
+     * for the quota sentinel the shared FTShare bundle itself appends. Unknown
+     * causes keep a short upstream notice when it holds no adapter internals.
+     */
     private friendlyNotice;
     search(query: string, limit?: number): Promise<Awaited<ReturnType<MarketDataPort['search']>>>;
     marketList(input?: {

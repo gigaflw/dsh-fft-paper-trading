@@ -126,7 +126,10 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
       try {
         const symbols = Array.isArray(input.symbols) ? input.symbols.map(String) : [String(input.symbol ?? '')]
         const result = await service.quote(symbols.filter(Boolean))
-        const lines = result.quotes.map(quote => `${formatSymbol(quote.symbol, quote.name)} 现价 ${quote.last.toFixed(2)}`)
+        const lines = result.quotes.map(quote => {
+          const source = quote.source === 'daily-bar' ? '（日K收盘，免费档）' : ''
+          return `${formatSymbol(quote.symbol, quote.name)} 现价 ${quote.last.toFixed(2)}${source}`
+        })
         return { summary: lines.length > 0 ? lines.join('\n') : `行情不可用：${result.notice ?? result.state}`, data: result }
       } catch (error) {
         return fail(error)

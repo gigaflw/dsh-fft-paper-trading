@@ -8,7 +8,7 @@
  * resolves the secret, never writes settings and never goes upstream.
  * @module @dsh-ft/dsh-fft-paper-trading/service/data-source
  */
-import type { DataSourceStatus } from '../contract.js';
+import type { DataProblem, DataSourceStatus } from '../contract.js';
 /** Structural slice of `ctx.ftshareSettings.apiKey`; no runtime import across packages. */
 export interface FtshareApiKeyLike {
     describe?(): Promise<unknown>;
@@ -28,4 +28,10 @@ export interface DataSourceProbeInput {
  * @returns the four-state status for the panel header.
  */
 export declare function probeDataSource(input: DataSourceProbeInput): Promise<DataSourceStatus>;
+/** Map one failed market-data result to the reason the banner acts on. */
+export declare function classifyDataProblem(input: {
+    state: string;
+    notice?: string;
+    noticeCode?: string;
+}, at: string): DataProblem | undefined;
 //# sourceMappingURL=data-source.d.ts.map

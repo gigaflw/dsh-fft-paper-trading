@@ -71,6 +71,8 @@ export interface FuturesDataResult<T> {
   state: FuturesDataState
   value?: T
   notice?: string
+  /** Upstream error code, passed through for the banner reason. */
+  noticeCode?: string
 }
 
 /**

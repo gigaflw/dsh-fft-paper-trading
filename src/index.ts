@@ -34,7 +34,7 @@ import { AccountRepo } from './store/repo.js'
 import { FuturesRepo } from './store/futures-repo.js'
 import { resolveDshHome } from './store/paths.js'
 import { ShortlistStore } from './store/shortlist.js'
-import { DEFAULT_ACCOUNT_ID } from './contract.js'
+import { DEFAULT_ACCOUNT_ID, type DataSourceStatus } from './contract.js'
 import { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js'
 import type { FuturesMarketDataPort } from './data/futures-market-data-port.js'
 
@@ -87,9 +87,6 @@ export function apply(ctx: Context): void {
   let dataService = false
   let settings: FtshareSettingsLike | undefined
   const service = new PaperService({ repo, data, calendar, shortlist, logger })
-  const paperHandler = createPaperRpcHandler(service, {
-    dataSource: () => probeDataSource({ dataService, settings }),
-  })
 
   // Futures: separate ledger, separate service, same route. The market-data
   // port stays on the degraded stand-in until the FTShare futures adapter is
@@ -120,6 +117,16 @@ export function apply(ctx: Context): void {
     logger,
   })
   const futuresHandler = createFuturesRpcHandler(futuresService)
+  // The panel header reads one status: credential state plus the latest market
+  // failure across both accounts (the two share the data service).
+  const dataSource = async (): Promise<DataSourceStatus> => {
+    const probe = await probeDataSource({ dataService, settings })
+    const problems = [service.problem(), futuresService.problem()]
+      .filter((problem): problem is NonNullable<typeof problem> => problem !== undefined)
+      .sort((left, right) => right.at.localeCompare(left.at))
+    return problems.length === 0 ? probe : { ...probe, problem: problems[0] }
+  }
+  const paperHandler = createPaperRpcHandler(service, { dataSource })
   // `futures/*` goes to the futures handler; every other endpoint keeps the
   // stock handler, so the browser half needs one route only.
   const handler: PaperRpcHandler = (endpoint, payload, signal) =>
