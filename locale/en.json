@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Paper Trading",
+    "description": "A-share and commodity futures paper trading with a local ledger, batch orders and review."
+  }
+}
