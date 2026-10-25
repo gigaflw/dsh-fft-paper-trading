@@ -12,6 +12,9 @@
     "type": "git",
     "url": "git+https://github.com/gigaflw/dsh-fft-paper-trading.git"
   },
+  "bugs": {
+    "url": "https://github.com/gigaflw/dsh-fft-paper-trading/issues"
+  },
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
@@ -20,6 +23,9 @@
     "a-share",
     "futures"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "icon": "./icon.png",
   "exports": {
     ".": {
