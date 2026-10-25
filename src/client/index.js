@@ -115,7 +115,20 @@ window.__ModuleLoader__.load({
       if (!quote || !quote.source) return 'FTShare'
       if (quote.source === 'manual') return '参考价'
       if (quote.source === 'daily-bar') return 'FTShare 免费版'
-      return 'FTShare'
+      return 'FTShare 实时'
+    }
+    /**
+     * Quote line time. Same-day data shows the clock only; a daily-close quote
+     * (free tier) or any older timestamp carries its date, so yesterday's
+     * close cannot read as today's live price.
+     */
+    const quoteUpdateText = quote => {
+      if (!quote) return ''
+      if (quote.source === 'manual') return '手动价'
+      const ts = quote.marketTs
+      if (ts === undefined || ts === null) return '更新 —'
+      const date = dateFormat.format(new Date(ts))
+      return date === shanghaiToday() ? `更新 ${clockTime(ts)}` : `更新 ${date.slice(5)} ${clockTime(ts)}`
     }
     /**
      * How often the open ticket should re-price itself. A live quote deserves
@@ -130,13 +143,13 @@ window.__ModuleLoader__.load({
      * title carries the consequence (realtime vs daily-close pricing).
      */
     const DATA_SOURCE_STATE = {
-      configured: { text: '数据源已配置', title: 'FTShare API Key 已配置，行情走实时接口' },
+      configured: { text: '数据源正常', title: 'FTShare API Key 已配置，行情走实时接口' },
       free: {
         text: '免费数据源',
-        title: '未配置 FTShare Key：免费档报价取日K收盘（匿名 500 次/天），可手填参考价交易',
+        title: '未配置 FTShare Key：免费档报价取日K收盘，可手填参考价交易',
       },
       none: { text: '无数据源', title: '未安装 FTShare 数据服务，行情不可用；可手填参考价交易' },
-      invalid: { text: '数据源无效', title: 'FTShare Key 无法使用；请到 设置 → FTShare 检查，可手填参考价交易' },
+      invalid: { text: '数据源无效', title: 'FTShare Key 无法使用；请在「设置」中检查，可手填参考价交易' },
     }
     /** Where a user without a key applies for one; upstream's own message uses this URL. */
     const API_KEY_URL = 'https://ftai.chat/ftshare'
@@ -171,7 +184,7 @@ window.__ModuleLoader__.load({
       const noKeyBanner = {
         id: 'no-key', tone: 'info',
         title: '行情未启用：配置 FTShare API Key 后可看实时行情',
-        detail: '当前为免费档：报价取日K收盘（匿名约 500 次/天）。设置 → FTShare 填入 Key 后刷新；也可以直接手填参考价交易。',
+        detail: '当前为免费档：报价取日K收盘。请在「设置」中填入 API Key 后刷新；也可以直接手填参考价交易。',
         actions: ['key'],
       }
       const problem = status.problem
@@ -203,7 +216,7 @@ window.__ModuleLoader__.load({
               : {
                 id: 'invalid-key', tone: 'error',
                 title: 'FTShare 数据源无法使用',
-                detail: '设置 → FTShare 检查 API Key 后刷新；也可以手填参考价交易。',
+                detail: '请在「设置」中检查 API Key 后刷新；也可以手填参考价交易。',
                 actions: ['key', 'retry'],
               }
           case 'network':
@@ -226,7 +239,7 @@ window.__ModuleLoader__.load({
         return {
           id: 'invalid-key', tone: 'error',
           title: 'FTShare 数据源无法使用',
-          detail: `${status.message === undefined || status.message === '' ? 'Key 未通过验证' : status.message}。设置 → FTShare 检查后刷新。`,
+          detail: `${status.message === undefined || status.message === '' ? 'Key 未通过验证' : status.message}。请在「设置」中检查后刷新。`,
           actions: ['key'],
         }
       }
@@ -953,7 +966,7 @@ window.__ModuleLoader__.load({
                   ? h('div', { className: 'pt-quote' },
                     h('span', null, symbolText(quote)),
                     h('span', null, `现价 ${money(quote.last)}`),
-                    h('span', { className: 'pt-note' }, quote.source === 'manual' ? '手动价' : `更新 ${clockTime(quote.marketTs)}`),
+                    h('span', { className: 'pt-note' }, quoteUpdateText(quote)),
                     h('span', { className: 'pt-note' }, `来源 ${quoteSourceText(quote)}`),
                     quoteNotice !== '' && preview === null ? h('span', { className: 'pt-note' }, quoteNotice) : null,
                   )
@@ -2112,7 +2125,7 @@ window.__ModuleLoader__.load({
                     ? h('span', null, `${contract.symbol} ${contract.name ?? ''}`)
                     : h('span', { className: 'pt-note' }, '尚未选择合约'),
                   quote !== null ? h('span', null, `最新 ${money(quote.last)}`) : null,
-                  quote !== null && quote.marketTs ? h('span', { className: 'pt-note' }, `更新 ${clockTime(quote.marketTs)}`) : null,
+                  quote !== null ? h('span', { className: 'pt-note' }, quoteUpdateText(quote)) : null,
                   quoteNotice !== '' ? h('span', { className: 'pt-note' }, quoteNotice) : null,
                 ),
               ),
