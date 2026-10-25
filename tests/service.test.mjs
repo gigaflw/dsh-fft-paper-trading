@@ -537,8 +537,15 @@ test('service: upstream adapter internals are not exposed in data notices', asyn
   try {
     assert.equal((await service.quote(['600519.SH'])).notice, '行情暂不可用')
     assert.equal((await service.dailyBars('600519.SH')).notice, 'K 线数据暂不可用')
-    assert.equal((await service.minuteBars('600519.SH')).notice, '行情接口无权限')
+    assert.equal((await service.minuteBars('600519.SH')).notice, '当前 FTShare 套餐未开通该行情接口')
     assert.equal((await service.marketList()).notice, '行情暂不可用')
+
+    // A key problem and a spent free quota are actionable, so they survive the
+    // sanitiser with a readable cause instead of the generic fallback.
+    data.quotes = async () => ({ state: 'denied', quotes: [], notice: 'FTShare 无权访问 ft_v4_stock_realtime_day_kline：API Key 缺失' })
+    assert.match((await service.quote(['600519.SH'])).notice ?? '', /需要 FTShare API Key/)
+    data.quotes = async () => ({ state: 'failed', quotes: [], notice: 'FTShare 调用失败（UPSTREAM_UNAVAILABLE）：最近 1 天最多访问 500 次；免费配额用尽' })
+    assert.match((await service.quote(['600519.SH'])).notice ?? '', /免费额度已用尽/)
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -611,6 +618,56 @@ test('service: a stored shortlist is read back as canonical ids', async () => {
   try {
     assert.deepEqual(await service.shortlist(), ['000001.SZ', '600519.SH'])
     assert.deepEqual(await service.setShortlist(['000001', '000001.SZ']), ['000001.SZ'])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: quotes are only polled in continuous trading and back off when degraded', async () => {
+  const home = makeHome('tick-gate')
+  const data = makeData()
+  let calls = 0
+  const baseQuotes = data.quotes
+  data.quotes = async symbols => {
+    calls += 1
+    return baseQuotes(symbols)
+  }
+  const now = { current: new Date('2026-10-21T02:00:00.000Z') } // 10:00 Asia/Shanghai
+  const service = new PaperService({ repo: new AccountRepo({ home, accountId: 'default' }), data, calendar: new WeekdayTradingCalendar(), now: () => now.current })
+  try {
+    setQuote(data, 10, now.current.toISOString())
+    await service.account()
+    await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 9 })
+    calls = 0
+
+    // Lunch: nothing can fill, so the upstream quote call is skipped entirely.
+    now.current = new Date('2026-10-21T03:40:00.000Z') // 11:40
+    assert.equal((await service.tick()).filled.length, 0)
+    assert.equal(calls, 0, 'a non-matching phase must not poll quotes')
+
+    // Continuous: one poll, and a beat inside 5 s reuses its result.
+    now.current = new Date('2026-10-21T02:01:00.000Z')
+    await service.tick()
+    assert.equal(calls, 1)
+    now.current = new Date('2026-10-21T02:01:03.000Z')
+    await service.tick()
+    assert.equal(calls, 1, 'the live cadence is 5 s, not one upstream call per beat')
+
+    // Degraded feed: back off to a minute instead of hammering every beat.
+    data.quotes = async () => {
+      calls += 1
+      return { state: 'failed', quotes: [], notice: 'FTShare 调用失败（UPSTREAM_UNAVAILABLE）：免费配额用尽' }
+    }
+    now.current = new Date('2026-10-21T02:02:00.000Z')
+    const degraded = await service.tick()
+    assert.equal(calls, 2)
+    assert.match(degraded.notices.join('；'), /免费额度已用尽/)
+    now.current = new Date('2026-10-21T02:04:00.000Z')
+    await service.tick()
+    assert.equal(calls, 2, 'a degraded feed waits five minutes')
+    now.current = new Date('2026-10-21T02:07:10.000Z')
+    await service.tick()
+    assert.equal(calls, 3)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

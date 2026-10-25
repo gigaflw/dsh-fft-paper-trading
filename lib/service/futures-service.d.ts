@@ -39,6 +39,7 @@ export declare class FuturesService {
     private readonly accountId;
     private readonly now;
     private contractsCache;
+    private readonly quoteGate;
     constructor(options: FuturesServiceOptions);
     private ts;
     private viewOf;

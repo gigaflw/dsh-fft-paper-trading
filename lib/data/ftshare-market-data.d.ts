@@ -48,6 +48,16 @@ export declare class FtshareMarketData implements MarketDataPort {
     dailyBars(symbol: string, limit: number): Promise<BarsResult>;
     minuteBars(symbol: string, date?: string): Promise<BarsResult>;
     search(query: string, limit: number): Promise<SymbolHit[]>;
+    /**
+     * Paged A-share quote list from the free-tier endpoint.
+     *
+     * The paid filter interface is not available without a key, so the board is
+     * resolved from the canonical symbol instead: a code range (or exchange) goes
+     * upstream as a `filter` expression and the board split is checked again
+     * locally on the rows we keep. A page may still need a few upstream pages when
+     * the local check drops rows, which is acceptable for a list the user opens
+     * on demand.
+     */
     marketList(input?: {
         board?: string;
         page?: number;

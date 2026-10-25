@@ -92,13 +92,24 @@ window.__ModuleLoader__.load({
     }
     const budgetInput = value => halfWidthDigits(value).replace(/[,，\s]/g, '')
     const symbolText = quote => [quote?.symbol, quote?.name].filter(text => text).join(' ')
-    /** Quote origin in human terms; the raw interface name is too technical. */
+    /**
+     * Quote origin in human terms; the raw interface name is too technical.
+     * A daily-bar quote is the free-tier fallback (last close), never a live
+     * tick, so the label has to say which one it is.
+     */
     const quoteSourceText = quote => {
       if (!quote || !quote.source) return 'FTShare'
       if (quote.source === 'manual') return '参考价'
-      if (quote.source === 'daily-bar') return '日K'
+      if (quote.source === 'daily-bar') return 'FTShare 免费版'
       return 'FTShare'
     }
+    /**
+     * How often the open ticket should re-price itself. A live quote deserves
+     * the 5 s beat; a daily-bar (free tier) or missing one does not, and on the
+     * anonymous quota the 5 s re-preview alone would spend the day's budget.
+     */
+    const ticketRefreshInterval = quote =>
+      quote === null || quote === undefined || quote.source === 'daily-bar' ? 300_000 : 5_000
     /** Both sides are canonical ids (`000001.SZ`), so compare them verbatim. */
     const shortlisted = (shortlist, symbol) => shortlist.some(item => item === symbol)
 
@@ -1365,6 +1376,8 @@ window.__ModuleLoader__.load({
       const [contract, setContract] = useState(null)
       const [quote, setQuote] = useState(null)
       const [quoteNotice, setQuoteNotice] = useState('')
+      const quoteRef = useRef(null)
+      const lastTicketRefresh = useRef(0)
       const quoteSeq = useRef(0)
       const contractSeq = useRef(0)
       const [preview, setPreview] = useState(null)
@@ -1457,10 +1470,14 @@ window.__ModuleLoader__.load({
           if (alive.current && tab === 'review') await loadReview(periodRef.current)
           // Keep the selected contract's price and estimate moving while the
           // panel is open; without this the ticket showed the selection price
-          // until the next edit.
+          // until the next edit. With no quote (free tier or an outage) retry
+          // slowly instead of every beat.
           if (!alive.current || contract === null) return
-          void fetchQuote(contract.symbol)
-          setPreviewNonce(value => value + 1)
+          if (Date.now() - lastTicketRefresh.current >= (quoteRef.current === null ? 300_000 : 5_000)) {
+            lastTicketRefresh.current = Date.now()
+            void fetchQuote(contract.symbol)
+            setPreviewNonce(value => value + 1)
+          }
         } catch {
           // Polling failures stay silent; the manual refresh shows the error.
         }
@@ -1756,6 +1773,7 @@ window.__ModuleLoader__.load({
       // Amber from the configured warning line (80% by default), never hard-coded.
       const riskWarn = isFiniteNumber(account.riskRatio) && account.riskRatio >= (account.settings?.warnRiskRatio ?? 0.8)
       const displayQuote = quote ?? (quoteNotice === '' && preview !== null ? preview.quote ?? null : null)
+      quoteRef.current = displayQuote
       const tabBar = h('div', { className: 'pt-tabs' }, FUTURES_TABS.map(key => {
         const badge = key === 'positions' ? ` ${positions.length}` : key === 'orders' ? ` ${pending.length}` : ''
         return h('button', {
@@ -2229,6 +2247,8 @@ window.__ModuleLoader__.load({
       const [previewNonce, setPreviewNonce] = useState(0)
       const [quoteError, setQuoteError] = useState('')
       const [quoteNotice, setQuoteNotice] = useState('')
+      const quoteRef = useRef(null)
+      const lastTicketRefresh = useRef(0)
       // Quote for an unfinished draft (symbol known, qty/limit still missing).
       // A complete draft gets its quote from the preview response instead.
       const [symbolQuote, setSymbolQuote] = useState(null)
@@ -2336,8 +2356,11 @@ window.__ModuleLoader__.load({
           if (alive.current && tab === 'review') await loadReviewDetail()
           // Re-price the open ticket: the quote strip and preview otherwise
           // froze at the moment the symbol was entered. An unfinished draft
-          // only fetches the quote, so clear its dedupe key too.
-          if (alive.current) {
+          // only fetches the quote, so clear its dedupe key too. Degraded
+          // quotes refresh slowly, otherwise this 5 s beat is the biggest
+          // free-tier cost of all.
+          if (alive.current && Date.now() - lastTicketRefresh.current >= ticketRefreshInterval(quoteRef.current)) {
+            lastTicketRefresh.current = Date.now()
             quoteSymbol.current = ''
             setPreviewNonce(value => value + 1)
           }
@@ -2710,6 +2733,7 @@ window.__ModuleLoader__.load({
       /** Read the flag outside the deps array: `account` is null on the first render. */
       const blocked = account?.blocked === true
       const quote = preview ? preview.quote ?? null : symbolQuote
+      quoteRef.current = quote
       const submitReason = useMemo(() => {
         if (account === null) return '加载账户中'
         if (blocked) return '账户已锁定'

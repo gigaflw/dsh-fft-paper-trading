@@ -59,6 +59,7 @@ import {
   toOrderView,
   toReview,
 } from '../core/futures/views.js'
+import { QuoteRefreshGate } from './quote-gate.js'
 import type {
   ContractTerms,
   FuturesAccountState,
@@ -213,6 +214,7 @@ export class FuturesService {
   private readonly accountId: string
   private readonly now: () => Date
   private contractsCache: ContractCache | undefined
+  private readonly quoteGate = new QuoteRefreshGate()
 
   constructor(private readonly options: FuturesServiceOptions) {
     this.settings = normalizeFuturesSettings(options.settings ?? DEFAULT_FUTURES_SETTINGS)
@@ -720,7 +722,15 @@ export class FuturesService {
     if (tradable.length === 0) {
       return { tradeDate: state.tradeDate, filled: [], expired, notices }
     }
+    // One refresh per gate beat: contract quotes are the expensive part of the
+    // loop, and degraded/failed tries must not hammer the gateway every 5 s.
+    const key = tradable.join(',')
+    const nowMs = this.now().getTime()
+    if (!this.quoteGate.allow(key, nowMs)) {
+      return { tradeDate: state.tradeDate, filled: [], expired, notices }
+    }
     const quoteResult = await this.fetchQuoteMap(tradable)
+    this.quoteGate.record(key, nowMs, quoteResult.state === 'ok')
     if (quoteResult.state !== 'ok') {
       if (quoteResult.notice !== undefined) notices.push(quoteResult.notice)
       return { tradeDate: state.tradeDate, filled: [], expired, notices }

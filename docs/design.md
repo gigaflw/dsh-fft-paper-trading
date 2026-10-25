@@ -664,6 +664,7 @@ interface TradingCalendarPort {
 - 所有 service 方法入口统一 `advanceTo(now)`：按交易日顺序补齐遗漏的收盘快照；宿主定时器只负责及时触发，不承担唯一职责；
 - **离线期间不补成交**：宿主不在线时挂单保持原状态，恢复后从当前时段继续；只补收盘快照与 T+1。理由见选型文档 §5；
 - 定时器由 `service/scheduler.ts` 的 `PaperScheduler` 承担：默认 5 秒一轮、不重叠、`start/stop` 幂等，`index.ts` 用 `ctx.effect` 随 fiber 释放；定时器与间隔可注入，测试用假时钟驱动。前端 5 秒轮询保留为面板可见时的补充触发，不再是唯一驱动。
+- 行情取数受 `service/quote-gate.ts` 的预算闸门约束：**只在连续竞价阶段**取行情（其余时段没有可撮合的单，价格也不会变）；实时报价最快 5 秒一次，回退到日K（免费档）或取数失败后拉长到 **5 分钟**一次。宿主调度与面板轮询共用同一闸门，避免 5 秒轮询把匿名额度（500 次/天）整晚烧光。
 
 ### 19.3 行情时间与收盘/开盘（P0）
 
@@ -741,11 +742,18 @@ FTShare 目录里已有的数据源（见主仓 `packages/dsh-fft-ftshare/catalo
 | 日/周/月 K | `ft_v1_stock_candlesticks` | 收盘后含当日 bar；volume 为股数 |
 | 封单金额 | `ft_v2_stock_minute_seal` | 判断封死涨停（可选；当日 600519 无封单返回空） |
 
+**档位与降级**
+
+- 免费档（无 key 可用）：`ft_v1_stock_candlesticks`（历史日K）、`ft_v1_daec_stocks`、交易日历、停牌列表、期货基础数据/涨跌停/结算参数/历史K线；
+- 专业档：`ft_v4_stock_realtime_day_kline`、`ft_v4_stock_realtime_minute_kline`、`ft_v4_futures_minutes_realtime`；基础档：`ft_v2_stock_list_filter`、`ft_v2_stock_candlesticks_batch`、`ft_v2_stock_minutes`。
+- 无 key 时实时日K 返回 401，报价回退到历史日K：`Quote.source = 'daily-bar'`，面板显示「来源 FTShare 免费版」。**盘中该价是上一交易日收盘**，15:30 后才是当日收盘；撮合、预览、涨跌停（昨收来自日K）都按这个价算，所以功能可用但成交价不是实时价。
+- 匿名通道另有 500 次/天额度（滚动 1 天），额度耗尽时上游返回 429；`PaperService.friendlyNotice` 把它翻成「FTShare 免费额度已用尽（匿名 500 次/天），配置 API Key 或稍后重试」，而不是笼统的「行情暂不可用」。
+
 **已实测的数据缺口**
 
 - **没有买一/卖一，也没有 L2/L3 盘口**：搜索、全市场列表、实时日 K、实时分钟 K 都只给最新价/OHLC；界面不显示盘口，撮合不能用 spread。
 - `ft_v1_daec_stocks` 的 `order_by=change_rate` 只验证到升序（跌幅方向）；`DESC` 会把退市/空值排在最前，不能直接当「涨幅榜」。
-- `filter` 的可用语法未确认（`st = false`、`status=Normal` 均返回 0 行），P1 不依赖它做筛选。
+- `ft_v1_daec_stocks` 的 `filter` 实测支持 `market_id = "XSHG"` / `"XSHE"` / `"BJSE"`，以及 `symbol_id` 范围比较（如 `symbol_id >= "688000" AND symbol_id < "690000"`）；`st = false`、`status=Normal` 这类筛选返回 0 行，不要依赖。板块筛选接口 `ft_v2_stock_list_filter` 属基础档，免费档下 `market/list` 改用 `ft_v1_daec_stocks`：按 `symbol_id` 代码段过滤板块（主板 600–605/000–003、科创 688–689、创业 300–302，沪深/北交按 `market_id`），本地 board 判定作兜底，最多扫描 5 页 × 500 行。
 - `ft_v1_daec_stocks.ts_millis` 是快照更新时间（实测 16:29），不是收盘时间；不能当 `marketTs`。
 
 **端口增量**
@@ -813,7 +821,7 @@ interface MarketListResult {
 
 | 时段 | 市价单 | 限价单 |
 | --- | --- | --- |
-| 连续竞价（09:30–11:30、13:00–14:57） | 立即全成 | 已穿越（买 `last ≤ limit`、卖 `last ≥ limit`）立即全成；未穿越挂单，每次 tick（宿主 5s）用新报价重判，穿越即全成 |
+| 连续竞价（09:30–11:30、13:00–14:57） | 立即全成 | 已穿越（买 `last ≤ limit`、卖 `last ≥ limit`）立即全成；未穿越挂单，每次 tick 用新报价重判，穿越即全成（实时档最快 5s 一次，降级/免费档 5 分钟一次） |
 | 非连续竞价（09:15–09:30、午休、14:57–15:00、收盘后） | 拒绝（市价不可提交） | 委托进 `queued`，进入连续竞价后的第一次判定按上一条处理 |
 | 收盘时仍未成交 | — | 当日过期（`expired`） |
 

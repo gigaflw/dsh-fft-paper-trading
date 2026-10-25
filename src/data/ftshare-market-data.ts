@@ -1,6 +1,6 @@
 import type { Bar, DataState, MarketListResult, Quote, SymbolHit } from '../contract.js'
 import { todayTradeDate } from '../core/calendar.js'
-import { tryParseSymbol } from '../core/symbol.js'
+import { boardOf, tryParseSymbol } from '../core/symbol.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from './market-data-port.js'
 
 /** Structural slice of `ctx.ftshareData`; no runtime import across packages. */
@@ -28,8 +28,79 @@ interface Mapping {
 
 /** Per-symbol realtime bars first, then the generic candlestick endpoint. */
 const DEFAULT_QUOTE_TOOLS = ['ft_v4_stock_realtime_day_kline', 'ft_v1_stock_candlesticks']
+
 const DEFAULT_KLINE_TOOLS = ['ft_v1_stock_candlesticks', 'ft_v2_stock_candlesticks_batch']
 const INTERVAL_UNITS = ['day', 'Day']
+
+/**
+ * Source tag for a quote recovered from the daily candlestick series.
+ *
+ * The realtime interface is a paid-tier capability; without a key (or on any
+ * realtime failure) the panel prices the ticket from the last daily close. That
+ * is a different kind of number, so it must not be presented as a live tick.
+ */
+const DAILY_BAR_SOURCE = 'daily-bar'
+
+/**
+ * Quote-list boards. `ft_v2_stock_list_filter` (paid tier) has a `board`
+ * parameter; the free A-share list does not, so the board is expressed as a
+ * code-range filter and verified locally over the rows it returns.
+ */
+type ListBoard = 'all' | 'main' | 'star' | 'chi_next' | 'bjse' | 'xshg' | 'xshe'
+
+/**
+ * Board scope pushed upstream as a `filter` expression.
+ *
+ * `symbol_id` string ranges are the only way to name a board on this endpoint
+ * (its `board` field is not filterable and the rows are code-sorted, so the
+ * STAR range would sit a thousand rows deep in the SH page). Ranges follow the
+ * exchange code plan in `core/symbol.ts`: SH main 600–605, SH STAR 688/689,
+ * SZ main 000–003, SZ ChiNext 300–302.
+ */
+const LIST_BOARD_FILTER: Record<ListBoard, string | undefined> = {
+  all: undefined,
+  main: '(symbol_id >= "600000" AND symbol_id < "606000") OR (symbol_id >= "000000" AND symbol_id < "004000")',
+  xshg: 'market_id = "XSHG"',
+  xshe: 'market_id = "XSHE"',
+  bjse: 'market_id = "BJSE"',
+  star: 'symbol_id >= "688000" AND symbol_id < "690000"',
+  chi_next: 'symbol_id >= "300000" AND symbol_id < "303000"',
+}
+
+/** Rows per upstream page and the scan cap that keeps a free-tier page cheap. */
+const LIST_RAW_PAGE_SIZE = 500
+const LIST_MAX_RAW_PAGES = 5
+
+function listBoardOf(board: string | undefined): ListBoard {
+  switch (board) {
+    case 'main':
+    case 'star':
+    case 'chi_next':
+    case 'bjse':
+    case 'xshg':
+    case 'xshe':
+      return board
+    default:
+      return 'all'
+  }
+}
+
+/** Local board test over one list row; unparseable codes never match. */
+function matchesListBoard(board: ListBoard, row: Record<string, unknown>): boolean {
+  if (board === 'all') return true
+  const parsed = tryParseSymbol(String(row.symbol ?? row.symbol_id ?? ''))
+  if (!parsed.ok) return false
+  switch (board) {
+    case 'xshg':
+      return parsed.symbol.exchange === 'SH'
+    case 'xshe':
+      return parsed.symbol.exchange === 'SZ'
+    case 'bjse':
+      return parsed.symbol.exchange === 'BJ'
+    default:
+      return boardOf(parsed.symbol) === board
+  }
+}
 
 function pickNumber(row: Record<string, unknown>, keys: string[]): number | undefined {
   for (const key of keys) {
@@ -152,7 +223,7 @@ export class FtshareMarketData implements MarketDataPort {
             until_ts_millis: Date.now(),
           })
           if (result.rows.length > 0) {
-            const quote = this.toQuote(parsed.symbol.id, result.rows[result.rows.length - 1], tool)
+            const quote = this.toQuote(parsed.symbol.id, result.rows[result.rows.length - 1], DAILY_BAR_SOURCE)
             if (quote !== undefined) return { state: 'ok', quotes: [quote] }
           }
           if (result.notice !== undefined) notices.push(result.notice)
@@ -199,7 +270,7 @@ export class FtshareMarketData implements MarketDataPort {
       name: pickString(row, ['name', 'symbol_name']),
       last,
       prevClose: pickNumber(row, ['prev_close', 'pre_close']),
-      marketTs: null,
+      marketTs: marketTimestampOf(row) ?? null,
       fetchedAt: new Date().toISOString(),
       st: row.st === true,
       status: pickString(row, ['status']),
@@ -319,27 +390,53 @@ export class FtshareMarketData implements MarketDataPort {
     return hits
   }
 
+  /**
+   * Paged A-share quote list from the free-tier endpoint.
+   *
+   * The paid filter interface is not available without a key, so the board is
+   * resolved from the canonical symbol instead: a code range (or exchange) goes
+   * upstream as a `filter` expression and the board split is checked again
+   * locally on the rows we keep. A page may still need a few upstream pages when
+   * the local check drops rows, which is acceptable for a list the user opens
+   * on demand.
+   */
   async marketList(input: { board?: string; page?: number; pageSize?: number } = {}): Promise<MarketListResult> {
     const page = Math.max(1, input.page ?? 1)
-    if (input.board !== undefined) {
-      const result = await this.call('ft_v2_stock_list_filter', {
-        board: input.board,
-        page,
-        page_size: Math.min(Math.max(1, input.pageSize ?? 50), 500),
+    const pageSize = Math.min(Math.max(1, input.pageSize ?? 50), 500)
+    const board = listBoardOf(input.board)
+    const filter = LIST_BOARD_FILTER[board]
+    const wanted = page * pageSize
+    const rows: Record<string, unknown>[] = []
+    let state: DataState = 'ok'
+    let notice: string | undefined
+    let rawPage = 1
+    while (rows.length < wanted && rawPage <= LIST_MAX_RAW_PAGES) {
+      const result = await this.call('ft_v1_daec_stocks', {
+        page: rawPage,
+        page_size: LIST_RAW_PAGE_SIZE,
+        ...(filter === undefined ? {} : { filter }),
       })
-      return {
-        state: result.state,
-        quotes: result.rows.map(row => this.toListQuote(row)).filter((quote): quote is Quote => quote !== undefined),
-        page,
-        notice: result.notice,
+      if (result.state !== 'ok') {
+        state = result.state
+        notice = result.notice
+        break
       }
+      for (const row of result.rows) {
+        if (matchesListBoard(board, row)) rows.push(row)
+      }
+      if (result.rows.length < LIST_RAW_PAGE_SIZE) break
+      rawPage += 1
     }
-    const result = await this.call('ft_v1_daec_stocks', { page, page_size: Math.min(Math.max(1, input.pageSize ?? 50), 500) })
+    if (state === 'ok' && rows.length < wanted && notice === undefined) {
+      notice = '免费档行情列表只支持翻到较浅的页'
+    }
     return {
-      state: result.state,
-      quotes: result.rows.map(row => this.toListQuote(row)).filter((quote): quote is Quote => quote !== undefined),
+      state,
+      quotes: rows.slice((page - 1) * pageSize, wanted)
+        .map(row => this.toListQuote(row))
+        .filter((quote): quote is Quote => quote !== undefined),
       page,
-      notice: result.notice,
+      notice,
     }
   }
 
