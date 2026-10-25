@@ -5,7 +5,7 @@
  * matching and stop settling day boundaries. This scheduler lives on the host
  * fiber instead: `index.ts` starts it in `apply` and disposes it with the fiber.
  * Interval and timer are injected, so tests drive it with a fake clock.
- * @module @ft/dsh-fft-paper-trading/service/scheduler
+ * @module @dsh-ft/dsh-fft-paper-trading/service/scheduler
  */
 
 /** Timer abstraction: the only clock dependency of the scheduler. */

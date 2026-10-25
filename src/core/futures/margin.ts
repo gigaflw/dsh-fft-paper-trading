@@ -5,7 +5,7 @@
  * side. The rate source priority is the daily limit ratio, then the settlement
  * long margin rate, then the static contract margin from the index.
  *
- * @module @ft/dsh-fft-paper-trading/core/futures/margin
+ * @module @dsh-ft/dsh-fft-paper-trading/core/futures/margin
  */
 
 import type { FuturesSettings, FuturesSide } from '../../futures-contract.js'

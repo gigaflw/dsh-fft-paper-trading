@@ -29,7 +29,7 @@ function loadClient() {
 
 test('browser bundle: factory loads and registers the sidebar panel', () => {
   const spec = loadClient()
-  assert.equal(spec.id, '@ft/dsh-fft-paper-trading')
+  assert.equal(spec.id, '@dsh-ft/dsh-fft-paper-trading')
 
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),

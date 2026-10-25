@@ -4,7 +4,7 @@
  * All money fields in the contract are cents; only `equity`, `pnl` etc. are
  * yuan, matching the stock-side convention.
  *
- * @module @ft/dsh-fft-paper-trading/core/futures/views
+ * @module @dsh-ft/dsh-fft-paper-trading/core/futures/views
  */
 import type { FuturesAccountView, FuturesCashFlowEntry, FuturesDraft, FuturesFillView, FuturesLimitView, FuturesMarketStatus, FuturesOrderView, FuturesPositionView, FuturesPreviewView, FuturesQuoteView, FuturesReviewView } from '../../futures-contract.js';
 import { type DaySessions } from './session.js';

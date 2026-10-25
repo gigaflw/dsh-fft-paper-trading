@@ -3,7 +3,7 @@
  * as the stock endpoints. The endpoint list and payloads follow
  * `docs/specs/futures-mvp.md` §2 exactly.
  *
- * @module @ft/dsh-fft-paper-trading/service/futures-rpc
+ * @module @dsh-ft/dsh-fft-paper-trading/service/futures-rpc
  */
 
 import type { RpcResult } from '../contract.js'

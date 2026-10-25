@@ -5,7 +5,7 @@
  * view — but the vocabulary is futures (手, 开/平, 多/空) so the model never
  * confuses lots with shares. All of them go through {@link FuturesService}.
  *
- * @module @ft/dsh-fft-paper-trading/agent/futures-tools
+ * @module @dsh-ft/dsh-fft-paper-trading/agent/futures-tools
  */
 
 import type { ParameterSchemaSpec, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'

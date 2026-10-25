@@ -5,7 +5,7 @@
  * or a repeated write can leave a byte-equivalent event twice, but a repeated
  * `seq` with different content is real corruption and must block the account.
  *
- * @module @ft/dsh-fft-paper-trading/core/futures/replay
+ * @module @dsh-ft/dsh-fft-paper-trading/core/futures/replay
  */
 import type { FuturesAccountState, FuturesLedgerEvent } from './types.js';
 export interface FuturesReplayResult {

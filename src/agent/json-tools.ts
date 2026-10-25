@@ -12,7 +12,7 @@
  * `JSON.stringify` already drops those keys. Normalizing here keeps the agent
  * tools and the panel on one shape.
  *
- * @module @ft/dsh-fft-paper-trading/agent/json-tools
+ * @module @dsh-ft/dsh-fft-paper-trading/agent/json-tools
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 

@@ -1,5 +1,5 @@
 {
-  "name": "@ft/dsh-fft-paper-trading",
+  "name": "@dsh-ft/dsh-fft-paper-trading",
   "version": "0.3.2",
   "description": "A-share paper trading plugin for DeepSeek Harness",
   "type": "module",
@@ -32,7 +32,8 @@
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build && node --test tests/*.test.mjs",
-    "scenario": "node scripts/scenario.mjs"
+    "scenario": "node scripts/scenario.mjs",
+    "pack:npm": "node scripts/pack-npm.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",

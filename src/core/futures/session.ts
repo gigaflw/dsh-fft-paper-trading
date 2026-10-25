@@ -6,7 +6,7 @@
  * the contract's `trade_hours_info` when it parses, with a uniform commodity
  * fallback when it does not.
  *
- * @module @ft/dsh-fft-paper-trading/core/futures/session
+ * @module @dsh-ft/dsh-fft-paper-trading/core/futures/session
  */
 
 import type { FuturesPhase } from '../../futures-contract.js'

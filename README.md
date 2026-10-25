@@ -1,4 +1,4 @@
-# @ft/dsh-fft-paper-trading
+# @dsh-ft/dsh-fft-paper-trading
 
 A 股与商品期货模拟盘：输入即预览成本、下单、持仓、复盘；批量按 CSV 权重一次买入。
 账本是本地追加的事件文件，重启后重放恢复。
@@ -26,22 +26,26 @@ A 股与商品期货模拟盘：输入即预览成本、下单、持仓、复盘
 ## 安装
 
 ```sh
-dsh plugin add /Users/ben/workspace/dsh/dsh-fft-paper-trading
+dsh plugin add @dsh-ft/dsh-fft-paper-trading
 ```
 
-包的 `cordis.patch.yml` 自带宿主半、RPC 路由与浏览器半，安装即生效。开发期用
-`node scripts/sync-profile.mjs` 同步成 desktop profile 的稳定副本（之后 ⌘Q 重开），避免
+本包是**自包含**的：`@dsh-ft/dsh-fft-settings`、`@dsh-ft/dsh-fft-ftshare` 与
+`@ftshare-lab/dsh-kline`（`v0.4.0-ft.1`）都内联在包内，安装后行情、交易日历与完整 K 线视图即可用，
+不需要再单独安装其他插件，也不需要 ssh 或修改 pnpm 配置。
+
+发布到 npm 的包由 `pnpm run pack:npm` 生成（内联上述三个包）；直接在仓库根目录
+`dsh plugin add` 只适用于开发机。
+
+开发期用 `node scripts/sync-profile.mjs` 同步成 desktop profile 的稳定副本（之后 ⌘Q 重开），避免
 `link:` 到仓库时被热重载撞上构建中间态。
 
-独立安装时：
+独立安装后：
 
-- 行情与交易日历来自宿主的 `ftshareData` 服务（随 `dsh-fft-bundle` 安装或另装
-  `@ft/dsh-fft-ftshare`）。没有该服务时行情降级为「不可用」，股票可手填参考价按市价成交、
-  期货可手填参考价平仓；交易日历退回工作日。
+- 行情与交易日历来自包内 `ftshareData` 服务。
 - 没有 FTShare API Key 时走免费档：实时日K/分钟K 不可用，股票报价回退到历史日K（面板显示
   「来源 FTShare 免费版」，盘中即上一交易日收盘），行情页板块由免费全市场列表在本地筛选；
   匿名额度 500 次/天，用尽时面板提示配置 Key 或稍后重试。
-- 股票 K 线视图由 `dsh_kline` 通过 slot 提供；没装时显示内置简图。期货本期不接 K 线。
+- 股票 K 线视图由包内 kline 提供；期货本期不接 K 线。
 
 ## 边界
 

@@ -6,7 +6,7 @@
  * — without reading the key itself. This module only calls the settings
  * service's `describe()` (configured flag, source, last validation); it never
  * resolves the secret, never writes settings and never goes upstream.
- * @module @ft/dsh-fft-paper-trading/service/data-source
+ * @module @dsh-ft/dsh-fft-paper-trading/service/data-source
  */
 
 import type { DataSourceStatus } from '../contract.js'

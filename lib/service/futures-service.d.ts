@@ -6,7 +6,7 @@
  * the only place that knows about FTShare, the trading calendar and the wall
  * clock, exactly like the stock-side `PaperService`.
  *
- * @module @ft/dsh-fft-paper-trading/service/futures-service
+ * @module @dsh-ft/dsh-fft-paper-trading/service/futures-service
  */
 import type { FuturesContractQuery, FuturesContractsResult, FuturesCashFlowEntry, FuturesDraft, FuturesFillView, FuturesLedgerExport, FuturesMarketStatus, FuturesOrderView, FuturesPeriod, FuturesPositionView, FuturesPreviewView, FuturesQuotesResult, FuturesReviewView, FuturesSettings, FuturesTickView } from '../futures-contract.js';
 import type { FuturesMarketDataPort } from '../data/futures-market-data-port.js';

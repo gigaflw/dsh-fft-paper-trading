@@ -96,7 +96,7 @@ node tests/e2e/futures-offline.mjs  # 0 = 全过
 ## 坑（都是真踩过的）
 
 - **不要在应用运行时反复 build 这个 link 的包再 reload 页面**：会撞上半写文件 / 模块版本不一致，
-  表现为 `@ft/dsh-fft-paper-trading: import failed`，整个 web boot 报 1 entry 未激活。改完一批 → `pnpm build`
+  表现为 `@dsh-ft/dsh-fft-paper-trading: import failed`，整个 web boot 报 1 entry 未激活。改完一批 → `pnpm build`
   → ⌘Q 重开。用假数据测试时不要 reload 页面，用 `window.fetch` 还原即可。
 - **窗口里点着点着面板没了**：多半是点到了侧栏别的会话（标题会变），不是插件崩了；用 `cdp.mjs summary`
   看 `title` 确认。
