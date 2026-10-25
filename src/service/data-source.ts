@@ -9,7 +9,7 @@
  * @module @dsh-ft/dsh-fft-paper-trading/service/data-source
  */
 
-import type { DataSourceStatus } from '../contract.js'
+import type { DataProblem, DataProblemReason, DataSourceStatus } from '../contract.js'
 
 /** Structural slice of `ctx.ftshareSettings.apiKey`; no runtime import across packages. */
 export interface FtshareApiKeyLike {
@@ -82,4 +82,64 @@ export async function probeDataSource(input: DataSourceProbeInput): Promise<Data
     status = { state: 'invalid', message: '无法读取 FTShare Key 状态' }
   }
   return status
+}
+
+/** API-key and authentication codes: the key itself is missing or rejected. */
+const AUTH_CODES = new Set([
+  '401', 'unauthorized', 'auth_required', 'invalid_key', 'invalid_api_key',
+  'upstream_unauthenticated', 'api_key_header_missing', 'api_key_malformed',
+])
+
+/** Plan/permission codes: the key works but the subscription does not cover it. */
+const PLAN_CODES = new Set([
+  '403', 'forbidden', 'route_not_allowed', 'capability_limited', 'permission_denied',
+  'insufficient_permissions', 'subscription_required',
+])
+
+/** Codes that mean "too many requests today" rather than an outage. */
+const QUOTA_CODES = new Set(['insufficient_quota', 'quota_exceeded', 'quota_exhausted', '429', 'rate_limited'])
+
+/** Codes that mean the network or the gateway is temporarily down. */
+const NETWORK_CODES = new Set([
+  'timeout', 'etimedout', 'econnreset', 'econnrefused', 'enotfound', 'fetch_failed',
+  '502', '503', '504',
+])
+
+/**
+ * Suffix the shared FTShare bundle appends to a spent anonymous quota.
+ *
+ * `UPSTREAM_UNAVAILABLE` is deliberately the same code the gateway returns for
+ * a real outage, so the code alone cannot tell them apart. This literal copies
+ * the bundle's `FTSHARE_QUOTA_NOTICE`; if that wording changes, update it here.
+ */
+const QUOTA_SENTINEL = '免费配额用尽'
+
+/** Longest upstream cause kept in a problem record. */
+const MESSAGE_MAX_LENGTH = 160
+
+function trimMessage(text: string | undefined): string {
+  const flat = (text ?? '').replace(/\s+/g, ' ').trim()
+  if (flat === '') return '行情暂不可用'
+  return flat.length <= MESSAGE_MAX_LENGTH ? flat : `${flat.slice(0, MESSAGE_MAX_LENGTH)}…`
+}
+
+/** Map one failed market-data result to the reason the banner acts on. */
+export function classifyDataProblem(
+  input: { state: string; notice?: string; noticeCode?: string },
+  at: string,
+): DataProblem | undefined {
+  if (input.state === 'ok') return undefined
+  const code = input.noticeCode?.toLowerCase()
+  const text = input.notice ?? ''
+  let reason: DataProblemReason
+  if (code !== undefined && AUTH_CODES.has(code)) reason = 'invalid-key'
+  else if (code !== undefined && PLAN_CODES.has(code)) reason = 'plan-denied'
+  else if (code !== undefined && QUOTA_CODES.has(code)) reason = 'quota'
+  else if (text.includes(QUOTA_SENTINEL)) reason = 'quota'
+  else if (code !== undefined && NETWORK_CODES.has(code)) reason = 'network'
+  // `denied` is the FTShare layer's permission verdict; without a specific
+  // code it still means "the plan/credential does not cover this interface".
+  else if (input.state === 'denied') reason = 'plan-denied'
+  else reason = 'upstream'
+  return { reason, message: trimMessage(input.notice), at }
 }

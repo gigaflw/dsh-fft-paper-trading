@@ -271,3 +271,22 @@ test('browser bundle: a degraded trading calendar is visible in the header', () 
   assert.match(source, /下一交易日\$\{estimated \? '（按工作日估算）'/)
   assert.match(source, /calendar\?\.source === 'fallback'/)
 })
+
+test('browser bundle: a data problem becomes an actionable, dismissible banner', () => {
+  assert.match(source, /function DataBanner/)
+  assert.match(source, /function bannerModel/)
+  assert.match(source, /DATA_BANNER_DISMISS_KEY/)
+  assert.match(source, /paper-trading:data-banner-dismissed/)
+  assert.match(source, /https:\/\/ftai\.chat\/ftshare/)
+  assert.ok(source.includes("'获取 API Key'"))
+  for (const copy of ['今日免费行情额度已用尽', '当前套餐未开通实时行情', '行情服务暂时不可用', '行情数据服务未安装']) {
+    assert.ok(source.includes(copy), `missing banner copy: ${copy}`)
+  }
+  // No-key guidance must not be mistaken for a plan problem: they use different reasons.
+  assert.match(source, /case 'plan-denied'/)
+  assert.match(source, /case 'quota'/)
+  assert.match(source, /const noKeyBanner =/)
+  // A keyless user hitting a paid interface (401) must get the key hint, not
+  // the "key invalid" banner.
+  assert.ok((source.match(/status\.state === 'free'\s*\n?\s*\? noKeyBanner/g) ?? []).length >= 2)
+})

@@ -327,6 +327,8 @@ export interface MarketListResult {
   page: number
   total?: number
   notice?: string
+  /** Upstream error code (e.g. `route_not_allowed`), for the banner reason. */
+  noticeCode?: string
 }
 
 export interface DayReport {
@@ -384,11 +386,36 @@ export interface RoundTrip {
  */
 export type DataSourceState = 'configured' | 'free' | 'none' | 'invalid'
 
+/**
+ * Why the last market-data call failed, as a code the UI can act on.
+ *
+ * The upstream classification (`state` + `notice.code`) decides this; no
+ * message-text guessing beyond the quota sentinel the FTShare bundle appends.
+ */
+export type DataProblemReason =
+  | 'no-key'
+  | 'invalid-key'
+  | 'plan-denied'
+  | 'quota'
+  | 'network'
+  | 'upstream'
+
+/** One observed data failure; the latest one drives the panel banner. */
+export interface DataProblem {
+  reason: DataProblemReason
+  /** Readable upstream cause, already trimmed for display. */
+  message: string
+  /** ISO-8601 time of the observation. */
+  at: string
+}
+
 /** Read-only data-source state for the panel header; never carries the key itself. */
 export interface DataSourceStatus {
   state: DataSourceState
   /** Short, user-facing cause for `invalid` or a degraded `configured`. */
   message?: string
+  /** Latest observed data failure, cleared by the next successful quote call. */
+  problem?: DataProblem
 }
 
 export interface RpcSuccess<T> { ok: true; value: T }

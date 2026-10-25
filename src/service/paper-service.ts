@@ -21,6 +21,7 @@ import type {
   RoundTrip,
   TickView,
   SessionPhase,
+  DataProblem,
 } from '../contract.js'
 import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
 import { cancelOrder, closeDay, depositCash, equityCents, openAccount, openDay, preOpenDay, releaseQueued, submit, tick as engineTick, withdrawCash, type EngineResult } from '../core/engine.js'
@@ -41,6 +42,7 @@ import type { AccountStore } from '../store/port.js'
 import type { ShortlistStore } from '../store/shortlist.js'
 import { PaperError } from './errors.js'
 import { QuoteRefreshGate } from './quote-gate.js'
+import { classifyDataProblem } from './data-source.js'
 
 export interface PaperServiceOptions {
   repo: AccountStore
@@ -87,6 +89,7 @@ export class PaperService {
   private readonly now: () => Date
   private readonly quoteGate = new QuoteRefreshGate()
   private tickQuotes: { key: string; quotes: Quote[] } | undefined
+  private dataProblem: DataProblem | undefined
 
   constructor(private readonly options: PaperServiceOptions) {
     this.settings = normalizeSettings(options.settings ?? DEFAULT_SETTINGS)
@@ -166,13 +169,28 @@ export class PaperService {
    * Fetch quotes once and normalise failures into the port's four-state result,
    * so every caller (preview, place, tick, day boundaries) reports the same shape.
    */
+  /** Latest observed market-data failure; drives the panel banner. */
+  problem(): DataProblem | undefined {
+    return this.dataProblem
+  }
+
+  private noteDataProblem(result: { state: string; notice?: string; noticeCode?: string }): void {
+    const problem = classifyDataProblem(result, this.ts())
+    if (problem !== undefined) this.dataProblem = problem
+    else if (result.state === 'ok') this.dataProblem = undefined
+  }
+
   private async fetchQuotes(symbols: readonly string[]): Promise<QuoteResult> {
     if (symbols.length === 0) return { state: 'ok', quotes: [] }
     try {
-      return await this.options.data.quotes([...symbols])
+      const result = await this.options.data.quotes([...symbols])
+      this.noteDataProblem(result)
+      return result
     } catch (error) {
       this.options.logger?.warn(`paper-trading: quote refresh failed: ${String(error)}`)
-      return { state: 'failed', quotes: [], notice: String(error) }
+      const result: QuoteResult = { state: 'failed', quotes: [], notice: String(error) }
+      this.noteDataProblem(result)
+      return result
     }
   }
 
@@ -696,7 +714,7 @@ export class PaperService {
       filled: outcome.value.filled.map(order => toOrderView(marked.orders[order.id] ?? order)),
       expired: outcome.value.expired.map(order => toOrderView(marked.orders[order.id] ?? order)),
       quotes: quotes.quotes,
-      notices: [...outcome.value.notices, ...(quotes.state === 'ok' ? [] : [this.friendlyNotice(quotes.state, quotes.notice, '行情暂不可用')])],
+      notices: [...outcome.value.notices, ...(quotes.state === 'ok' ? [] : [this.friendlyNotice(quotes.state, quotes.notice, '行情暂不可用', quotes.noticeCode)])],
     }
   }
 
@@ -726,6 +744,7 @@ export class PaperService {
     const id = this.identify(symbol).id
     try {
       const result = await this.options.data.dailyBars(id, Math.min(Math.max(1, limit), 250))
+      this.noteDataProblem(result)
       return this.sanitiseDataNotice(result, 'K 线数据暂不可用') as BarsResult
     } catch (error) {
       this.options.logger?.warn(`paper-trading: bars failed: ${String(error)}`)
@@ -737,6 +756,7 @@ export class PaperService {
     const id = this.identify(symbol).id
     try {
       const result = await this.options.data.minuteBars(id, date ?? todayTradeDate(this.now()))
+      this.noteDataProblem(result)
       return this.sanitiseDataNotice(result, 'K 线数据暂不可用') as BarsResult
     } catch (error) {
       this.options.logger?.warn(`paper-trading: minute bars failed: ${String(error)}`)
@@ -749,21 +769,26 @@ export class PaperService {
    * their notices. Those are useful in logs, not in the panel (or to the model
    * reading a tool result), so the user-facing notice stays short.
    */
-  private sanitiseDataNotice<T extends { state: string; notice?: string }>(result: T, fallback: string): T {
+  private sanitiseDataNotice<T extends { state: string; notice?: string; noticeCode?: string }>(result: T, fallback: string): T {
     if (result.state === 'ok') return result
-    return { ...result, notice: this.friendlyNotice(result.state, result.notice, fallback) }
+    return { ...result, notice: this.friendlyNotice(result.state, result.notice, fallback, result.noticeCode) }
   }
 
-  private friendlyNotice(state: string, notice: string | undefined, fallback: string): string {
-    if (state === 'denied') {
-      // Two different causes share this state: a missing/invalid key and a plan
-      // that does not include the interface. The panel must not blur them.
-      return notice !== undefined && /api\s*key|凭据|未配置|无效|未授权|401/i.test(notice)
-        ? '行情需要 FTShare API Key（设置 → 非凸金融终端）'
-        : '当前 FTShare 套餐未开通该行情接口'
-    }
-    if (notice !== undefined && /额度|配额|quota|500\s*次|rate.?limit|429/i.test(notice)) {
-      return 'FTShare 免费额度已用尽（匿名 500 次/天），配置 API Key 或稍后重试'
+  /**
+   * Turn an upstream failure into one actionable sentence.
+   *
+   * The reason comes from `state` + `notice.code`; message text is only used
+   * for the quota sentinel the shared FTShare bundle itself appends. Unknown
+   * causes keep a short upstream notice when it holds no adapter internals.
+   */
+  private friendlyNotice(state: string, notice: string | undefined, fallback: string, noticeCode?: string): string {
+    const problem = classifyDataProblem({ state, notice, noticeCode }, this.ts())
+    switch (problem?.reason) {
+      case 'invalid-key': return '行情需要 FTShare API Key（设置 → FTShare 配置后重试）'
+      case 'plan-denied': return '当前 FTShare 套餐未开通该行情接口'
+      case 'quota': return 'FTShare 免费额度已用尽（匿名 500 次/天），配置 API Key 或稍后重试'
+      case 'network': return '行情服务暂时不可用，请稍后重试'
+      default: break
     }
     if (notice === undefined || notice === '') return fallback
     // Keep short operational notices (e.g. "行情服务未就绪") but hide adapter
@@ -777,6 +802,7 @@ export class PaperService {
 
   async marketList(input: { board?: string; page?: number; pageSize?: number } = {}) {
     const result = await this.options.data.marketList(input)
+    this.noteDataProblem(result)
     return this.sanitiseDataNotice(result, '行情暂不可用')
   }
 

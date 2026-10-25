@@ -65,6 +65,8 @@ export interface FuturesDataResult<T> {
     state: FuturesDataState;
     value?: T;
     notice?: string;
+    /** Upstream error code, passed through for the banner reason. */
+    noticeCode?: string;
 }
 /**
  * The only futures-market dependency of the service. Tests provide a fake, the

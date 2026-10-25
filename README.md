@@ -11,6 +11,8 @@ A 股与商品期货模拟盘：输入即预览成本、下单、持仓、复盘
   - 股票：交易、批量、行情、持仓、订单、复盘。
   - 期货：交易、持仓、订单、复盘（无行情页；交易页内搜索合约）。
 - 顶栏显示数据源状态：`数据源已配置` / `免费数据源` / `无数据源` / `数据源无效`，只读，不展示 Key。
+- 行情不可用（未配置 Key、额度用尽、套餐未开通、网络异常、未装数据服务）时，交易页顶部给出原因与动作
+  （获取 API Key / 重试），可关闭；账本与手填参考价交易始终可用。
 - 对话工具：
   - 股票：`paper_account`、`paper_quote`、`paper_preview`、`paper_order`、`paper_cancel`、`paper_status`、`paper_tick`、`paper_review`。
   - 期货：`futures_account`、`futures_contracts`、`futures_quote`、`futures_preview`、`futures_order`、`futures_cancel`、`futures_positions`、`futures_review`。

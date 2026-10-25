@@ -60,6 +60,8 @@ import {
   toReview,
 } from '../core/futures/views.js'
 import { QuoteRefreshGate } from './quote-gate.js'
+import { classifyDataProblem } from './data-source.js'
+import type { DataProblem } from '../contract.js'
 import type {
   ContractTerms,
   FuturesAccountState,
@@ -215,6 +217,7 @@ export class FuturesService {
   private readonly now: () => Date
   private contractsCache: ContractCache | undefined
   private readonly quoteGate = new QuoteRefreshGate()
+  private dataProblem: DataProblem | undefined
 
   constructor(private readonly options: FuturesServiceOptions) {
     this.settings = normalizeFuturesSettings(options.settings ?? DEFAULT_FUTURES_SETTINGS)
@@ -353,7 +356,13 @@ export class FuturesService {
     for (const batch of chunks(unique, SYMBOL_BATCH)) {
       try {
         const result = await call(batch)
-        if (result.state !== 'ok') return { state: result.state, notice: result.notice }
+        if (result.state !== 'ok') {
+          return {
+            state: result.state,
+            notice: result.notice,
+            ...(result.noticeCode === undefined ? {} : { noticeCode: result.noticeCode }),
+          }
+        }
         values.push(...(result.value ?? []))
       } catch (error) {
         this.options.logger?.warn(`paper-trading: futures market data failed: ${String(error)}`)
@@ -363,8 +372,20 @@ export class FuturesService {
     return { state: 'ok', value: values }
   }
 
+  /** Latest observed market-data failure; drives the panel banner. */
+  problem(): DataProblem | undefined {
+    return this.dataProblem
+  }
+
+  private noteDataProblem(result: { state: string; notice?: string; noticeCode?: string }): void {
+    const problem = classifyDataProblem(result, this.ts())
+    if (problem !== undefined) this.dataProblem = problem
+    else if (result.state === 'ok') this.dataProblem = undefined
+  }
+
   private async fetchQuoteMap(symbols: readonly string[]): Promise<{ state: FuturesDataResult<QuoteInput[]>['state']; quotes: Map<string, QuoteInput>; notice?: string }> {
     const result = await this.callBatched(symbols, batch => this.options.data.quotes(batch))
+    this.noteDataProblem(result)
     const quotes = new Map<string, QuoteInput>()
     for (const row of result.value ?? []) {
       if (row.symbol === undefined || !Number.isFinite(row.last) || row.last <= 0) continue
