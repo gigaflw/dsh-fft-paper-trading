@@ -72,7 +72,7 @@ export function apply(ctx: Context): void {
   // FTShare adapter can appear (or disappear) later without rebuilding the
   // service, the route or the tools.
   let market: MarketDataPort = new UnavailableMarketData()
-  let calendar: TradingCalendarPort = new WeekdayTradingCalendar()
+  let calendar: TradingCalendarPort = new WeekdayTradingCalendar('未安装 FTShare 数据服务，按工作日估算')
   const data: MarketDataPort = {
     quotes: symbols => market.quotes(symbols),
     dailyBars: (symbol, limit) => market.dailyBars(symbol, limit),
@@ -99,6 +99,9 @@ export function apply(ctx: Context): void {
   const futuresCalendar: TradingCalendarPort = {
     get source() {
       return calendar.source
+    },
+    get status() {
+      return calendar.status
     },
     isTradingDay: date => calendar.isTradingDay(date),
     nextTradingDay: date => calendar.nextTradingDay(date),
@@ -157,7 +160,7 @@ export function apply(ctx: Context): void {
     scope.effect(
       () => () => {
         if (market === adapter) market = new UnavailableMarketData()
-        if (calendar === calendarAdapter) calendar = new WeekdayTradingCalendar()
+        if (calendar === calendarAdapter) calendar = new WeekdayTradingCalendar('未安装 FTShare 数据服务，按工作日估算')
         if (futuresMarket === futuresAdapter) futuresMarket = new UnavailableFuturesMarketData()
         dataService = false
       },

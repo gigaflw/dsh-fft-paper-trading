@@ -635,7 +635,7 @@ interface TradingCalendarPort {
 
 - 适配器 `FtshareTradingCalendar` 调 `ft_v1_time_trading_calendar` 与 `ft_v1_time_get_nth_trade_date`，按区间缓存 1 天；
 - FTShare 日历的入参与返回都是 **YYYYMMDD 整数**（实测 `trade_dates` 为整数数组）；适配器在边界转换，内部统一 `YYYY-MM-DD`；
-- 取不到时回退「周一至周五」并标 `source: 'fallback'`，界面显示日历降级，而不是静默当成准确；
+- 取不到时回退「周一至周五」并标 `source: 'fallback'`，**失败结果不写缓存**：60 秒后重试，恢复后自动切回；来源经 `market/status` 的 `calendar` 字段暴露，面板副标题显示「交易日历降级（按工作日估算）」，降级期间「下一交易日」写作「下一交易日（按工作日估算）」，`paper_market` 的时段摘要同步带一句；
 - 时段表是交易所规则，集中在 `core/session.ts`，不散落在 service/UI：
 
 | 阶段 | 时间（Asia/Shanghai） | 可提交 | 可连续撮合 | 说明 |

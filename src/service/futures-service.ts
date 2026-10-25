@@ -583,7 +583,10 @@ export class FuturesService {
 
   async status(): Promise<FuturesMarketStatus> {
     const state = await this.sync()
-    return marketStatusAt(state.tradeDate, parseDaySessions(undefined), this.ts())
+    return {
+      ...marketStatusAt(state.tradeDate, parseDaySessions(undefined), this.ts()),
+      calendar: this.options.calendar.status,
+    }
   }
 
   async positions(): Promise<FuturesPositionView[]> {
