@@ -60,7 +60,7 @@ import {
   toReview,
 } from '../core/futures/views.js'
 import { QuoteRefreshGate } from './quote-gate.js'
-import { classifyDataProblem } from './data-source.js'
+import { classifyDataProblem, friendlyDataNotice } from './data-source.js'
 import type { DataProblem } from '../contract.js'
 import type {
   ContractTerms,
@@ -383,7 +383,12 @@ export class FuturesService {
     else if (result.state === 'ok') this.dataProblem = undefined
   }
 
-  private async fetchQuoteMap(symbols: readonly string[]): Promise<{ state: FuturesDataResult<QuoteInput[]>['state']; quotes: Map<string, QuoteInput>; notice?: string }> {
+  private async fetchQuoteMap(symbols: readonly string[]): Promise<{
+    state: FuturesDataResult<QuoteInput[]>['state']
+    quotes: Map<string, QuoteInput>
+    notice?: string
+    noticeCode?: string
+  }> {
     const result = await this.callBatched(symbols, batch => this.options.data.quotes(batch))
     this.noteDataProblem(result)
     const quotes = new Map<string, QuoteInput>()
@@ -397,20 +402,20 @@ export class FuturesService {
         marketTs: row.marketTs,
       })
     }
-    return { state: result.state, quotes, notice: result.notice }
+    return { state: result.state, quotes, notice: result.notice, ...(result.noticeCode === undefined ? {} : { noticeCode: result.noticeCode }) }
   }
 
-  private async fetchLimitMap(symbols: readonly string[]): Promise<{ state: string; limits: Map<string, LimitInput>; notice?: string }> {
+  private async fetchLimitMap(symbols: readonly string[]): Promise<{ state: string; limits: Map<string, LimitInput>; notice?: string; noticeCode?: string }> {
     const result = await this.callBatched(symbols, batch => this.options.data.limits(batch))
     const limits = new Map<string, LimitInput>()
     for (const row of result.value ?? []) {
       if (row.symbol === undefined || !Number.isFinite(row.upper) || !Number.isFinite(row.lower)) continue
       limits.set(row.symbol, { upper: row.upper, lower: row.lower, marginRate: row.marginRate, source: row.source })
     }
-    return { state: result.state, limits, notice: result.notice }
+    return { state: result.state, limits, notice: result.notice, ...(result.noticeCode === undefined ? {} : { noticeCode: result.noticeCode }) }
   }
 
-  private async fetchSettleMap(symbols: readonly string[]): Promise<{ state: string; settles: Map<string, SettleParams>; notice?: string }> {
+  private async fetchSettleMap(symbols: readonly string[]): Promise<{ state: string; settles: Map<string, SettleParams>; notice?: string; noticeCode?: string }> {
     const result = await this.callBatched(symbols, batch => this.options.data.settle(batch))
     const settles = new Map<string, SettleParams>()
     for (const row of result.value ?? []) {
@@ -423,7 +428,7 @@ export class FuturesService {
         closeTodayFeeRate: row.closeTodayFeeRate,
       })
     }
-    return { state: result.state, settles, notice: result.notice }
+    return { state: result.state, settles, notice: result.notice, ...(result.noticeCode === undefined ? {} : { noticeCode: result.noticeCode }) }
   }
 
   private async fetchCloses(state: FuturesAccountState): Promise<{ prices: Record<string, number>; source: 'daily' | 'quote' | 'missing'; notice?: string }> {
@@ -431,12 +436,13 @@ export class FuturesService {
     if (symbols.length === 0) return { prices: {}, source: 'daily' }
     const result = await this.callBatched(symbols, batch => this.options.data.closes(batch, state.tradeDate))
     if (result.state !== 'ok') {
+      const notice = friendlyDataNotice(result, '收盘价不可用，结算使用最近一次盯市价', this.ts())
       const quoteResult = await this.fetchQuoteMap(symbols)
       if (quoteResult.state === 'ok' && quoteResult.quotes.size > 0) {
         const prices = Object.fromEntries([...quoteResult.quotes].map(([symbol, quote]) => [symbol, quote.last]))
-        return { prices, source: 'quote', notice: result.notice }
+        return { prices, source: 'quote', notice }
       }
-      return { prices: {}, source: 'missing', notice: result.notice ?? '收盘价不可用，结算使用最近一次盯市价' }
+      return { prices: {}, source: 'missing', notice }
     }
     const prices: Record<string, number> = {}
     for (const row of result.value ?? []) {
@@ -446,7 +452,9 @@ export class FuturesService {
     const missing = symbols.filter(symbol => prices[symbol] === undefined)
     if (missing.length === 0) return { prices, source: 'daily' }
     const quoteResult = await this.fetchQuoteMap(missing)
-    if (quoteResult.state !== 'ok') return { prices, source: 'missing', notice: result.notice ?? '部分收盘价缺失，使用最近一次盯市价' }
+    if (quoteResult.state !== 'ok') {
+      return { prices, source: 'missing', notice: friendlyDataNotice(quoteResult, '部分收盘价缺失，使用最近一次盯市价', this.ts()) }
+    }
     for (const [symbol, quote] of quoteResult.quotes) prices[symbol] = quote.last
     return { prices, source: 'quote', notice: result.notice ?? '部分收盘价缺失，已用最新价替代' }
   }
@@ -455,7 +463,9 @@ export class FuturesService {
     const symbols = this.symbolsInPlay(state)
     if (symbols.length === 0) return { prices: {} }
     const quoteResult = await this.fetchQuoteMap(symbols)
-    if (quoteResult.state !== 'ok') return { prices: {}, notice: quoteResult.notice ?? '开盘价不可用，沿用上一收盘价' }
+    if (quoteResult.state !== 'ok') {
+      return { prices: {}, notice: friendlyDataNotice(quoteResult, '开盘价不可用，沿用上一收盘价', this.ts()) }
+    }
     return { prices: Object.fromEntries([...quoteResult.quotes].map(([symbol, quote]) => [symbol, quote.last])) }
   }
 
@@ -496,8 +506,13 @@ export class FuturesService {
       this.fetchLimitMap(fetchSymbols),
       this.fetchSettleMap(fetchSymbols),
     ])
-    for (const result of [quoteResult, limitResult, settleResult]) {
-      if (result.state !== 'ok' && result.notice !== undefined) warnings.push(result.notice)
+    const sources = [
+      { result: quoteResult, fallback: '行情暂不可用' },
+      { result: limitResult, fallback: '涨跌停数据暂不可用' },
+      { result: settleResult, fallback: '结算参数暂不可用' },
+    ]
+    for (const { result, fallback } of sources) {
+      if (result.state !== 'ok') warnings.push(friendlyDataNotice(result, fallback, nowIso))
     }
     const tradeDaysToDeList = await this.tradeDaysToDeList(state.tradeDate, contract)
     const quote = quoteResult.quotes.get(symbol)
@@ -599,7 +614,10 @@ export class FuturesService {
       const terms = [...cache.map.values()].find(item => item.symbol === symbol)
       return [quoteView(symbol, quote, terms?.name)]
     })
-    return { state: result.state, quotes, notice: result.notice }
+    const notice = result.state === 'ok'
+      ? result.notice
+      : friendlyDataNotice(result, '行情暂不可用', this.ts())
+    return { state: result.state, quotes, notice }
   }
 
   async status(): Promise<FuturesMarketStatus> {
@@ -756,7 +774,7 @@ export class FuturesService {
     const quoteResult = await this.fetchQuoteMap(tradable)
     this.quoteGate.record(key, nowMs, quoteResult.state === 'ok')
     if (quoteResult.state !== 'ok') {
-      if (quoteResult.notice !== undefined) notices.push(quoteResult.notice)
+      notices.push(friendlyDataNotice(quoteResult, '行情暂不可用', nowIso))
       return { tradeDate: state.tradeDate, filled: [], expired, notices }
     }
     await this.options.repo.markPrices([...quoteResult.quotes].map(([symbol, quote]) => ({ symbol, last: quote.last })))

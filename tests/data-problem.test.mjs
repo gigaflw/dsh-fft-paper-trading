@@ -28,3 +28,15 @@ test('data problem: network codes and unknown failures stay readable', () => {
   assert.ok(unknown.message.length <= 161, 'the stored cause is trimmed')
   assert.equal(unknown.at, AT)
 })
+
+test('data problem: one shared sentence per actionable reason', async () => {
+  const { friendlyDataNotice } = await import('../lib/service/data-source.js')
+  const at = AT
+  assert.equal(friendlyDataNotice({ state: 'denied', noticeCode: '401' }, '行情暂不可用', at), '行情需要 API Key（「设置」中配置后重试）')
+  assert.equal(friendlyDataNotice({ state: 'denied', noticeCode: 'route_not_allowed' }, '行情暂不可用', at), '当前 FTShare 套餐未开通该行情接口')
+  assert.equal(friendlyDataNotice({ state: 'failed', noticeCode: '429' }, '行情暂不可用', at), '免费行情额度已用尽，配置 API Key 或稍后重试')
+  assert.equal(friendlyDataNotice({ state: 'failed', noticeCode: 'timeout' }, '行情暂不可用', at), '行情服务暂时不可用，请稍后重试')
+  // Unknown causes may pass through a short notice, never adapter internals.
+  assert.equal(friendlyDataNotice({ state: 'failed', notice: '行情服务未就绪' }, '行情暂不可用', at), '行情服务未就绪')
+  assert.equal(friendlyDataNotice({ state: 'failed', notice: 'FTShare ft_v1_x 调用失败' }, '行情暂不可用', at), '行情暂不可用')
+})

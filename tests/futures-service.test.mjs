@@ -529,3 +529,27 @@ test('ad-valorem fees use the exchange-specific upstream rate unit', async () =>
     await close(subject)
   }
 })
+
+test('futures: data failures use the same guidance copy as the stock account', async () => {
+  const subject = setup('futures-guidance')
+  try {
+    await subject.service.place(draft(), 'open')
+
+    const quotaNotice = 'FTShare ft_v4_futures_minutes_realtime 调用失败（UPSTREAM_UNAVAILABLE）：最近 1 天最多访问 500 次。免费配额用尽，配置 FTShare API Key 或稍后重试。'
+    subject.data.quotes = async () => ({ state: 'failed', notice: quotaNotice, noticeCode: 'UPSTREAM_UNAVAILABLE' })
+    const quota = await subject.service.quote([SYMBOL])
+    assert.equal(quota.state, 'failed')
+    assert.equal(quota.notice, '免费行情额度已用尽，配置 API Key 或稍后重试')
+
+    subject.data.quotes = async () => ({ state: 'denied', notice: 'FTShare 无权访问 ft_v4_futures_minutes_realtime：API Key 缺失', noticeCode: '401' })
+    const auth = await subject.service.quote([SYMBOL])
+    assert.equal(auth.notice, '行情需要 API Key（「设置」中配置后重试）')
+
+    subject.data.quotes = async () => ({ state: 'failed', notice: 'FTShare timeout', noticeCode: 'timeout' })
+    subject.setNow(new Date(clockAt(DATE1, AM).getTime() + 6_000))
+    const tick = await subject.service.tick()
+    assert.ok(tick.notices.includes('行情服务暂时不可用，请稍后重试'), tick.notices.join('；'))
+  } finally {
+    await close(subject)
+  }
+})
