@@ -1,5 +1,5 @@
 node_modules/
-tmp/
+dsh_tmp/
 # 发布产物是构建输出：归档在 releases/ 下，不入库
 /releases/
 .worktrees/
