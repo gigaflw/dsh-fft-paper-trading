@@ -4,7 +4,7 @@
 
 ## 本机环境
 
-- dsh-fft-bundle：`/Users/ben/workspace/dsh-fft-bundle`, 其 AGENTS.md 部分与本仓库共享。最后同步 2026-10-22。改共享规则时两边同步
+- dsh-fft-bundle：`/Users/ben/workspace/dsh-fft-bundle`, 其 AGENTS.md 部分与本仓库共享。最后同步 2026-10-26。改共享规则时两边同步
 - DSH 应用：桌面版；profile `~/.dsh/profiles/desktop`
 - DSH 源码：`~/workspace/dsh/deepseek-harness`（只读参考；origin 指向 GitHub 上游，可按 tag fetch 对应版本）
 - 插件数据：`$DSH_HOME/paper-trading/`（与仓库位置无关）
@@ -44,3 +44,4 @@
 - `docs/` 只放本包知识：设计（`design.md`）、MVP 范围、进度、UI 预览与调研；不引用主仓或其他子仓的文档，跨仓出处用文字说明
 - 调查默认不归档：除非用户明确要求留档，结论直接用于决策或落地，不写进 `docs/investigation/`
 - 根 `README.md` 只写简介 + 使用方式 + 开发方式；实现细节写进 `docs/`
+- 调查 DSH 宿主、插件安装或分发行为前，先搜 `dsh-fft-bundle` 仓的 dsh 相关 skill 与 `docs/` 全目录（含 HTML），已覆盖的直接引用，不重复调查；缺的再查 DSH 源码
