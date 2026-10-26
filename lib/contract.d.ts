@@ -340,8 +340,9 @@ export type DataSourceState = 'configured' | 'free' | 'none' | 'invalid';
 /**
  * Why the last market-data call failed, as a code the UI can act on.
  *
- * The upstream classification (`state` + `notice.code`) decides this; no
- * message-text guessing beyond the quota sentinel the FTShare bundle appends.
+ * The upstream classification (`state` + `notice.code`) decides this. Text is
+ * only read for one thing the codes cannot express: a spent quota shares its
+ * code with a real outage, so the exhausted wording is matched instead.
  */
 export type DataProblemReason = 'no-key' | 'invalid-key' | 'plan-denied' | 'quota' | 'network' | 'upstream';
 /** One observed data failure; the latest one drives the panel banner. */

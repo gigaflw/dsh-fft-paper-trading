@@ -114,7 +114,8 @@ window.__ModuleLoader__.load({
     const quoteSourceText = quote => {
       if (!quote || !quote.source) return 'FTShare'
       if (quote.source === 'manual') return '参考价'
-      if (quote.source === 'daily-bar') return 'FTShare 免费版'
+      // Provenance, not tier: a keyed account can also end up on the daily close.
+      if (quote.source === 'daily-bar') return '日K收盘'
       return 'FTShare 实时'
     }
     /**
@@ -143,13 +144,22 @@ window.__ModuleLoader__.load({
      * title carries the consequence (realtime vs daily-close pricing).
      */
     const DATA_SOURCE_STATE = {
-      configured: { text: '数据源正常', title: 'FTShare API Key 已配置，行情走实时接口' },
+      configured: { text: '数据源正常', title: 'FTShare API Key 已配置，可看实时行情' },
       free: {
         text: '免费数据源',
         title: '未配置 FTShare Key：免费档报价取日K收盘，可手填参考价交易',
       },
       none: { text: '无数据源', title: '未安装 FTShare 数据服务，行情不可用；可手填参考价交易' },
       invalid: { text: '数据源无效', title: 'FTShare Key 无法使用；请在「设置」中检查，可手填参考价交易' },
+    }
+    /** Badge suffix per recorded failure, so the header cannot read 正常 while quotes fail. */
+    const DATA_PROBLEM_STATE = {
+      'no-key': '未配置 Key',
+      'invalid-key': 'Key 无效',
+      'plan-denied': '套餐未开通',
+      quota: '额度用尽',
+      network: '上游超时',
+      upstream: '上游异常',
     }
     /** Where a user without a key applies for one; upstream's own message uses this URL. */
     const API_KEY_URL = 'https://ftai.chat/ftshare'
@@ -183,8 +193,10 @@ window.__ModuleLoader__.load({
       }
       const noKeyBanner = {
         id: 'no-key', tone: 'info',
-        title: '行情未启用：配置 FTShare API Key 后可看实时行情',
-        detail: '当前为免费档：报价取日K收盘。请在「设置」中填入 API Key 后刷新；也可以直接手填参考价交易。',
+        // Quotes still work on the free tier (last daily close), so the banner
+        // cannot say 行情未启用; what a key adds is the realtime feed.
+        title: '免费档：报价取日K收盘',
+        detail: '配置 FTShare API Key 后可看实时行情，请在「设置」中填入后刷新。',
         actions: ['key'],
       }
       const problem = status.problem
@@ -193,8 +205,9 @@ window.__ModuleLoader__.load({
           case 'quota':
             return {
               id: 'quota', tone: 'warn',
-              title: '今日免费行情额度已用尽',
-              detail: '行情暂停更新；配置 API Key 或稍后重试。账本与手填参考价交易不受影响。',
+              // 匿名档是「最近 24 小时 500 次」的滚动额度，不是一个自然日。
+              title: '免费档行情额度已用尽',
+              detail: '约 24 小时内恢复；配置 API Key 可立即恢复。账本不受影响。',
               actions: ['key', 'retry'],
             }
           case 'plan-denied':
@@ -216,7 +229,7 @@ window.__ModuleLoader__.load({
               : {
                 id: 'invalid-key', tone: 'error',
                 title: 'FTShare 数据源无法使用',
-                detail: '请在「设置」中检查 API Key 后刷新；也可以手填参考价交易。',
+                detail: '请在「设置」中检查 API Key 后刷新。',
                 actions: ['key', 'retry'],
               }
           case 'network':
@@ -230,6 +243,7 @@ window.__ModuleLoader__.load({
             return {
               id: 'upstream', tone: 'warn',
               title: '行情服务上游异常',
+              // 手填参考价只覆盖市价单（期货仅市价平仓），先说清最确定的一件事。
               detail: '稍后重试；账本不受影响。',
               actions: ['retry'],
             }
@@ -641,11 +655,22 @@ window.__ModuleLoader__.load({
      * Header badge for the data source. `null` until the host has answered, so
      * the header never flashes a guess; a status `message` (failed validation,
      * unreadable settings) is appended to the tooltip only.
+     *
+     * A recorded quote failure overrides the configuration reading: the badge
+     * answers "can quotes be fetched now", and "数据源正常" next to a quota
+     * banner would contradict the banner right below it.
      */
     function DataSourceBadge({ status }) {
       if (status === null || status === undefined) return null
-      const state = DATA_SOURCE_STATE[status.state] ?? DATA_SOURCE_STATE.none
-      const title = status.message !== undefined && status.message !== ''
+      const base = DATA_SOURCE_STATE[status.state] ?? DATA_SOURCE_STATE.none
+      const problem = status.problem
+      const failure = problem === undefined || problem === null
+        ? undefined
+        : DATA_PROBLEM_STATE[problem.reason] ?? '取数失败'
+      const state = failure === undefined
+        ? base
+        : { text: `行情${failure}`, title: `最近一次取行情失败：${failure}` }
+      const title = state === base && status.message !== undefined && status.message !== ''
         ? `${state.title}（${status.message}）`
         : state.title
       return h('span', {
@@ -885,7 +910,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-kline-head' },
             h('div', { className: 'pt-kline-title' },
               h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${symbol || '—'} K线`),
-              h('div', { className: 'pt-note' }, quote ? `${symbolText(quote)} · 现价 ${money(quote.last)}` : '等待行情'),
+              h('div', { className: 'pt-note' }, quote ? `${symbolText(quote)} · ${quote.source === 'daily-bar' ? '收盘' : '现价'} ${money(quote.last)}` : '等待行情'),
             ),
             showFallback ? h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
               h('div', { className: 'pt-seg' },
@@ -969,7 +994,7 @@ window.__ModuleLoader__.load({
                 quote
                   ? h('div', { className: 'pt-quote' },
                     h('span', null, symbolText(quote)),
-                    h('span', null, `现价 ${money(quote.last)}`),
+                    h('span', null, `${quote.source === 'daily-bar' ? '收盘' : '现价'} ${money(quote.last)}`),
                     h('span', { className: 'pt-note' }, quoteUpdateText(quote)),
                     h('span', { className: 'pt-note' }, `来源 ${quoteSourceText(quote)}`),
                     quoteNotice !== '' && preview === null ? h('span', { className: 'pt-note' }, quoteNotice) : null,

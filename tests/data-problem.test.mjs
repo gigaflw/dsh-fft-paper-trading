@@ -21,6 +21,25 @@ test('data problem: auth, plan and quota codes become actionable reasons', () =>
   assert.equal(classifyDataProblem({ state: 'failed', noticeCode: 'UPSTREAM_UNAVAILABLE', notice: '网关 502' }, AT).reason, 'upstream')
 })
 
+test('data problem: a spent anonymous quota is quota even when upstream calls it denied', () => {
+  // The gateway reports a spent anonymous quota as `UPSTREAM_UNAVAILABLE` with no
+  // dedicated code, and an older bundle forwards it as a permission verdict. The
+  // exhausted wording is the only thing left to act on; without it the panel shows
+  // the generic "upstream" banner and hides both remedies.
+  const quota = classifyDataProblem({
+    state: 'denied',
+    noticeCode: 'UPSTREAM_UNAVAILABLE',
+    notice: 'FTShare 无权访问 ft_v1_stock_candlesticks：当前套餐未开通该数据能力。上游说明：［用户通知］最近 1 天最多访问 500 次；请等待后再试；注册并使用 API Key 后不受匿名额度限制',
+  }, AT)
+  assert.equal(quota.reason, 'quota')
+  // Being over an allowance is not the same as lacking a subscription: "额度不足"
+  // must keep reading as a plan problem.
+  assert.equal(
+    classifyDataProblem({ state: 'denied', noticeCode: 'route_not_allowed', notice: '当前套餐额度不足，请订阅更高档位' }, AT).reason,
+    'plan-denied',
+  )
+})
+
 test('data problem: network codes and unknown failures stay readable', () => {
   assert.equal(classifyDataProblem({ state: 'failed', noticeCode: 'timeout', notice: '连接超时' }, AT).reason, 'network')
   const unknown = classifyDataProblem({ state: 'failed', notice: 'x'.repeat(400) }, AT)
@@ -33,8 +52,9 @@ test('data problem: one shared sentence per actionable reason', async () => {
   const { friendlyDataNotice } = await import('../lib/service/data-source.js')
   const at = AT
   assert.equal(friendlyDataNotice({ state: 'denied', noticeCode: '401' }, '行情暂不可用', at), '行情需要 API Key（「设置」中配置后重试）')
-  assert.equal(friendlyDataNotice({ state: 'denied', noticeCode: 'route_not_allowed' }, '行情暂不可用', at), '当前 FTShare 套餐未开通该行情接口')
-  assert.equal(friendlyDataNotice({ state: 'failed', noticeCode: '429' }, '行情暂不可用', at), '免费行情额度已用尽，配置 API Key 或稍后重试')
+  assert.equal(friendlyDataNotice({ state: 'denied', noticeCode: 'route_not_allowed' }, '行情暂不可用', at), '该行情接口需要配置 API Key 或开通套餐')
+  assert.equal(friendlyDataNotice({ state: 'failed', noticeCode: '429' }, '行情暂不可用', at), '行情额度已用尽：配置 API Key 或等待额度恢复')
+  assert.equal(friendlyDataNotice({ state: 'denied', noticeCode: 'UPSTREAM_UNAVAILABLE', notice: '最近 1 天最多访问 500 次' }, '行情暂不可用', at), '行情额度已用尽：配置 API Key 或等待额度恢复')
   assert.equal(friendlyDataNotice({ state: 'failed', noticeCode: 'timeout' }, '行情暂不可用', at), '行情服务暂时不可用，请稍后重试')
   // Unknown causes may pass through a short notice, never adapter internals.
   assert.equal(friendlyDataNotice({ state: 'failed', notice: '行情服务未就绪' }, '行情暂不可用', at), '行情服务未就绪')

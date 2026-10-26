@@ -106,13 +106,14 @@ const NETWORK_CODES = new Set([
 ])
 
 /**
- * Suffix the shared FTShare bundle appends to a spent anonymous quota.
+ * 额度用尽在提示文案里的信号。
  *
- * `UPSTREAM_UNAVAILABLE` is deliberately the same code the gateway returns for
- * a real outage, so the code alone cannot tell them apart. This literal copies
- * the bundle's `FTSHARE_QUOTA_NOTICE`; if that wording changes, update it here.
+ * 上游把「匿名额度耗尽」和「真的停机」报成同一个码（`UPSTREAM_UNAVAILABLE`），
+ * 额度这件事只写在文案里（「最近 1 天最多访问 500 次」），bundle 还会在提示后缀
+ * `免费配额用尽…`。因此这里认「用尽 / 耗尽 / 最多访问」这类表述，**不认「额度」
+ * 二字**：套餐提示里也常出现「额度」，照字面读会把套餐问题说成额度问题。
  */
-const QUOTA_SENTINEL = '免费配额用尽'
+const QUOTA_TEXT = /免费配额用尽|配额用尽|额度(?:已)?用尽|额度耗尽|最多访问/
 
 /** Longest upstream cause kept in a problem record. */
 const MESSAGE_MAX_LENGTH = 160
@@ -138,7 +139,7 @@ export function classifyDataProblem(
   if (code !== undefined && AUTH_CODES.has(code)) reason = 'invalid-key'
   else if (code !== undefined && PLAN_CODES.has(code)) reason = 'plan-denied'
   else if (code !== undefined && QUOTA_CODES.has(code)) reason = 'quota'
-  else if (text.includes(QUOTA_SENTINEL)) reason = 'quota'
+  else if (QUOTA_TEXT.test(text)) reason = 'quota'
   else if (code !== undefined && NETWORK_CODES.has(code)) reason = 'network'
   // `denied` is the FTShare layer's permission verdict; without a specific
   // code it still means "the plan/credential does not cover this interface".
@@ -165,8 +166,12 @@ export function friendlyDataNotice(
   const problem = classifyDataProblem(input, at)
   switch (problem?.reason) {
     case 'invalid-key': return '行情需要 API Key（「设置」中配置后重试）'
-    case 'plan-denied': return '当前 FTShare 套餐未开通该行情接口'
-    case 'quota': return '免费行情额度已用尽，配置 API Key 或稍后重试'
+    // A keyless beginner must not read "套餐" as something they already own: name
+    // both routes, since the free tier has no plan at all.
+    case 'plan-denied': return '该行情接口需要配置 API Key 或开通套餐'
+    // The same reason also covers a keyed account being throttled, so the remedy
+    // names the allowance rising instead of assuming no key is configured.
+    case 'quota': return '行情额度已用尽：配置 API Key 或等待额度恢复'
     case 'network': return '行情服务暂时不可用，请稍后重试'
     default: break
   }

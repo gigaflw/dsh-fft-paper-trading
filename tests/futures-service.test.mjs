@@ -539,7 +539,7 @@ test('futures: data failures use the same guidance copy as the stock account', a
     subject.data.quotes = async () => ({ state: 'failed', notice: quotaNotice, noticeCode: 'UPSTREAM_UNAVAILABLE' })
     const quota = await subject.service.quote([SYMBOL])
     assert.equal(quota.state, 'failed')
-    assert.equal(quota.notice, '免费行情额度已用尽，配置 API Key 或稍后重试')
+    assert.equal(quota.notice, '行情额度已用尽：配置 API Key 或等待额度恢复')
 
     subject.data.quotes = async () => ({ state: 'denied', notice: 'FTShare 无权访问 ft_v4_futures_minutes_realtime：API Key 缺失', noticeCode: '401' })
     const auth = await subject.service.quote([SYMBOL])

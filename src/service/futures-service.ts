@@ -489,9 +489,12 @@ export class FuturesService {
       return this.contractsCache
     }
     if (cached !== undefined && cached.tradeDate === tradeDate) {
-      return { ...cached, state: 'stale', notice: result.notice ?? '合约索引刷新失败，使用缓存' }
+      // The adapter composes this cause with the raw upstream text, which carries
+      // interface names and codes; keep the cache date, run the cause through the
+      // shared filter so the tool summary stays readable.
+      return { ...cached, state: 'stale', notice: `合约索引刷新失败，沿用 ${cached.tradeDate} 缓存（${friendlyDataNotice(result, '上游暂不可用', this.ts())}）` }
     }
-    return { tradeDate, map: new Map(), state: 'stale', notice: result.notice ?? '合约索引不可用' }
+    return { tradeDate, map: new Map(), state: 'stale', notice: `合约索引不可用：${friendlyDataNotice(result, '上游暂不可用', this.ts())}` }
   }
 
   private async symbolData(state: FuturesAccountState, symbol: string, nowIso: string): Promise<SymbolData> {
