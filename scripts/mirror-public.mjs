@@ -18,12 +18,12 @@
  * dev history is never rewritten.
  *
  * The rewrite is incremental and deterministic: the internal→public mapping is
- * cached in `<git-dir>/public-snapshot.public.json`, so a later run replays only
+ * cached in `<git-dir>/public-mirror.public.json`, so a later run replays only
  * the new commits and the already published history keeps its SHAs.
  *
  * Usage:
- *   node scripts/public-snapshot.mjs [--ref <ref>] [--reset] [--dry-run]
- *   node scripts/public-snapshot.mjs --help
+ *   node scripts/mirror-public.mjs [--ref <ref>] [--reset] [--dry-run]
+ *   node scripts/mirror-public.mjs --help
  *
  * After it runs:
  *   git push --force github public:main
@@ -72,12 +72,12 @@ const git = (args, options = {}) =>
   execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, ...options })
 const gitRaw = (args, input) =>
   execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'buffer', input, maxBuffer: 512 * 1024 * 1024 })
-const fail = message => { throw new Error(`public-snapshot: ${message}`) }
+const fail = message => { throw new Error(`mirror-public: ${message}`) }
 
 const repoPath = relative => resolve(repoRoot, git(['rev-parse', relative]).trim())
 const gitCommonDir = repoPath('--git-common-dir')
-const statePath = join(gitCommonDir, `public-snapshot.${BRANCH}.json`)
-const indexEnv = { ...process.env, GIT_INDEX_FILE: join(gitCommonDir, `public-snapshot.${process.pid}.index`) }
+const statePath = join(gitCommonDir, `public-mirror.${BRANCH}.json`)
+const indexEnv = { ...process.env, GIT_INDEX_FILE: join(gitCommonDir, `public-mirror.${process.pid}.index`) }
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 /** Cached rewrite state of a previous run, trusted only for commits still reachable from the branch. */
