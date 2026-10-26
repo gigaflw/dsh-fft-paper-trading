@@ -3,14 +3,15 @@
  * Mirror the internal history onto the `public` branch that the GitHub
  * repository carries.
  *
- * The public repo ships the plugin, its tests and the release notes only. Design
- * notes, agent instructions and the local profile helper stay internal, so every
- * internal commit is replayed with the same tree minus `docs/` (except
- * `docs/releases.md`), minus `AGENTS.md` and `scripts/sync-profile.mjs`, and with
- * the `sync-profile` npm script removed from the manifest. Message, author,
- * committer and dates are byte-for-byte the internal ones, so GitHub shows the
- * real commit history instead of one squashed snapshot. A commit that only
- * touches internal files is dropped rather than published empty.
+ * The public repo ships the plugin, its tests and the changelog only. Design
+ * notes, agent instructions and the local helpers stay internal, so every
+ * internal commit is replayed with the same tree minus `docs/`, minus
+ * `AGENTS.md`, `scripts/sync-profile.mjs` and `scripts/mirror-public.mjs`, and
+ * with the `sync-profile`, `public:snapshot` and `public:mirror` npm scripts
+ * removed from the manifest. Message, author, committer and dates are
+ * byte-for-byte the internal ones, so GitHub shows the real commit history
+ * instead of one squashed snapshot. A commit that only touches internal files
+ * is dropped rather than published empty.
  *
  * Nothing touches the worktree or the real index: trees are built in a scratch
  * index, commit objects are written straight to the object database, and only
@@ -59,14 +60,13 @@ const RESET = flag('reset')
 const DRY_RUN = flag('dry-run')
 
 const CONFIG = {
-  version: 2,
-  excludedFiles: ['AGENTS.md', 'scripts/sync-profile.mjs'],
-  keptDocs: ['docs/releases.md'],
-  droppedScripts: ['sync-profile'],
+  version: 3,
+  excludedFiles: ['AGENTS.md', 'scripts/sync-profile.mjs', 'scripts/mirror-public.mjs'],
+  requiredPublicFiles: ['README.md', 'CHANGELOG.md'],
+  droppedScripts: ['sync-profile', 'public:snapshot', 'public:mirror'],
 }
 const CONFIG_ID = createHash('sha256').update(JSON.stringify(CONFIG)).digest('hex').slice(0, 16)
-const isExcluded = path => CONFIG.excludedFiles.includes(path)
-  || (path.startsWith('docs/') && !CONFIG.keptDocs.includes(path))
+const isExcluded = path => CONFIG.excludedFiles.includes(path) || path.startsWith('docs/')
 
 const git = (args, options = {}) =>
   execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, ...options })
@@ -90,16 +90,6 @@ const loadState = () => {
   } catch {
     return fresh
   }
-}
-
-const batchCheck = shas => {
-  const out = git(['cat-file', '--batch-check'], { input: `${shas.join('\n')}\n` }).trim()
-  const present = new Set()
-  for (const line of out.split('\n').filter(Boolean)) {
-    const [sha, type] = line.split(' ')
-    if (type !== 'missing') present.add(sha)
-  }
-  return present
 }
 
 /** Raw commit objects for the commits this run has to replay. */
@@ -251,6 +241,9 @@ try {
 
   const tip = published.get(baseSha)
   if (!tip) fail(`${BASE} is not publishable (it only touches internal files)`)
+  for (const path of CONFIG.requiredPublicFiles) {
+    if (git(['ls-tree', tip, '--', path]).trim() === '') fail(`public tree is missing ${path}`)
+  }
 
   const tagTargets = []
   const skippedTags = []

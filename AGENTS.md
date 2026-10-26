@@ -12,8 +12,7 @@
 ## Rules
 > 与 fft bundle 共享
 - 用户可感知的改动在 commit 正文写一行 `RN: <中文一句，用户视角，≤40 字>`；一个提交有多处变化就写多行
-- Release note 统一追加到 `docs/releases.md`，按版本号倒序维护：「功能更新」= 发布区间内的 `RN:` 行，「组件更新」= 发生版本变化的包
-- bump bundle 版本时同时更新 `docs/releases.md`
+- Release note 统一写进根目录 `CHANGELOG.md`（Keep a Changelog 格式）：定版时一次性补齐该版本段 `## [X.Y.Z] - YYYY-MM-DD`，把发布区间的 `RN:` 行按语义分到 `### Added` / `### Changed` / `### Fixed` / `### Removed`，版本变化列在 `### Components`，文末补 compare 链接
 - skill 内容精简精确
 - skill 的 `description` 只回答「什么时候读」，一句话说清用户要达成的**目标**，不列机制名、文件名、参数、步骤——写细了正文一改就得跟着改；相邻 skill 撞车时补一句「不用于…」划界，同时出现即命中同一类词根（如两个 skill 都写 Feishu）是撞车的主因
 - `description` 里不要出现 `: `（YAML 明文标量会被解析成映射，skill 直接从目录消失，且不报错）
@@ -42,6 +41,7 @@
 ## 文档
 > 与 fft bundle 共享
 - `docs/` 只放本包知识：设计（`design.md`）、MVP 范围、进度、UI 预览与调研；不引用主仓或其他子仓的文档，跨仓出处用文字说明
+- `CHANGELOG.md` 是唯一的对外变更记录，放根目录；`docs/` 不收录 release note
 - 调查默认不归档：除非用户明确要求留档，结论直接用于决策或落地，不写进 `docs/investigation/`
 - 根 `README.md` 只写简介 + 使用方式，面向使用者；构建、打包、测试等开发命令不进 README，实现细节写进 `docs/`
 - 调查 DSH 宿主、插件安装或分发行为前，先搜 `dsh-fft-bundle` 仓的 dsh 相关 skill 与 `docs/` 全目录（含 HTML），已覆盖的直接引用，不重复调查；缺的再查 DSH 源码
