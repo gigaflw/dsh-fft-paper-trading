@@ -13,7 +13,7 @@
  * Options:
  *   --main <dir>        Main plugin repo (default: ../../dsh-fft-bundle next to this repo)
  *   --kline <dir>       dsh_kline checkout (default: ../dsh_kline)
- *   --kline-ref <ref>   kline git ref to inline (default: v0.4.0-ft.1)
+ *   --kline-ref <ref>   kline git ref to inline (default: v0.4.0-ft.2)
  *   --out <dir>         Archive directory for the tarball (default: releases/)
  *   -h, --help          Print this help
  *
@@ -38,7 +38,7 @@ if (argv.includes('-h') || argv.includes('--help')) {
 
 const mainRepo = resolve(option('main', join(repoRoot, '..', '..', 'dsh-fft-bundle')))
 const klineRepo = resolve(option('kline', join(repoRoot, '..', 'dsh_kline')))
-const klineRef = option('kline-ref', 'v0.4.0-ft.1')
+const klineRef = option('kline-ref', 'v0.4.0-ft.2')
 const outDir = resolve(option('out', join(repoRoot, 'releases')))
 const workDir = join(repoRoot, 'dsh_tmp', 'npm-pack')
 const staging = join(workDir, 'staging')
