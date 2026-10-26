@@ -258,6 +258,9 @@ test('browser bundle: header badge carries the four data-source states', () => {
   }
   assert.match(source, /function DataSourceBadge/)
   assert.match(source, /\.pt-source \{/)
+  // The badge has no padding: bottom-aligning it against the padded buttons
+  // lifts its text, so it must sit on the row's centre line instead.
+  assert.match(source, /\.pt-source \{[^}]*align-self:center/)
   assert.match(source, /\.pt-source\[data-state="configured"\] \.pt-source-dot/)
   assert.match(source, /\.pt-source\[data-state="invalid"\] \.pt-source-dot/)
   // Both dashboards refresh the badge inside the account bundle they already poll.
