@@ -1,6 +1,6 @@
 {
   "name": "@dsh-ft/dsh-fft-paper-trading",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "A-share and commodity futures paper trading for DeepSeek Harness: local ledger, batch orders, review, and FTShare quotes.",
   "type": "module",
   "main": "lib/index.js",
