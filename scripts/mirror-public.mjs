@@ -5,8 +5,9 @@
  *
  * The public repo ships the plugin, its tests and the changelog only. Design
  * notes, agent instructions and the local helpers stay internal, so every
- * internal commit is replayed with the same tree minus `docs/`, minus
- * `AGENTS.md`, `scripts/sync-profile.mjs` and `scripts/mirror-public.mjs`, and
+ * internal commit is replayed with the same tree minus `docs/` and
+ * `.agents/`, minus `AGENTS.md`, `scripts/sync-profile.mjs` and
+ * `scripts/mirror-public.mjs`, and
  * with the `sync-profile`, `public:snapshot` and `public:mirror` npm scripts
  * removed from the manifest. Message, author, committer and dates are
  * byte-for-byte the internal ones, so GitHub shows the real commit history
@@ -62,11 +63,13 @@ const DRY_RUN = flag('dry-run')
 const CONFIG = {
   version: 3,
   excludedFiles: ['AGENTS.md', 'scripts/sync-profile.mjs', 'scripts/mirror-public.mjs'],
+  excludedPrefixes: ['docs/', '.agents/'],
   requiredPublicFiles: ['README.md', 'CHANGELOG.md'],
   droppedScripts: ['sync-profile', 'public:snapshot', 'public:mirror'],
 }
 const CONFIG_ID = createHash('sha256').update(JSON.stringify(CONFIG)).digest('hex').slice(0, 16)
-const isExcluded = path => CONFIG.excludedFiles.includes(path) || path.startsWith('docs/')
+const isExcluded = path => CONFIG.excludedFiles.includes(path)
+  || CONFIG.excludedPrefixes.some(prefix => path.startsWith(prefix))
 
 const git = (args, options = {}) =>
   execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, ...options })

@@ -221,6 +221,20 @@ const required = [
 for (const path of required) {
   if (!listing.includes(path)) fail(`tarball is missing ${path}`)
 }
+// Internal paths must never reach a published artifact: the npm files list and
+// the inlined packages are the only allowed sources, so a hit here means the
+// manifest or the inliner picked up something it should not ship.
+const FORBIDDEN = [
+  /^package\/AGENTS\.md$/u,
+  /^package\/\.agents\//u,
+  /^package\/docs\//u,
+  /^package\/tests\//u,
+  /^package\/scripts\//u,
+  /^package\/\.env$/u,
+]
+const leaked = listing.filter(path => FORBIDDEN.some(pattern => pattern.test(path)))
+if (leaked.length > 0) fail(`tarball carries internal paths: ${leaked.slice(0, 5).join(', ')}`)
+
 const bytes = statSync(tarballPath).size
 const sha = createHash('sha256').update(readFileSync(tarballPath)).digest('hex')
 console.log(`tarball: ${tarballPath}`)
