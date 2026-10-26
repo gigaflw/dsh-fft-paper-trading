@@ -53,7 +53,7 @@ jobs:
           KLINE_REF=$(node -p "require('./package.json').release.klineRef")
           git clone --depth 1 --branch "$KLINE_REF" https://github.com/gigaflw/dsh_kline.git "$RUNNER_TEMP/dsh_kline"
           node scripts/pack-npm.mjs --kline "$RUNNER_TEMP/dsh_kline"
-          TARBALL=$(ls releases/*.tgz)
+          TARBALL=$(realpath releases/*.tgz)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           sha256sum "$TARBALL"
