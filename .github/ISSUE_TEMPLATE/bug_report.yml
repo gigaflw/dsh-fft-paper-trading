@@ -1,0 +1,80 @@
+name: Bug 报告
+description: 面板、下单、持仓、复盘、行情或账本出问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        贴日志或截图前，请先删掉 API Key、账户数据与账本路径。
+        新功能建议请用「功能建议」模板。
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 插件版本
+      description: 面板顶栏或 DSH 插件列表可查；不确定可留空
+      placeholder: 0.4.1
+    validations:
+      required: false
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH 版本
+      placeholder: 0.2.1-rc.2
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - 其他
+    validations:
+      required: true
+  - type: dropdown
+    id: data-source
+    attributes:
+      label: 行情数据源状态（顶栏徽标）
+      description: 不清楚就选「不确定」
+      options:
+        - 正常（已配置 Key，实时行情）
+        - 免费档（未配置 Key，取日 K 收盘）
+        - 无（数据服务未安装）
+        - 无效（Key 校验失败）
+        - 不确定
+    validations:
+      required: false
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 发生了什么？页面上的提示文案或错误码是什么？
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开「模拟交易」
+        2. 输入代码并下单
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 已删掉 API Key、账户数据与账本路径
+      render: shell
+    validations:
+      required: false

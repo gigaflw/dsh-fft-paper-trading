@@ -1,0 +1,36 @@
+name: 功能建议
+description: 想要的新功能、新市场或交互改进
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的不便
+      description: 现在怎么做？哪里别扭或做不到？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的做法
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 涉及范围
+      options:
+        - 下单 / 持仓
+        - 行情 / K 线
+        - 复盘 / 统计
+        - 期货
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的其他方案
+    validations:
+      required: false
