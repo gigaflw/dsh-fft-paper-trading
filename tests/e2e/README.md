@@ -30,7 +30,7 @@ node tests/e2e/offline-ledger.mjs      # 0 = 全过
 node tests/e2e/offline-matching.mjs
 ```
 
-不需要应用、不碰 `~/.dsh`，数据写在 `tmp/`。适合改完账本/撮合逻辑先跑一遍，再看 UI。
+不需要应用、不碰 `~/.dsh`，数据写在 `build/`。适合改完账本/撮合逻辑先跑一遍，再看 UI。
 
 ## 2. 假数据全链路（可复跑，会接管面板）
 
@@ -39,7 +39,7 @@ node tests/e2e/flow-fake.mjs           # 0 = 全过；失败会打印第一处�
 ```
 
 做法：
-1. `fake-backend.mjs` 用隔离 `tmp/e2e-home` 起一个真 `PaperService`，时钟、行情都由本进程控制；
+1. `fake-backend.mjs` 用隔离 `build/e2e-home` 起一个真 `PaperService`，时钟、行情都由本进程控制；
 2. 页面里把 `window.fetch` 对 `/api/ft-paper-trading` 的请求转发到 `127.0.0.1:4599/rpc`（宿主注册的
    route 不在网络栈上，CDP 的 Fetch domain 拦不到，所以只能改页面里的 fetch）；
 3. 脚本按剧本推进：设代码 → 断言实时预览 → 市价买入 → 持仓/T+1 → 改报价看自动刷新 → 换日 →
@@ -73,7 +73,7 @@ node tests/e2e/cdp.mjs watch 30          # 盯面板是否被切走/是否刷新
 
 ```bash
 pnpm build                     # ui-panel 直接读 lib/client.js
-mkdir -p tmp/ui-deps && (cd tmp/ui-deps && npm i react@18.3.1 react-dom@18.3.1)
+mkdir -p build/ui-deps && (cd build/ui-deps && npm i react@18.3.1 react-dom@18.3.1)
 node tests/e2e/ui-panel.mjs    # 0 = 全过；失败打印第一处 DOM 断言
 ```
 
@@ -91,7 +91,7 @@ node tests/e2e/futures-offline.mjs  # 0 = 全过
 
 都用真 service + 真 RPC handler + 假行情：批量覆盖 CSV 预览、费用/整手/剩余现金、逐行成交、
 账本落盘、同 `batchId` 幂等与收盘后整批拒绝；期货覆盖开多、保证金/现金/权益、重启重放、次日平仓、
-15:30 日结算、收盘后拒单。数据写 `tmp/`，不碰 `~/.dsh`。
+15:30 日结算、收盘后拒单。数据写 `build/`，不碰 `~/.dsh`。
 
 ## 坑（都是真踩过的）
 
@@ -102,7 +102,7 @@ node tests/e2e/futures-offline.mjs  # 0 = 全过
   看 `title` 确认。
 - **重置的确认框是原生 `window.confirm`**：CDP 能代按，`PT_CONFIRM=1` 时 `cdp.mjs` 自动接受；
   手动驱动时先 `Page.enable` 并处理 `Page.javascriptDialogOpening`，否则 eval 会一直挂着。
-- **真实账本不要拿来试**：假后端用 `tmp/e2e-home`；探索性点击时确认面板连的是哪个后端
+- **真实账本不要拿来试**：假后端用 `build/e2e-home`；探索性点击时确认面板连的是哪个后端
   （`node tests/e2e/cdp.mjs text .pt-root` 看「初始/时间」是否对得上）。
 - **交易时段**：真实后端下收盘后只能预埋限价单；想看成交/持仓/隔夜，用假后端（方法 2）或等开盘。
 - 面板的 5 秒刷新只拉账户，不重算预览；报价行随输入/刷新更新，别据此判断「卡住了」。

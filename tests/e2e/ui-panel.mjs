@@ -10,7 +10,7 @@
  *
  * 前置：`pnpm build`（本脚本直接读 lib/client.js）；react-dom UMD 需要可寻址。
  * 本机一次性准备：
- *   mkdir -p tmp/ui-deps && (cd tmp/ui-deps && npm i react@18.3.1 react-dom@18.3.1)
+ *   mkdir -p build/ui-deps && (cd build/ui-deps && npm i react@18.3.1 react-dom@18.3.1)
  * 或用 REACT_UMD_DIR 指向同时含 react.development.js / react-dom.development.js 的目录。
  */
 import http from 'node:http'
@@ -30,7 +30,7 @@ const findUmd = () => {
   const explicit = process.env.REACT_UMD_DIR
   if (explicit) return explicit
   const candidates = [
-    join(root, 'tmp/ui-deps/node_modules'),
+    join(root, 'build/ui-deps/node_modules'),
     join(root, 'node_modules'),
   ]
   for (const base of candidates) {
@@ -55,7 +55,7 @@ const freePort = async () => {
 }
 const pagePort = await freePort()
 const cdpPort = await freePort()
-const profile = mkdtempSync(join(root, 'tmp', 'e2e-ui-'))
+const profile = mkdtempSync(join(root, 'build', 'e2e-ui-'))
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' }
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x')

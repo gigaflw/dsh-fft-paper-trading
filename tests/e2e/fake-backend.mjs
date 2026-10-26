@@ -7,7 +7,7 @@
  * /rpc（见 flow-fake.mjs），本进程随后用 lib/ 里的真服务跑账本。
  *
  * 用法：
- *   node tests/e2e/fake-backend.mjs [--port 4599] [--home tmp/e2e-home]
+ *   node tests/e2e/fake-backend.mjs [--port 4599] [--home build/e2e-home]
  *                                   [--clock 2026-10-22T09:31:00+08:00]
  * 控制口：
  *   GET  /state          账户/持仓/订单/成交快照
@@ -34,7 +34,7 @@ function take(name, fallback) {
 
 export async function startFakeBackend({
   port = Number(take('port', process.env.PT_FAKE_PORT ?? 4599)),
-  home = take('home', join(repoRoot, 'tmp', 'e2e-home')),
+  home = take('home', join(repoRoot, 'build', 'e2e-home')),
   clock = take('clock', '2026-10-22T09:31:00+08:00'),
 } = {}) {
   await rm(home, { recursive: true, force: true })

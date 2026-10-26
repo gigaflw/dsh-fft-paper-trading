@@ -6,7 +6,7 @@
  *
  * 前置：应用带 --remote-debugging-port=9023 启动；`lib/` 已构建（pnpm build）。
  * 副作用：会接管面板（切 tab、下单），结束时恢复 window.fetch 并刷新回真实后端；
- *        账本写在 tmp/e2e-home，不碰 ~/.dsh/paper-trading。
+ *        账本写在 build/e2e-home，不碰 ~/.dsh/paper-trading。
  */
 import { startFakeBackend } from './fake-backend.mjs'
 import { connect } from './cdp.mjs'

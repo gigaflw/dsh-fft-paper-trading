@@ -92,7 +92,7 @@ test('price limit: board and ST ratios', () => {
 })
 
 test('service: pre-open queues, opens at 09:30 and fills', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `session-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `session-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '09:20') }
   const service = makeService(home, data, now)
@@ -117,7 +117,7 @@ test('service: pre-open queues, opens at 09:30 and fills', async () => {
 })
 
 test('service: 15:00 close expires day orders, next 09:30 unlocks T+1', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `close-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `close-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '10:00') }
   const service = makeService(home, data, now)
@@ -157,7 +157,7 @@ test('service: 15:00 close expires day orders, next 09:30 unlocks T+1', async ()
 })
 
 test('service: offline days only backfill snapshots, never fills', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `offline-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `offline-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '10:00') }
   const service = makeService(home, data, now)
@@ -184,7 +184,7 @@ test('service: offline days only backfill snapshots, never fills', async () => {
 })
 
 test('service: a market order fills in one chunk and never asks for minute volume', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `m2-fill-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `m2-fill-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '10:00') }
   const service = makeService(home, data, now)
@@ -217,7 +217,7 @@ test('service: a market order fills in one chunk and never asks for minute volum
 })
 
 test('service: suspended and out-of-limit orders are rejected', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `limit-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `limit-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '10:00') }
   const service = makeService(home, data, now)
@@ -239,7 +239,7 @@ test('service: suspended and out-of-limit orders are rejected', async () => {
 
 
 test('service: lunch queued limit is released at 13:00 and fills', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `lunch-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `lunch-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '11:40') }
   const service = makeService(home, data, now)
@@ -262,7 +262,7 @@ test('service: lunch queued limit is released at 13:00 and fills', async () => {
 
 
 test('service: pre-open sell of yesterday T+1 shares is queued, not rejected', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `presell-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `presell-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '10:00') }
   const service = makeService(home, data, now)
@@ -288,7 +288,7 @@ test('service: pre-open sell of yesterday T+1 shares is queued, not rejected', a
 })
 
 test('service: next boundary is today before the open and skips the weekend after close', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `boundary-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `boundary-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-23', '00:04') }
   const service = makeService(home, data, now)
@@ -326,7 +326,7 @@ test('service: next boundary is today before the open and skips the weekend afte
 })
 
 test('service: next boundary skips a holiday instead of using today', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `holiday-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `holiday-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-23', '00:04') }
   const calendar = {
@@ -352,7 +352,7 @@ test('service: next boundary skips a holiday instead of using today', async () =
 })
 
 test('service: auction-close limit orders are rejected instead of expiring at the close', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `auction-close-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `auction-close-${process.pid}-${Date.now()}`)
   const data = makeData()
   const now = { current: at('2026-10-21', '14:58') }
   const service = makeService(home, data, now)

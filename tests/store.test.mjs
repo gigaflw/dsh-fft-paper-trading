@@ -8,7 +8,7 @@ import { eventsPath } from '../lib/store/paths.js'
 import { ShortlistStore } from '../lib/store/shortlist.js'
 
 function makeHome(name) {
-  return join(process.cwd(), 'tmp', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
+  return join(process.cwd(), 'build', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
 }
 
 test('store: appends JSONL and ignores a malformed tail line', async () => {

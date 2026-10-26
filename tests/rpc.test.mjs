@@ -12,7 +12,7 @@ import { ShortlistStore } from '../lib/store/shortlist.js'
 const NOW = new Date('2026-10-19T02:00:00.000Z')
 
 test('rpc: preview, place, unknown endpoint and envelope', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `rpc-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `rpc-${process.pid}-${Date.now()}`)
   const prices = new Map([['600519.SH', { symbol: '600519.SH', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }]])
   const data = {
     async quotes(symbols) {
@@ -91,7 +91,7 @@ test('rpc: preview, place, unknown endpoint and envelope', async () => {
 })
 
 test('rpc: basket preview and place payloads', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `rpc-basket-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `rpc-basket-${process.pid}-${Date.now()}`)
   const prices = new Map([
     ['600519.SH', { symbol: '600519.SH', last: 10, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
     ['000001.SZ', { symbol: '000001.SZ', last: 20, marketTs: NOW.toISOString(), fetchedAt: NOW.toISOString() }],
@@ -182,7 +182,7 @@ test('rpc: basket preview and place payloads', async () => {
 })
 
 test('route: wrong method, malformed body, oversize and bad endpoint are rejected', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `route-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `route-${process.pid}-${Date.now()}`)
   const data = {
     async quotes() { return { state: 'ok', quotes: [] } },
     async dailyBars() { return { state: 'ok', bars: [] } },
@@ -227,7 +227,7 @@ test('route: wrong method, malformed body, oversize and bad endpoint are rejecte
 })
 
 test('rpc: an aborted request returns the cancellation envelope', async () => {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `abort-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `abort-${process.pid}-${Date.now()}`)
   const data = {
     async quotes() { return { state: 'ok', quotes: [] } },
     async dailyBars() { return { state: 'ok', bars: [] } },
