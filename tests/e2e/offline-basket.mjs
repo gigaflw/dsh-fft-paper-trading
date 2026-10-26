@@ -4,7 +4,7 @@
  *
  *   node tests/e2e/offline-basket.mjs
  *
- * 不启应用、不碰 ~/.dsh；数据写 tmp/。退出码 0 = 全过。
+ * 不启应用、不碰 ~/.dsh；数据写 build/。退出码 0 = 全过。
  * 覆盖：CSV 预览、费用/整手/剩余现金、RPC 下单、逐行成交、账本落盘、
  * 同 batchId 幂等、收盘后整批拒绝。
  */

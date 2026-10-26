@@ -5,12 +5,12 @@ import { join } from 'node:path'
 import { FtshareFuturesMarketData } from '../lib/data/futures-market-data.js'
 
 // `$DSH_HOME` is re-pointed per test; the cache file lives under it.
-const TMP_ROOT = join(import.meta.dirname, '..', 'tmp')
-mkdirSync(TMP_ROOT, { recursive: true })
+const SCRATCH_ROOT = join(import.meta.dirname, '..', 'build')
+mkdirSync(SCRATCH_ROOT, { recursive: true })
 const homes = []
 
 function freshHome() {
-  const home = mkdtempSync(join(TMP_ROOT, 'futures-adapter-'))
+  const home = mkdtempSync(join(SCRATCH_ROOT, 'futures-adapter-'))
   process.env.DSH_HOME = home
   homes.push(home)
   return home

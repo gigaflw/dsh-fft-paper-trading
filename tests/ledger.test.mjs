@@ -24,7 +24,7 @@ const bar = (date, close, extra = {}) => ({
 })
 
 function makeHome(name) {
-  return join(process.cwd(), 'tmp', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
+  return join(process.cwd(), 'build', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
 }
 
 async function writeLedger(home, events) {

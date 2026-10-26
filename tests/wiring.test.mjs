@@ -13,7 +13,7 @@ const TOOL_NAMES = [
 
 /** Scratch `$DSH_HOME` so both tests open their own ledger. */
 async function withHome(name, body) {
-  const home = join(process.cwd(), 'tmp', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
+  const home = join(process.cwd(), 'build', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
   const previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = home
   try {

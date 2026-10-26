@@ -17,7 +17,7 @@ const DAY1_ISO = DAY1.toISOString()
 const DAY2_ISO = DAY2.toISOString()
 
 function makeHome(name) {
-  return join(process.cwd(), 'tmp', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
+  return join(process.cwd(), 'build', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
 }
 
 function makeData() {

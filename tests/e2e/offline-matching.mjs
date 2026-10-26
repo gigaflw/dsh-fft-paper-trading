@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { AccountRepo, PaperService, WeekdayTradingCalendar } from '../../lib/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const home = join(root, 'tmp', 'e2e-offline-matching')
+const home = join(root, 'build', 'e2e-offline-matching')
 const failures = []
 const assert = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail && !ok ? `  ← ${detail}` : ''}`)
@@ -72,7 +72,7 @@ assert('不产生部分成交', partial.length === 0)
 assert('市价单从不挂单', (await service.orders()).every(order => order.type !== 'market' || order.status !== 'pending'))
 
 // 旧版本账本（ledgerVersion 2）不再兼容：锁户，而不是猜着迁移
-const legacyHome = join(root, 'tmp', 'e2e-offline-matching-legacy')
+const legacyHome = join(root, 'build', 'e2e-offline-matching-legacy')
 await rm(legacyHome, { recursive: true, force: true })
 await mkdir(join(legacyHome, 'paper-trading', 'default'), { recursive: true })
 await writeFile(join(legacyHome, 'paper-trading', 'default', 'events.jsonl'), `${JSON.stringify({

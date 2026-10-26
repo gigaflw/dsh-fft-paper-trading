@@ -10,7 +10,7 @@ import { WeekdayTradingCalendar } from '../lib/data/trading-calendar-port.js'
 const at = (date, hhmm) => new Date(`${date}T${hhmm}:00+08:00`)
 
 function makeHome(name) {
-  return join(process.cwd(), 'tmp', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
+  return join(process.cwd(), 'build', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}`)
 }
 
 function makeData() {

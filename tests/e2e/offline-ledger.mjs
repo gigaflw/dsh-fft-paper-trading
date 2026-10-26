@@ -9,7 +9,7 @@
  *   2. 旧版本账本不再兼容，直接锁户并要求重置；
  *   3. 000001 在账本里只以 000001.SZ 存在，指数订单被拒；
  *   4. NaN 成交会让账本判非法并锁定，但「重置」能把账本原子重写成单条 genesis。
- * 数据全部写入 tmp/，退出码 0=全过。
+ * 数据全部写入 build/，退出码 0=全过。
  */
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -17,8 +17,8 @@ import { fileURLToPath } from 'node:url'
 import { AccountRepo, PAPER_LEDGER_VERSION, PaperService, WeekdayTradingCalendar } from '../../lib/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const home = join(root, 'tmp', 'e2e-offline-ledger')
-const oldHome = join(root, 'tmp', 'e2e-offline-ledger-old')
+const home = join(root, 'build', 'e2e-offline-ledger')
+const oldHome = join(root, 'build', 'e2e-offline-ledger-old')
 const ledgerPath = join(home, 'paper-trading', 'default', 'events.jsonl')
 const oldLedgerPath = join(oldHome, 'paper-trading', 'default', 'events.jsonl')
 

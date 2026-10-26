@@ -102,10 +102,10 @@ const changelogSection = version => {
   return body
 }
 
-/** Absolute path of the release notes, written to dsh_tmp/ when extracted. */
+/** Absolute path of the release notes, written to build/ when extracted. */
 const notesPath = (tag, version, custom) => {
   if (custom !== undefined) return resolve(repoRoot, custom)
-  const dir = join(repoRoot, 'dsh_tmp')
+  const dir = join(repoRoot, 'build')
   mkdirSync(dir, { recursive: true })
   const path = join(dir, `release-notes-${tag}.md`)
   writeFileSync(path, `${changelogSection(version)}\n`)

@@ -23,7 +23,7 @@ export const LIMIT = { symbol: SYMBOL, upper: 3400, lower: 3000, marginRate: 0.1
 export const SETTLE = { symbol: SYMBOL, feePerLotCents: 300, closeTodayFeePerLotCents: 600, longMarginRate: 0.09 }
 
 export function makeHome(name) {
-  return join(process.cwd(), 'tmp', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  return join(process.cwd(), 'build', 'paper-trading-test', `${name}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 }
 
 /** Shanghai wall-clock instant: `date` at `minutes` since midnight. */
