@@ -127,10 +127,14 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
         const symbols = Array.isArray(input.symbols) ? input.symbols.map(String) : [String(input.symbol ?? '')]
         const result = await service.quote(symbols.filter(Boolean))
         const lines = result.quotes.map(quote => {
-          const source = quote.source === 'daily-bar' ? '（日K收盘，免费档）' : ''
-          return `${formatSymbol(quote.symbol, quote.name)} 现价 ${quote.last.toFixed(2)}${source}`
+          // A quote recovered from the daily candles is a close, not a live tick;
+          // calling it 现价 would make the model quote a stale number as current.
+          const price = quote.source === 'daily-bar' ? `收盘 ${quote.last.toFixed(2)}（日K）` : `现价 ${quote.last.toFixed(2)}`
+          return `${formatSymbol(quote.symbol, quote.name)} ${price}`
         })
-        return { summary: lines.length > 0 ? lines.join('\n') : `行情不可用：${result.notice ?? result.state}`, data: result }
+        // `notice` is already a whole sentence ("免费行情额度已用尽…"), so prefixing
+        // it with 行情不可用 would only repeat the word.
+        return { summary: lines.length > 0 ? lines.join('\n') : (result.notice ?? '行情不可用'), data: result }
       } catch (error) {
         return fail(error)
       }

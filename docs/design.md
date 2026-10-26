@@ -747,11 +747,11 @@ FTShare 目录里已有的数据源（见主仓 `packages/dsh-fft-ftshare/catalo
 
 - 免费档（无 key 可用）：`ft_v1_stock_candlesticks`（历史日K）、`ft_v1_daec_stocks`、交易日历、停牌列表、期货基础数据/涨跌停/结算参数/历史K线；
 - 专业档：`ft_v4_stock_realtime_day_kline`、`ft_v4_stock_realtime_minute_kline`、`ft_v4_futures_minutes_realtime`；基础档：`ft_v2_stock_list_filter`、`ft_v2_stock_candlesticks_batch`、`ft_v2_stock_minutes`。
-- 无 key 时实时日K 返回 401，报价回退到历史日K：`Quote.source = 'daily-bar'`，面板显示「来源 FTShare 免费版」（实时档显示「来源 FTShare 实时」），更新时间带日期避免误读。**盘中该价是上一交易日收盘**，15:30 后才是当日收盘；撮合、预览、涨跌停（昨收来自日K）都按这个价算，所以功能可用但成交价不是实时价。
+- 无 key 时实时日K 返回 401，报价回退到历史日K：`Quote.source = 'daily-bar'`，面板显示「来源 日K收盘」（实时档显示「来源 FTShare 实时」）；报价行同理用「收盘」而不是「现价」，避免把上一交易日收盘当成现价读数，更新时间带日期避免误读。**盘中该价是上一交易日收盘**，15:30 后才是当日收盘；撮合、预览、涨跌停（昨收来自日K）都按这个价算，所以功能可用但成交价不是实时价。
 - 匿名通道另有 500 次/天额度（滚动 1 天），额度耗尽时上游返回 429。
-- **失败原因结构化**：适配器保留上游 `notice.code`，`classifyDataProblem` 按 `state + code` 归成 `invalid-key / plan-denied / quota / network / upstream`（配额另有上游固定后缀「免费配额用尽」可识别，`UPSTREAM_UNAVAILABLE` 与真实故障同码），不再靠正文正则猜；`paper-service` 的提示文案与面板 banner 共用这套原因。
-- **面板 banner**：交易/行情页顶部一条可关闭横幅，按原因给动作：无 Key →「获取 API Key」（`https://ftai.chat/ftshare`）+ 设置位置；额度耗尽 → 配置 Key/稍后重试；套餐未开通 → 只说明可用日K；网络/上游 → 重试；无数据服务 → 提示装底座。关闭按「原因」记忆（`localStorage: paper-trading:data-banner-dismissed`），原因变化后重新出现；文案只写「设置」，不点名具体设置栏目，避免栏目改名后指引失效；账本与手填参考价交易始终不受影响。
-- 期货侧同一条 banner；期货行情、tick、预览警告与开收盘回退都走 `friendlyDataNotice` 的同一套文案（不再透出上游接口名）。`paper_quote` 的摘要对日K回退报价标「（日K收盘，免费档）」，`paper_market` 的时段摘要带日历降级说明。
+- **失败原因结构化**：适配器保留上游 `notice.code`，`classifyDataProblem` 按 `state + code` 归成 `invalid-key / plan-denied / quota / network / upstream`。配额没有专属码：`UPSTREAM_UNAVAILABLE` 与真实故障同码，额度只写在文案里（「最近 1 天最多访问 500 次」），bundle 还会后缀「免费配额用尽」，所以 `reason = quota` 认的是**耗尽措辞**而不是「额度」二字（后者在套餐提示里也会出现）。bundle 侧（`dsh-fft-ftshare/errors`）的顺序是：显式权限码 → 配额 → 权限文案 → 普通失败。配额本身分两档：独占码（`insufficient_quota` / `quota_exceeded` / `quota_exhausted`）与信封 HTTP 429 可单独定案；共用码 `upstream_unavailable` 与未知码还要「用尽 / 耗尽 / 最多访问」的文案佐证——否则真停机也会被说成额度用尽。`paper-service` 的提示文案与面板 banner 共用这套原因。
+- **面板 banner**：交易/行情页顶部一条可关闭横幅，按原因给动作：无 Key →「获取 API Key」（`https://ftai.chat/ftshare`）+ 设置位置；额度耗尽 → 配置 Key，或等滚动 24 小时额度恢复（不写「今日」，额度不是按自然日清零）；套餐未开通 → 只说明可用日K；网络/上游 → 重试；无数据服务 → 提示装底座。关闭按「原因」记忆（`localStorage: paper-trading:data-banner-dismissed`），原因变化后重新出现；文案只写「设置」，不点名具体设置栏目，避免栏目改名后指引失效；账本与手填参考价交易始终不受影响。
+- 期货侧同一条 banner；期货行情、tick、预览警告与开收盘回退都走 `friendlyDataNotice` 的同一套文案（不再透出上游接口名）。`paper_quote` 的摘要对日K回退报价标「收盘（日K）」，对实时报价才写「现价」，`paper_market` 的时段摘要带日历降级说明。
 
 **已实测的数据缺口**
 

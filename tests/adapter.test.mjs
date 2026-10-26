@@ -184,5 +184,5 @@ test('ftshare adapter: a board beyond the scan cap says so instead of looking em
   const star = await data.marketList({ board: 'star', page: 1 })
   assert.equal(star.state, 'ok')
   assert.equal(star.quotes.length, 0)
-  assert.match(star.notice ?? '', /免费档行情列表/)
+  assert.match(star.notice ?? '', /翻页有上限/)
 })

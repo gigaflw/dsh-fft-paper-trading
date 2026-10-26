@@ -465,7 +465,9 @@ export class FtshareMarketData implements MarketDataPort {
       rawPage += 1
     }
     if (state === 'ok' && rows.length < wanted && notice === undefined) {
-      notice = '免费档行情列表只支持翻到较浅的页'
+      // Not a tier limit: this adapter stops scanning after LIST_MAX_RAW_PAGES,
+      // so say what the reader can do rather than naming a plan they may not have.
+      notice = '列表翻页有上限，可用搜索或换板块继续找'
     }
     return {
       state,

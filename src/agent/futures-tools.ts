@@ -223,9 +223,11 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
           limit: typeof input.limit === 'number' ? input.limit : undefined,
           refresh: input.refresh === true,
         })
+        // A stale cache is still "available": printing 合约索引不可用 in front of
+        // "…沿用 X 缓存" contradicted the notice and repeated the wording.
         const summary = result.state === 'ok' || result.contracts.length > 0
           ? renderContracts(result.contracts)
-          : `合约索引不可用：${result.notice ?? result.state}`
+          : (result.notice ?? '合约索引不可用')
         return { summary, data: result }
       } catch (error) {
         return fail(error)
@@ -242,7 +244,8 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
       try {
         const symbols = Array.isArray(input.symbols) ? input.symbols.map(String) : [String(input.symbol ?? '')]
         const result = await service.quote(symbols.filter(Boolean))
-        const summary = result.quotes.length > 0 ? renderQuotes(result.quotes) : `行情不可用：${result.notice ?? result.state}`
+        // `notice` is already a whole sentence; prefixing would only repeat 行情不可用.
+        const summary = result.quotes.length > 0 ? renderQuotes(result.quotes) : (result.notice ?? '行情不可用')
         return { summary, data: result }
       } catch (error) {
         return fail(error)
