@@ -280,18 +280,24 @@ test('browser bundle: a data problem becomes an actionable, dismissible banner',
   assert.match(source, /function bannerModel/)
   assert.match(source, /DATA_BANNER_DISMISS_KEY/)
   assert.match(source, /paper-trading:data-banner-dismissed/)
-  assert.match(source, /https:\/\/ftai\.chat\/ftshare/)
-  assert.ok(source.includes("'获取 API Key'"))
-  for (const copy of ['免费档行情额度已用尽', '当前套餐未开通实时行情', '行情服务暂时不可用', '行情数据服务未安装']) {
+  // The banner names the settings section instead of linking out: the settings
+  // card already carries the signup link, and a second URL drifts from it.
+  assert.match(source, /const KEY_SETTINGS = '设置 → 金融终端'/)
+  assert.ok(!source.includes('ftai.chat'), 'the banner must not carry its own signup URL')
+  assert.ok(!source.includes('获取 API Key'), 'no external-link action in the banner')
+  for (const copy of ['免费额度已用尽', '当前套餐未开通实时行情', '行情服务暂时不可用', '行情数据服务未安装']) {
     assert.ok(source.includes(copy), `missing banner copy: ${copy}`)
   }
+  // Copied from the settings nav tree (金融终端) and its 访问凭据 card.
+  assert.match(source, /请在 \$\{KEY_SETTINGS\} 获取并填入 API Key/)
+  assert.match(source, /在 \$\{KEY_SETTINGS\} 填入 API Key 可看实时行情/)
+  assert.match(source, /在 \$\{KEY_SETTINGS\} 检查 API Key/)
   // The anonymous allowance rolls over 24 hours, so the banner must not say 今日.
   assert.ok(!source.includes('今日免费行情额度'), 'quota copy must not claim a calendar day')
   // No-key guidance must not be mistaken for a plan problem: they use different reasons.
   assert.ok(source.includes("'FTShare 实时'"), 'realtime quotes say 实时 next to 免费版')
   assert.match(source, /const quoteUpdateText = quote =>/)
   assert.match(source, /date\.slice\(5\)/)
-  assert.ok(source.includes('请在「设置」中检查'), 'settings guidance stays neutral')
   assert.match(source, /case 'plan-denied'/)
   assert.match(source, /case 'quota'/)
   assert.match(source, /const noKeyBanner =/)

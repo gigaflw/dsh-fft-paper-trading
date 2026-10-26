@@ -161,18 +161,17 @@ window.__ModuleLoader__.load({
       network: '上游超时',
       upstream: '上游异常',
     }
-    /** Where a user without a key applies for one; upstream's own message uses this URL. */
-    const API_KEY_URL = 'https://ftai.chat/ftshare'
+    /**
+     * Where a missing or rejected key gets fixed.
+     *
+     * The banner does not link out: the settings section already carries the
+     * signup link in its 访问凭据 card, and the host exposes no client API that
+     * opens settings from here, so the copy names the section instead of sending
+     * the user to a second, differently-worded URL.
+     */
+    const KEY_SETTINGS = '设置 → 金融终端'
     /** One reason per stored value, so a new problem shows again after a dismissal. */
     const DATA_BANNER_DISMISS_KEY = 'paper-trading:data-banner-dismissed'
-
-    const openExternal = url => {
-      try {
-        if (typeof window !== 'undefined' && typeof window.open === 'function') window.open(url, '_blank', 'noopener,noreferrer')
-      } catch {
-        // A blocked popup is not worth a second error surface.
-      }
-    }
 
     /**
      * Model for the data banner.
@@ -196,8 +195,8 @@ window.__ModuleLoader__.load({
         // Quotes still work on the free tier (last daily close), so the banner
         // cannot say 行情未启用; what a key adds is the realtime feed.
         title: '免费档：报价取日K收盘',
-        detail: '配置 FTShare API Key 后可看实时行情，请在「设置」中填入后刷新。',
-        actions: ['key'],
+        detail: `在 ${KEY_SETTINGS} 填入 API Key 可看实时行情。`,
+        actions: [],
       }
       const problem = status.problem
       if (problem !== undefined && problem !== null) {
@@ -206,9 +205,9 @@ window.__ModuleLoader__.load({
             return {
               id: 'quota', tone: 'warn',
               // 匿名档是「最近 24 小时 500 次」的滚动额度，不是一个自然日。
-              title: '免费档行情额度已用尽',
-              detail: '约 24 小时内恢复；配置 API Key 可立即恢复。账本不受影响。',
-              actions: ['key', 'retry'],
+              title: '免费额度已用尽',
+              detail: `请在 ${KEY_SETTINGS} 获取并填入 API Key；或等约 24 小时额度恢复。`,
+              actions: ['retry'],
             }
           case 'plan-denied':
             // Without a key the realtime interface is simply not enabled; a
@@ -229,8 +228,8 @@ window.__ModuleLoader__.load({
               : {
                 id: 'invalid-key', tone: 'error',
                 title: 'FTShare 数据源无法使用',
-                detail: '请在「设置」中检查 API Key 后刷新。',
-                actions: ['key', 'retry'],
+                detail: `在 ${KEY_SETTINGS} 检查 API Key。`,
+                actions: ['retry'],
               }
           case 'network':
             return {
@@ -253,8 +252,8 @@ window.__ModuleLoader__.load({
         return {
           id: 'invalid-key', tone: 'error',
           title: 'FTShare 数据源无法使用',
-          detail: `${status.message === undefined || status.message === '' ? 'Key 未通过验证' : status.message}。请在「设置」中检查后刷新。`,
-          actions: ['key'],
+          detail: `${status.message === undefined || status.message === '' ? 'Key 未通过验证' : status.message}。在 ${KEY_SETTINGS} 检查 API Key。`,
+          actions: [],
         }
       }
       if (status.state === 'free') return noKeyBanner
@@ -683,6 +682,8 @@ window.__ModuleLoader__.load({
     /**
      * Actionable data banner. Dismissal is remembered per reason, so the same
      * cause stays quiet until it changes (then the new reason shows again).
+     * The copy names the settings section instead of linking out — see
+     * {@link KEY_SETTINGS}.
      */
     function DataBanner({ status, onRetry }) {
       const model = bannerModel(status)
@@ -701,9 +702,6 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pt-data-banner-title' }, model.title),
           h('div', { className: 'pt-note' }, model.detail)),
         h('div', { className: 'pt-data-banner-actions' },
-          model.actions.includes('key')
-            ? h('button', { className: 'pt-btn', onClick: () => openExternal(API_KEY_URL) }, '获取 API Key')
-            : null,
           model.actions.includes('retry')
             ? h('button', { className: 'pt-btn', onClick: onRetry }, '重试')
             : null,
