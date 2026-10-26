@@ -1,5 +1,5 @@
 ---
-name: paper-release
+name: dsh-fft-paper-trading-release
 description: 用于模拟盘插件对外发版时。不用于日常功能提交，也不用于插件安装验收。
 ---
 
