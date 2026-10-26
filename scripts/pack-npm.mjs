@@ -18,7 +18,7 @@
  *   -h, --help          Print this help
  *
  * The tarball is archived under `releases/` (git-ignored build output); only
- * the staging tree lives in `tmp/`.
+ * the staging tree lives in `dsh_tmp/`.
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync, renameSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -40,7 +40,7 @@ const mainRepo = resolve(option('main', join(repoRoot, '..', '..', 'dsh-fft-bund
 const klineRepo = resolve(option('kline', join(repoRoot, '..', 'dsh_kline')))
 const klineRef = option('kline-ref', 'v0.4.0-ft.1')
 const outDir = resolve(option('out', join(repoRoot, 'releases')))
-const workDir = join(repoRoot, 'tmp', 'npm-pack')
+const workDir = join(repoRoot, 'dsh_tmp', 'npm-pack')
 const staging = join(workDir, 'staging')
 const packageDir = join(staging, 'package')
 const packDir = join(workDir, 'pack')

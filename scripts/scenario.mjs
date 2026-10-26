@@ -18,7 +18,7 @@ const data = {
   },
 }
 
-const home = join(process.cwd(), 'tmp', 'paper-trading-scenario', String(Date.now()))
+const home = join(process.cwd(), 'dsh_tmp', 'paper-trading-scenario', String(Date.now()))
 let now = DAY1
 const repo = new AccountRepo({ home, accountId: 'default' })
 const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
