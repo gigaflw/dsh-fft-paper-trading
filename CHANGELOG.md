@@ -4,6 +4,23 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-10-26
+
+### Added
+
+- 面板顶栏新增「反馈」，带版本号一键去 GitHub 报问题
+
+### Changed
+
+- 模拟盘改从 npm 获取设置与 FTShare 底座
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.4.1` → `0.5.0`，发布包不再内联设置与 FTShare 底座
+- `@dsh-ft/dsh-fft-settings`：`0.5.0`（registry 依赖，此前内联同版本）
+- `@dsh-ft/dsh-fft-ftshare`：`0.2.1` → `0.3.0`（改为 registry 依赖）
+- `DSH Kline`：`0.4.0-ft.2`（仍内联）
+
 ## [0.4.1] - 2026-10-26
 
 ### Changed
@@ -127,6 +144,7 @@
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.5.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.3.1...v0.3.2
