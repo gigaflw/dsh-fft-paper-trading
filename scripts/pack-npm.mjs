@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 /**
- * Pack @dsh-ft/dsh-fft-paper-trading as a self-contained npm tarball.
+ * Pack @dsh-ft/dsh-fft-paper-trading as an npm tarball.
  *
- * The published package carries settings, ftshare and kline under its own
- * `node_modules` and lists them in `bundledDependencies`, so a plain
- * `dsh plugin add @dsh-ft/dsh-fft-paper-trading` installs without resolving
- * any git or tarball edge (no `blockExoticSubdeps` switch, no ssh).
+ * Only kline is self-contained: it is carried under the package's own
+ * `node_modules` and listed in `bundledDependencies`. Settings and ftshare are
+ * published packages of their own, so the tarball declares them as caret
+ * registry ranges (`^<version>`) and lets npm resolve them; a plain
+ * `dsh plugin add @dsh-ft/dsh-fft-paper-trading` therefore installs the whole
+ * stack from npm, with no git or tarball edge (no `blockExoticSubdeps` switch,
+ * no ssh).
  *
  * Usage:
  *   node scripts/pack-npm.mjs [options]
  *
  * Options:
- *   --main <dir>        Main plugin repo (default: ../../dsh-fft-bundle next to this repo)
+ *   --main <dir>        Main plugin repo, read only for the settings/ftshare
+ *                       versions (default: ../../dsh-fft-bundle next to this repo)
  *   --kline <dir>       dsh_kline checkout (default: ../dsh_kline)
  *   --kline-ref <ref>   kline git ref to inline (default: v0.4.0-ft.2)
  *   --out <dir>         Archive directory for the tarball (default: releases/)
@@ -102,13 +106,6 @@ function copyPackageFiles(sourceDir, destDir) {
   return manifest
 }
 
-/** Inline one dependency as its own package directory under the consumer's node_modules. */
-function inlinePackage(sourceDir, destDir) {
-  const manifest = copyPackageFiles(sourceDir, destDir)
-  writeFileSync(join(destDir, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
-  return manifest
-}
-
 function inlineKline(destDir) {
   if (!existsSync(join(klineRepo, '.git'))) fail(`kline checkout not found: ${klineRepo}`)
   mkdirSync(destDir, { recursive: true })
@@ -124,7 +121,7 @@ function inlineKline(destDir) {
   return manifest
 }
 
-/** Registry dependencies of an inlined package, minus the edges that are inlined. */
+/** Registry dependencies declared by the paper manifest, minus the inlined edges. */
 function registryDependencies(manifest, inlined) {
   const out = {}
   for (const [name, range] of Object.entries(manifest.dependencies ?? {})) {
@@ -138,34 +135,34 @@ const paper = readManifest(repoRoot)
 for (const required of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml']) {
   if (!existsSync(join(repoRoot, required))) fail(`${required} is missing; run pnpm run build first`)
 }
-if (!existsSync(join(mainRepo, 'packages', 'dsh-fft-settings', 'package.json'))) fail(`main repo not found: ${mainRepo}`)
+
+// Settings and ftshare are not shipped: only their published versions matter,
+// because the tarball declares them as caret registry ranges.
+const settingsDir = join(mainRepo, 'packages', 'dsh-fft-settings')
+const ftshareDir = join(mainRepo, 'packages', 'dsh-fft-ftshare')
+for (const dir of [settingsDir, ftshareDir]) {
+  if (!existsSync(join(dir, 'package.json'))) fail(`main repo checkout not found: ${dir} (pass --main <dir>)`)
+}
+const settingsManifest = readManifest(settingsDir)
+const ftshareManifest = readManifest(ftshareDir)
+if (settingsManifest.name !== INTERNAL_SETTINGS) fail(`unexpected settings name ${settingsManifest.name}`)
+if (ftshareManifest.name !== INTERNAL_FTSHARE) fail(`unexpected ftshare name ${ftshareManifest.name}`)
+const settingsRange = `^${settingsManifest.version}`
+const ftshareRange = `^${ftshareManifest.version}`
 
 rmSync(staging, { recursive: true, force: true })
 mkdirSync(packageDir, { recursive: true })
 
-const settingsManifest = inlinePackage(
-  join(mainRepo, 'packages', 'dsh-fft-settings'),
-  join(packageDir, 'node_modules', '@dsh-ft', 'dsh-fft-settings'),
-)
-const ftshareManifest = inlinePackage(
-  join(mainRepo, 'packages', 'dsh-fft-ftshare'),
-  join(packageDir, 'node_modules', '@dsh-ft', 'dsh-fft-ftshare'),
-)
 const klineManifest = inlineKline(join(packageDir, 'node_modules', '@ftshare-lab', 'dsh-kline'))
-
-if (settingsManifest.name !== INTERNAL_SETTINGS) fail(`unexpected settings name ${settingsManifest.name}`)
-if (ftshareManifest.name !== INTERNAL_FTSHARE) fail(`unexpected ftshare name ${ftshareManifest.name}`)
 
 // The paper package itself: files as declared, manifest rewritten for publishing.
 copyPackageFiles(repoRoot, packageDir)
 
-const inlined = new Set([INTERNAL_SETTINGS, INTERNAL_FTSHARE, KLINE])
+const inlined = new Set([KLINE])
 const merged = {
-  ...registryDependencies(settingsManifest, inlined),
-  ...registryDependencies(ftshareManifest, inlined),
   ...registryDependencies(paper, inlined),
-  [INTERNAL_SETTINGS]: settingsManifest.version,
-  [INTERNAL_FTSHARE]: ftshareManifest.version,
+  [INTERNAL_SETTINGS]: settingsRange,
+  [INTERNAL_FTSHARE]: ftshareRange,
   [KLINE]: klineManifest.version,
 }
 const published = {
@@ -184,7 +181,7 @@ const published = {
   exports: paper.exports,
   files: paper.files,
   dependencies: merged,
-  bundledDependencies: [INTERNAL_SETTINGS, INTERNAL_FTSHARE, KLINE],
+  bundledDependencies: [KLINE],
   peerDependencies: paper.peerDependencies,
   engines: paper.engines,
   dsh: paper.dsh,
@@ -213,13 +210,24 @@ const required = [
   'package/lib/index.js',
   'package/lib/client.js',
   'package/cordis.patch.yml',
-  'package/node_modules/@dsh-ft/dsh-fft-settings/package.json',
-  'package/node_modules/@dsh-ft/dsh-fft-ftshare/package.json',
   'package/node_modules/@ftshare-lab/dsh-kline/package.json',
   'package/node_modules/@ftshare-lab/dsh-kline/view/kline.html',
 ]
 for (const path of required) {
   if (!listing.includes(path)) fail(`tarball is missing ${path}`)
+}
+// Settings and ftshare resolve from npm: a bundled copy would shadow the
+// published package and drift from the declared range.
+const bundledInternal = listing.filter(path => path.startsWith('package/node_modules/@dsh-ft/'))
+if (bundledInternal.length > 0) fail(`tarball bundles settings/ftshare: ${bundledInternal.slice(0, 5).join(', ')}`)
+// Read the shipped manifest back instead of trusting the staging tree.
+const shipped = JSON.parse(execFileSync('tar', ['-xOzf', tarballPath, 'package/package.json'], { encoding: 'utf8' }))
+for (const [name, range] of [[INTERNAL_SETTINGS, settingsRange], [INTERNAL_FTSHARE, ftshareRange]]) {
+  const actual = shipped.dependencies?.[name]
+  if (actual !== range) fail(`tarball dependency ${name} is ${JSON.stringify(actual)}, expected ${JSON.stringify(range)}`)
+}
+if (JSON.stringify(shipped.bundledDependencies) !== JSON.stringify([KLINE])) {
+  fail(`tarball bundledDependencies is ${JSON.stringify(shipped.bundledDependencies)}, expected ${JSON.stringify([KLINE])}`)
 }
 // Internal paths must never reach a published artifact: the npm files list and
 // the inlined packages are the only allowed sources, so a hit here means the
@@ -240,6 +248,6 @@ const sha = createHash('sha256').update(readFileSync(tarballPath)).digest('hex')
 console.log(`tarball: ${tarballPath}`)
 console.log(`size:    ${(bytes / 1024 / 1024).toFixed(1)} MB (${listing.length} entries)`)
 console.log(`sha256:  ${sha}`)
-console.log(`inlined: ${settingsManifest.name}@${settingsManifest.version}, ${ftshareManifest.name}@${ftshareManifest.version}, ${KLINE}@${klineManifest.version}`)
-console.log(`registry dependencies: ${Object.keys(merged).filter(name => !inlined.has(name)).join(', ')}`)
+console.log(`inlined: ${KLINE}@${klineManifest.version}`)
+console.log(`registry: ${INTERNAL_SETTINGS}@${settingsRange}, ${INTERNAL_FTSHARE}@${ftshareRange}`)
 console.log(`install: dsh plugin --profile <name> add ${tarballPath}`)
