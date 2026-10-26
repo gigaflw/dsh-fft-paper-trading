@@ -14,10 +14,9 @@
  *   node scripts/pack-npm.mjs [options]
  *
  * Options:
- *   --main <dir>        Main plugin repo, read only for the settings/ftshare
- *                       versions (default: ../../dsh-fft-bundle next to this repo)
  *   --kline <dir>       dsh_kline checkout (default: ../dsh_kline)
- *   --kline-ref <ref>   kline git ref to inline (default: v0.4.0-ft.2)
+ *   --kline-ref <ref>   kline git ref to inline (default: package.json
+ *                       release.klineRef, the single pin every builder uses)
  *   --out <dir>         Archive directory for the tarball (default: releases/)
  *   -h, --help          Print this help
  *
@@ -40,9 +39,7 @@ if (argv.includes('-h') || argv.includes('--help')) {
   process.exit(0)
 }
 
-const mainRepo = resolve(option('main', join(repoRoot, '..', '..', 'dsh-fft-bundle')))
 const klineRepo = resolve(option('kline', join(repoRoot, '..', 'dsh_kline')))
-const klineRef = option('kline-ref', 'v0.4.0-ft.2')
 const outDir = resolve(option('out', join(repoRoot, 'releases')))
 const workDir = join(repoRoot, 'build', 'npm-pack')
 const staging = join(workDir, 'staging')
@@ -55,6 +52,13 @@ const KLINE = '@ftshare-lab/dsh-kline'
 
 const readManifest = dir => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
 const fail = message => { throw new Error(`pack-npm: ${message}`) }
+
+const paper = readManifest(repoRoot)
+const pinnedKlineRef = paper.release?.klineRef
+if (typeof pinnedKlineRef !== 'string' || pinnedKlineRef === '') {
+  fail('package.json release.klineRef is missing; it pins the inlined kline build')
+}
+const klineRef = option('kline-ref', pinnedKlineRef)
 
 /** Expand one-level globs (`locale/*.json`) in a manifest `files` list. */
 function expandFilesEntries(sourceDir, entries) {
@@ -131,24 +135,21 @@ function registryDependencies(manifest, inlined) {
   return out
 }
 
-const paper = readManifest(repoRoot)
 for (const required of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml']) {
   if (!existsSync(join(repoRoot, required))) fail(`${required} is missing; run pnpm run build first`)
 }
 
-// Settings and ftshare are not shipped: only their published versions matter,
-// because the tarball declares them as caret registry ranges.
-const settingsDir = join(mainRepo, 'packages', 'dsh-fft-settings')
-const ftshareDir = join(mainRepo, 'packages', 'dsh-fft-ftshare')
-for (const dir of [settingsDir, ftshareDir]) {
-  if (!existsSync(join(dir, 'package.json'))) fail(`main repo checkout not found: ${dir} (pass --main <dir>)`)
+// Settings and ftshare are published packages: the tarball carries the ranges
+// this manifest declares, and npm resolves them when the plugin is installed.
+// No local checkout of their source repository is needed to build a release.
+const settingsRange = paper.dependencies?.[INTERNAL_SETTINGS]
+const ftshareRange = paper.dependencies?.[INTERNAL_FTSHARE]
+if (typeof settingsRange !== 'string' || settingsRange === '') {
+  fail(`package.json dependencies must declare ${INTERNAL_SETTINGS}`)
 }
-const settingsManifest = readManifest(settingsDir)
-const ftshareManifest = readManifest(ftshareDir)
-if (settingsManifest.name !== INTERNAL_SETTINGS) fail(`unexpected settings name ${settingsManifest.name}`)
-if (ftshareManifest.name !== INTERNAL_FTSHARE) fail(`unexpected ftshare name ${ftshareManifest.name}`)
-const settingsRange = `^${settingsManifest.version}`
-const ftshareRange = `^${ftshareManifest.version}`
+if (typeof ftshareRange !== 'string' || ftshareRange === '') {
+  fail(`package.json dependencies must declare ${INTERNAL_FTSHARE}`)
+}
 
 rmSync(staging, { recursive: true, force: true })
 mkdirSync(packageDir, { recursive: true })
@@ -161,8 +162,6 @@ copyPackageFiles(repoRoot, packageDir)
 const inlined = new Set([KLINE])
 const merged = {
   ...registryDependencies(paper, inlined),
-  [INTERNAL_SETTINGS]: settingsRange,
-  [INTERNAL_FTSHARE]: ftshareRange,
   [KLINE]: klineManifest.version,
 }
 const published = {
@@ -248,6 +247,6 @@ const sha = createHash('sha256').update(readFileSync(tarballPath)).digest('hex')
 console.log(`tarball: ${tarballPath}`)
 console.log(`size:    ${(bytes / 1024 / 1024).toFixed(1)} MB (${listing.length} entries)`)
 console.log(`sha256:  ${sha}`)
-console.log(`inlined: ${KLINE}@${klineManifest.version}`)
+console.log(`inlined: ${KLINE}@${klineRef} (manifest ${klineManifest.version})`)
 console.log(`registry: ${INTERNAL_SETTINGS}@${settingsRange}, ${INTERNAL_FTSHARE}@${ftshareRange}`)
 console.log(`install: dsh plugin --profile <name> add ${tarballPath}`)

@@ -1,0 +1,95 @@
+name: publish
+
+# A release is cut by pushing the release tag: this workflow builds the
+# self-contained tarball from the tagged tree, runs the tests, publishes to npm
+# through OIDC trusted publishing (no token), and creates the GitHub Release
+# with that exact tarball and its checksum. The internal GitLab package is not
+# touched here; it stays a manual, local channel.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to rebuild and publish (e.g. v0.5.0)
+        required: true
+
+concurrency:
+  group: publish-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create the GitHub Release and upload its asset
+  id-token: write   # npm trusted publishing (OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and test
+        run: pnpm test
+
+      - name: Build the self-contained tarball
+        id: pack
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          KLINE_REF=$(node -p "require('./package.json').release.klineRef")
+          git clone --depth 1 --branch "$KLINE_REF" https://github.com/gigaflw/dsh_kline.git "$RUNNER_TEMP/dsh_kline"
+          node scripts/pack-npm.mjs --kline "$RUNNER_TEMP/dsh_kline"
+          TARBALL=$(ls releases/*.tgz)
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          sha256sum "$TARBALL"
+
+      - name: Render release notes
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: node scripts/release-notes.mjs --tag "$TAG" --artifact "$TARBALL" > "$RUNNER_TEMP/notes.md"
+
+      - name: Publish to npm unless the version already exists
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@dsh-ft/dsh-fft-paper-trading@$VERSION" version >/dev/null 2>&1; then
+            echo "already published $VERSION; skipping npm publish"
+          else
+            npm publish "$TARBALL" --access public
+          fi
+
+      - name: Create or refresh the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$TARBALL" --clobber
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" "$TARBALL"
+          fi
+
+      - name: Verify
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          npm view "@dsh-ft/dsh-fft-paper-trading@$VERSION" version dist.tarball

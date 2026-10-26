@@ -59,6 +59,10 @@
     "test": "pnpm run build && node --test tests/*.test.mjs",
     "pack:npm": "node scripts/pack-npm.mjs"
   },
+  "dependencies": {
+    "@dsh-ft/dsh-fft-settings": "^0.5.0",
+    "@dsh-ft/dsh-fft-ftshare": "^0.3.0"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2",
@@ -73,6 +77,7 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "packageManager": "pnpm@11.22.0",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -86,5 +91,8 @@
     "engines": {
       "dsh": ">=0.2.0-rc.2"
     }
+  },
+  "release": {
+    "klineRef": "v0.4.0-ft.2"
   }
 }
