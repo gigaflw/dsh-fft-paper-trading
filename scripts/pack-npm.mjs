@@ -14,10 +14,13 @@
  *   --main <dir>        Main plugin repo (default: ../../dsh-fft-bundle next to this repo)
  *   --kline <dir>       dsh_kline checkout (default: ../dsh_kline)
  *   --kline-ref <ref>   kline git ref to inline (default: v0.4.0-ft.1)
- *   --out <dir>         Output directory (default: tmp/npm-pack)
+ *   --out <dir>         Archive directory for the tarball (default: releases/)
  *   -h, --help          Print this help
+ *
+ * The tarball is archived under `releases/` (git-ignored build output); only
+ * the staging tree lives in `tmp/`.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync, renameSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,9 +39,11 @@ if (argv.includes('-h') || argv.includes('--help')) {
 const mainRepo = resolve(option('main', join(repoRoot, '..', '..', 'dsh-fft-bundle')))
 const klineRepo = resolve(option('kline', join(repoRoot, '..', 'dsh_kline')))
 const klineRef = option('kline-ref', 'v0.4.0-ft.1')
-const outDir = resolve(option('out', join(repoRoot, 'tmp', 'npm-pack')))
-const staging = join(outDir, 'staging')
+const outDir = resolve(option('out', join(repoRoot, 'releases')))
+const workDir = join(repoRoot, 'tmp', 'npm-pack')
+const staging = join(workDir, 'staging')
 const packageDir = join(staging, 'package')
+const packDir = join(workDir, 'pack')
 
 const INTERNAL_SETTINGS = '@dsh-ft/dsh-fft-settings'
 const INTERNAL_FTSHARE = '@dsh-ft/dsh-fft-ftshare'
@@ -189,12 +194,21 @@ writeFileSync(join(packageDir, 'package.json'), JSON.stringify(published, null, 
 // pnpm refuses bundledDependencies under the isolated linker; the staging root
 // carries the hoisted setting the packed manifest relies on.
 writeFileSync(join(staging, 'pnpm-workspace.yaml'), 'packages:\n  - package\n\nnodeLinker: hoisted\n')
-const pack = spawnSync('pnpm', ['pack', '--pack-destination', outDir], { cwd: packageDir, encoding: 'utf8' })
+rmSync(packDir, { recursive: true, force: true })
+mkdirSync(packDir, { recursive: true })
+const pack = spawnSync('pnpm', ['pack', '--pack-destination', packDir], { cwd: packageDir, encoding: 'utf8' })
 if (pack.status !== 0) fail(`pnpm pack failed:\n${pack.stdout ?? ''}${pack.stderr ?? ''}`)
-const tarball = readdirSync(outDir).filter(name => name.endsWith('.tgz')).sort().at(-1)
-if (tarball === undefined) fail('pnpm pack produced no tarball')
+const produced = readdirSync(packDir).filter(name => name.endsWith('.tgz'))
+if (produced.length !== 1) fail(`pnpm pack produced ${produced.length} tarballs in ${packDir}`)
 
-const listing = execFileSync('tar', ['tzf', join(outDir, tarball)], { encoding: 'utf8' }).split('\n')
+// Archive the release artifact next to its siblings; the version in its name
+// keeps every release downloadable while re-packing the same version replaces
+// the local copy.
+mkdirSync(outDir, { recursive: true })
+const tarballPath = join(outDir, produced[0])
+renameSync(join(packDir, produced[0]), tarballPath)
+
+const listing = execFileSync('tar', ['tzf', tarballPath], { encoding: 'utf8' }).split('\n')
 const required = [
   'package/lib/index.js',
   'package/lib/client.js',
@@ -207,11 +221,11 @@ const required = [
 for (const path of required) {
   if (!listing.includes(path)) fail(`tarball is missing ${path}`)
 }
-const bytes = statSync(join(outDir, tarball)).size
-const sha = createHash('sha256').update(readFileSync(join(outDir, tarball))).digest('hex')
-console.log(`tarball: ${join(outDir, tarball)}`)
+const bytes = statSync(tarballPath).size
+const sha = createHash('sha256').update(readFileSync(tarballPath)).digest('hex')
+console.log(`tarball: ${tarballPath}`)
 console.log(`size:    ${(bytes / 1024 / 1024).toFixed(1)} MB (${listing.length} entries)`)
 console.log(`sha256:  ${sha}`)
 console.log(`inlined: ${settingsManifest.name}@${settingsManifest.version}, ${ftshareManifest.name}@${ftshareManifest.version}, ${KLINE}@${klineManifest.version}`)
 console.log(`registry dependencies: ${Object.keys(merged).filter(name => !inlined.has(name)).join(', ')}`)
-console.log(`install: dsh plugin --profile <name> add ${join(outDir, tarball)}`)
+console.log(`install: dsh plugin --profile <name> add ${tarballPath}`)
