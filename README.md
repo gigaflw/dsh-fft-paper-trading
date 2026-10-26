@@ -73,4 +73,4 @@ API Key 在 DSH「设置 → 金融终端」中配置，申请地址：<https://
 - 重置账户会先备份到同目录的 `backups/`；账户异常锁定时面板会给出账本路径，可导出后排查。
 - 仅用于模拟与研究，不接实盘，不构成投资建议。
 
-本项目以 [MIT](LICENSE) 许可开源。
+本项目以 [MIT](LICENSE) 许可开源。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
