@@ -57,7 +57,6 @@
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build && node --test tests/*.test.mjs",
-    "scenario": "node scripts/scenario.mjs",
     "sync-profile": "node scripts/sync-profile.mjs",
     "pack:npm": "node scripts/pack-npm.mjs",
     "public:mirror": "node scripts/mirror-public.mjs"
