@@ -17,6 +17,8 @@
 - v3 账本载入时自动迁移到 v4（迁移前备份、迁移后校验），不再直接锁户；不可迁移或更新的版本仍锁户，但提示改用对应版本插件或恢复快照
 - 期货账本补上版本门禁，与股票账本一致
 - 锁定提示从「请重置」改为「可从备份恢复」；重置确认框说明旧账本会先归档
+- 破坏性：Agent 工具名统一为 `paper_<asset>_<action>`（`paper_stock_*` / `paper_futures_*`，跨账本的 `paper_ledger` 例外），工具面从 19 个收窄到 15 个：`paper_account`+`paper_status` 合并为 `paper_stock_account`，`futures_account`+`futures_positions` 合并为 `paper_futures_account`，删 `paper_tick`（宿主调度器已驱动）与 `paper_export`（账本信息见 `paper_ledger`），`paper_market` 去掉列表动作并补声明搜索 `limit`
+- 每个工具只声明自己读取的参数并标必填项：18 个工具的 schema 从约 21.8k 字符降到约 5k（约 -76% 固定 token）
 
 ### Fixed
 

@@ -1,4 +1,4 @@
-import type { AccountView, OrderView, PositionView, PreviewView, ReviewView } from '../contract.js'
+import type { AccountView, OrderView, PreviewView, ReviewView } from '../contract.js'
 import { formatSymbol } from '../core/symbol.js'
 
 function money(cents: number): string {
@@ -13,7 +13,7 @@ export function renderAccount(account: AccountView): string {
   if (account.blocked) {
     lines.push(`锁定原因：${account.blockedReason ?? '未记录'}`)
     if (account.ledgerPath !== undefined) lines.push(`账本：${account.ledgerPath}`)
-    lines.push('可用 paper_ledger 从备份恢复；也可 paper_account reset=true, confirm=true（会先备份）')
+    lines.push('可用 paper_ledger 从备份恢复；也可 paper_stock_account reset=true, confirm=true（会先备份）')
   }
   if (account.positions.length === 0) lines.push('无持仓')
   else {
@@ -51,13 +51,6 @@ export function renderOrder(order: OrderView): string {
   if (order.reason !== undefined) parts.push(`原因 ${order.reason}`)
   if (order.note !== undefined) parts.push(`备注 ${order.note}`)
   return parts.join(' · ')
-}
-
-export function renderPositions(positions: PositionView[]): string {
-  if (positions.length === 0) return '无持仓'
-  return positions
-    .map(item => `- ${formatSymbol(item.symbol, item.name)} ${item.qty} 股（可卖 ${item.available}）成本 ${item.avgCost.toFixed(2)} 现价 ${item.lastPrice?.toFixed(2) ?? '—'} 浮盈亏 ${money(item.unrealizedPnlCents ?? 0)}`)
-    .join('\n')
 }
 
 export function renderReview(review: ReviewView): string {
