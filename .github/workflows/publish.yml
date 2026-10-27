@@ -92,4 +92,14 @@ jobs:
       - name: Verify
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          npm view "@dsh-ft/dsh-fft-paper-trading@$VERSION" version dist.tarball
+          # npm accepts the publish before the read replicas expose it, so poll
+          # instead of failing the run on that propagation delay.
+          for attempt in $(seq 1 30); do
+            if npm view "@dsh-ft/dsh-fft-paper-trading@$VERSION" version dist.tarball; then
+              exit 0
+            fi
+            echo "registry has not exposed $VERSION yet (attempt $attempt); retrying in 10s"
+            sleep 10
+          done
+          echo "version $VERSION never became visible"
+          exit 1
