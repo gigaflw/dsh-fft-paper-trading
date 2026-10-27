@@ -47,6 +47,7 @@
     "lib",
     "src",
     "README.md",
+    "README.zh.md",
     "LICENSE",
     "icon.png",
     "locale/*.json",
@@ -57,6 +58,7 @@
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build && node --test tests/*.test.mjs",
+    "verify:translation": "node scripts/verify-translation-pairing.mjs",
     "pack:npm": "node scripts/pack-npm.mjs"
   },
   "dependencies": {

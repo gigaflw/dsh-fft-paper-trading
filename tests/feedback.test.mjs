@@ -15,7 +15,9 @@ import { fileURLToPath } from 'node:url'
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 const client = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
-const README = readFileSync(join(ROOT, 'README.md'), 'utf8')
+const README_EN = readFileSync(join(ROOT, 'README.md'), 'utf8')
+const README_ZH = readFileSync(join(ROOT, 'README.zh.md'), 'utf8')
+const READMES = [README_EN, README_ZH]
 const TEMPLATE_DIR = join(ROOT, '.github', 'ISSUE_TEMPLATE')
 
 test('feedback: the bundle links the bug form and stamps the release into the title', () => {
@@ -37,7 +39,7 @@ test('feedback: the bundle links the bug form and stamps the release into the ti
 test('feedback: every linked form exists and stays a valid issue form', () => {
   const linked = new Set([
     ...[...client.matchAll(/template=([a-z_]+\.yml)/g)].map(match => match[1]),
-    ...[...README.matchAll(/template=([a-z_]+\.yml)/g)].map(match => match[1]),
+    ...READMES.flatMap(readme => [...readme.matchAll(/template=([a-z_]+\.yml)/g)].map(match => match[1])),
   ])
   assert.ok(linked.size >= 2, 'both the bug and the feature form must be linked somewhere')
   for (const name of linked) {
@@ -54,8 +56,10 @@ test('feedback: every linked form exists and stays a valid issue form', () => {
   assert.match(config, /blank_issues_enabled: false/, 'blank issues must be off')
 })
 
-test('feedback: the README points at the issue tracker', () => {
-  assert.match(README, /## 反馈/)
-  assert.ok(README.includes('https://github.com/gigaflw/dsh-fft-paper-trading/issues/new?template=bug_report.yml'))
-  assert.ok(README.includes('https://github.com/gigaflw/dsh-fft-paper-trading/issues/new?template=feature_request.yml'))
+test('feedback: both READMEs point at the issue tracker', () => {
+  for (const readme of READMES) {
+    assert.match(readme, /## (反馈|Feedback)/)
+    assert.ok(readme.includes('https://github.com/gigaflw/dsh-fft-paper-trading/issues/new?template=bug_report.yml'))
+    assert.ok(readme.includes('https://github.com/gigaflw/dsh-fft-paper-trading/issues/new?template=feature_request.yml'))
+  }
 })
