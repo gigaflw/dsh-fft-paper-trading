@@ -151,3 +151,4 @@ export type LedgerEvent =
   | { seq: number; id: string; ts: string; type: 'cash.withdraw'; payload: { amountCents: number; tradeDate: string } }
   | { seq: number; id: string; ts: string; type: 'ledger.violation'; payload: { check: string; expected: string; actual: string } }
   | { seq: number; id: string; ts: string; type: 'ledger.repaired'; payload: { dropped: number; issues?: string[] } }
+  | { seq: number; id: string; ts: string; type: 'ledger.migrated'; payload: { from: number; to: number } }

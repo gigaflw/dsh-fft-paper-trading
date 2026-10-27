@@ -15,6 +15,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-tools'
 import { registerFuturesTools } from './agent/futures-tools.js'
+import { registerLedgerTools } from './agent/ledger-tools.js'
 import { registerPaperTools, type ToolsLike } from './agent/tools.js'
 import { FtshareMarketData, type FtshareDataLike } from './data/ftshare-market-data.js'
 import { FtshareFuturesMarketData } from './data/futures-market-data.js'
@@ -204,5 +205,6 @@ export function apply(ctx: Context): void {
     const tools = scope.get('tools') as unknown as ToolsLike
     registerPaperTools(tools, service)
     registerFuturesTools(tools, futuresService)
+    registerLedgerTools(tools, { stock: service, futures: futuresService })
   })
 }

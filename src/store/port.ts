@@ -32,6 +32,19 @@ export interface AccountStore {
   backup(label: string): Promise<boolean>
   /** Raw ledger text plus its absolute path, for `account/export`. */
   readLedger(): Promise<LedgerFile>
+  /**
+   * Snapshots on disk, newest first, with enough replay metadata for a caller
+   * (a human or an agent) to pick a restorable one without opening files.
+   */
+  snapshots(): Promise<LedgerSnapshot[]>
+  /**
+   * Replace the live ledger with one snapshot, atomically and in memory too.
+   *
+   * Works while blocked — recovery is the one write allowed on a locked
+   * account. A snapshot that no longer replays cleanly is refused before the
+   * live file is touched.
+   */
+  restore(name: string): Promise<AccountState>
 }
 
 export interface Transaction<T> {
@@ -50,4 +63,23 @@ export interface LedgerFile {
   path: string
   /** `null` when the ledger does not exist yet. */
   content: string | null
+}
+
+/** One restorable ledger snapshot, as listed to a caller. */
+export interface LedgerSnapshot {
+  name: string
+  /** File mtime in ISO form; the name's stamp is UTC and harder to read. */
+  createdAt: string
+  bytes: number
+  /** Version stored in the snapshot, before any migration. */
+  ledgerVersion: number
+  lastSeq: number
+  tradeDate: string
+  cashCents: number
+  /** Replays cleanly at the current version (after migration when needed). */
+  valid: boolean
+  /** Needs the loader's migration step before it can be restored. */
+  migratable: boolean
+  /** Why it cannot be restored; only meaningful when `valid` is false. */
+  problem?: string
 }

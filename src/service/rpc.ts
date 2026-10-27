@@ -112,6 +112,14 @@ export function createPaperRpcHandler(service: PaperService, options: PaperRpcOp
           return ok(await service.withdraw(num(record(payload).amount, 'amount')))
         case 'account/export':
           return ok(await service.exportLedger())
+        case 'ledger/list':
+          return ok(await service.ledgerSnapshots())
+        case 'ledger/restore': {
+          const input = record(payload)
+          return ok(await service.restoreLedger(text(input.name, 'name'), input.confirm === true))
+        }
+        case 'ledger/backup':
+          return ok({ backedUp: await service.backupLedger() })
         case 'settings/get':
           return ok(await service.settingsView())
         case 'market/quote': {

@@ -61,7 +61,7 @@ import {
 } from '../core/futures/views.js'
 import { QuoteRefreshGate } from './quote-gate.js'
 import { classifyDataProblem, friendlyDataNotice } from './data-source.js'
-import type { DataProblem } from '../contract.js'
+import type { DataProblem, LedgerSnapshotView, LedgerSnapshotsView } from '../contract.js'
 import type {
   ContractTerms,
   FuturesAccountState,
@@ -72,6 +72,7 @@ import type {
   SettleInput,
 } from '../core/futures/types.js'
 import type { FuturesStore } from '../store/futures-repo.js'
+import type { LedgerSnapshot } from '../store/port.js'
 
 /** Data calls are chunked to the adapter's documented 20-symbol batch cap. */
 const SYMBOL_BATCH = 20
@@ -109,6 +110,7 @@ export type FuturesServiceErrorCode =
   | 'ORDER_NOT_PENDING'
   | 'SESSION_CLOSED'
   | 'INTERNAL'
+  | 'LEDGER_RESTORE_FAILED'
 
 export class FuturesError extends Error {
   constructor(
@@ -235,7 +237,7 @@ export class FuturesService {
 
   private blocked(state: FuturesAccountState): FuturesError {
     const reason = reasonText(state.blockedReason)
-    return new FuturesError('ACCOUNT_BLOCKED', `账户已锁定，请重置后继续${reason === '' ? '' : `（${reason}）`}`, 409)
+    return new FuturesError('ACCOUNT_BLOCKED', `账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续${reason === '' ? '' : `（${reason}）`}`, 409)
   }
 
   // ---------------------------------------------------------------- account --
@@ -654,6 +656,35 @@ export class FuturesService {
     return { path: ledger.path, exists: true, content: ledger.content }
   }
 
+  /** Snapshots that can be restored, newest first, plus the live ledger's state. */
+  async ledgerSnapshots(): Promise<LedgerSnapshotsView> {
+    const state = await this.options.repo.current().catch(() => undefined)
+    const snapshots = await this.options.repo.snapshots()
+    return {
+      path: this.options.repo.ledgerPath ?? '',
+      blocked: state?.blocked === true,
+      blockedReason: state?.blockedReason,
+      ledgerVersion: state?.ledgerVersion,
+      snapshots: snapshots.map(toSnapshotView),
+    }
+  }
+
+  /** Replace the live futures ledger with one snapshot; allowed while blocked. */
+  async restoreLedger(name: string, confirm: boolean): Promise<ReturnType<typeof toAccountView>> {
+    if (confirm !== true) throw new FuturesError('INVALID_ARGUMENT', '恢复账本需要 confirm=true', 400)
+    try {
+      return this.viewOf(await this.options.repo.restore(name))
+    } catch (error) {
+      throw new FuturesError('LEDGER_RESTORE_FAILED', error instanceof Error ? error.message : String(error), 409)
+    }
+  }
+
+  /** Take one manual snapshot (the automatic one runs at most daily). */
+  async backupLedger(): Promise<boolean> {
+    const stamp = this.ts().replace(/[:.]/g, '-')
+    return this.options.repo.backup(`manual-${stamp}`)
+  }
+
   // ---------------------------------------------------------------- writing --
 
   private assertLotQty(qty: number): void {
@@ -871,5 +902,21 @@ export class FuturesService {
       throw new FuturesError('INVALID_ARGUMENT', '金额至少 0.01 元', 400)
     }
     return cents
+  }
+}
+
+/** Ledger cents → the yuan the rest of the views use. */
+function toSnapshotView(snapshot: LedgerSnapshot): LedgerSnapshotView {
+  return {
+    name: snapshot.name,
+    createdAt: snapshot.createdAt,
+    bytes: snapshot.bytes,
+    ledgerVersion: snapshot.ledgerVersion,
+    lastSeq: snapshot.lastSeq,
+    tradeDate: snapshot.tradeDate,
+    cash: snapshot.cashCents / 100,
+    valid: snapshot.valid,
+    migratable: snapshot.migratable,
+    problem: snapshot.problem,
   }
 }

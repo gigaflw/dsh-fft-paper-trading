@@ -13,7 +13,7 @@ export function renderAccount(account: AccountView): string {
   if (account.blocked) {
     lines.push(`锁定原因：${account.blockedReason ?? '未记录'}`)
     if (account.ledgerPath !== undefined) lines.push(`账本：${account.ledgerPath}`)
-    lines.push('修复后需完全退出并重开 DSH；也可 paper_account reset=true, confirm=true（会先备份）')
+    lines.push('可用 paper_ledger 从备份恢复；也可 paper_account reset=true, confirm=true（会先备份）')
   }
   if (account.positions.length === 0) lines.push('无持仓')
   else {
