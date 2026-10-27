@@ -179,13 +179,13 @@ test('rpc: index routes futures/* to the futures handler and keeps the stock end
     assert.equal(unknown.ok, false)
 
     const names = tools.map(tool => tool.name)
-    for (const name of ['futures_account', 'futures_contracts', 'futures_quote', 'futures_preview', 'futures_order', 'futures_cancel', 'futures_positions', 'futures_review']) {
+    for (const name of ['paper_futures_account', 'paper_futures_contracts', 'paper_futures_quote', 'paper_futures_preview', 'paper_futures_order', 'paper_futures_cancel', 'paper_futures_review']) {
       assert.ok(names.includes(name), `missing ${name}`)
     }
-    const accountTool = tools.find(tool => tool.name === 'futures_account')
+    const accountTool = tools.find(tool => tool.name === 'paper_futures_account')
     const result = await accountTool.execute({})
     assert.match(result.summary, /期货账户/)
-    assert.equal(result.data.initialCash, 1_000_000)
+    assert.equal(result.data.account.initialCash, 1_000_000)
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome

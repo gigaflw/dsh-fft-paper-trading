@@ -1,3 +1,16 @@
+/**
+ * The seven `paper_stock_*` tools.
+ *
+ * Naming rule: `paper_<asset>_<action>`, parallel to `paper_futures_*` in
+ * `futures-tools.ts`. Every tool declares only the parameters it reads: the
+ * previous shared property map made every tool advertise `reset`, `side` or
+ * `period` that it never looked at, which cost prompt tokens and invited
+ * wrong calls.
+ *
+ * All of them go through {@link PaperService}.
+ * @module @dsh-ft/dsh-fft-paper-trading/agent/tools
+ */
+
 import type { ParameterSchemaSpec, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 import { defineJsonTool as defineTool } from './json-tools.js'
 import type { OrderDraft } from '../contract.js'
@@ -19,9 +32,8 @@ const outputSchema = {
   },
 } as const satisfies ValueSchemaSpec
 
-const noParameters = {} as const satisfies ParameterSchemaSpec
-
-const parameters = {
+/** One definition per property; each tool composes only what it reads. */
+const param = {
   symbol: { type: 'string', description: '证券代码（含市场），例如 600519.SH、000001.SZ；裸 6 位按股票解析' },
   symbols: { type: 'array', items: { type: 'string' }, description: '证券代码列表（含市场），例如 [600519.SH, 000001.SZ]' },
   side: { type: 'string', description: 'buy 或 sell' },
@@ -31,16 +43,38 @@ const parameters = {
   price: { type: 'number', description: '无行情时的参考价（仅市价单）' },
   orderId: { type: 'string', description: '订单 ID' },
   requestId: { type: 'string', description: '幂等请求 ID；重复调用返回同一订单' },
+  note: { type: 'string', description: '备注，最多 120 字' },
   period: { type: 'string', description: '复盘区间：7d、30d、all' },
   reset: { type: 'boolean', description: '是否重置账户' },
   confirm: { type: 'boolean', description: '重置时必须为 true' },
-  action: { type: 'string', description: 'market 动作：status / search / list' },
-  query: { type: 'string', description: '搜索关键词' },
-  board: { type: 'string', description: '板块：main / star / chi_next / bjse / xshg / xshe' },
-  page: { type: 'number', description: '页码，从 1 开始' },
-  pageSize: { type: 'number', description: '每页条数，最大 500' },
-  note: { type: 'string', description: '复盘备注，最多 120 字' },
+  action: { type: 'string', description: '动作：status 查交易时段 / search 搜标的' },
+  query: { type: 'string', description: '搜索关键词（代码或名称）' },
+  limit: { type: 'number', description: '返回条数上限，默认 10' },
 } as const satisfies ParameterSchemaSpec
+
+/** Mark one property required so DSH rejects a bad call before it reaches the service. */
+function required<T extends ValueSchemaSpec>(property: T): T & { required: true } {
+  return { ...property, required: true }
+}
+
+const accountParameters = { reset: param.reset, confirm: param.confirm } satisfies ParameterSchemaSpec
+const marketParameters = { action: param.action, query: param.query, limit: param.limit } satisfies ParameterSchemaSpec
+const quoteParameters = { symbol: param.symbol, symbols: param.symbols } satisfies ParameterSchemaSpec
+const previewParameters = {
+  symbol: required(param.symbol),
+  side: required(param.side),
+  type: required(param.type),
+  qty: required(param.qty),
+  limitPrice: param.limitPrice,
+  price: param.price,
+} satisfies ParameterSchemaSpec
+const orderParameters = {
+  ...previewParameters,
+  requestId: param.requestId,
+  note: param.note,
+} satisfies ParameterSchemaSpec
+const cancelParameters = { orderId: required(param.orderId) } satisfies ParameterSchemaSpec
+const reviewParameters = { period: param.period } satisfies ParameterSchemaSpec
 
 function draftOf(args: Record<string, unknown>): OrderDraft {
   // Never coerce an unknown side/type to a default: a model sending "hold"
@@ -69,50 +103,31 @@ function fail(error: unknown): ToolResult {
   return { summary: `失败：${error instanceof Error ? error.message : String(error)}`, data: { error: String(error) } }
 }
 
-/** Register the eight `paper_*` tools. All of them go through PaperService. */
+/** Register the seven `paper_stock_*` tools. All of them go through PaperService. */
 export function registerPaperTools(tools: ToolsLike, service: PaperService): void {
   const base = {
-    parameters,
     output: { schema: outputSchema, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String((value as { summary?: string })?.summary ?? '') }] },
   }
 
   tools.register(defineTool({
     ...base,
-    name: 'paper_account',
-    description: '查询模拟盘账户；reset=true 且 confirm=true 时重置账户。',
+    name: 'paper_stock_account',
+    parameters: accountParameters,
+    description: '查看模拟盘账户、持仓、挂单与最近成交；reset=true 且 confirm=true 时重置账户。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
         const account = input.reset === true
           ? await service.reset(input.confirm === true)
           : await service.account()
-        return { summary: renderAccount(account), data: account }
-      } catch (error) {
-        return fail(error)
-      }
-    },
-  }))
-
-  tools.register(defineTool({
-    ...base,
-    name: 'paper_export',
-    parameters: noParameters,
-    description: '查看账本位置、版本、锁定原因与可恢复快照；恢复用 paper_ledger。',
-    async execute(): Promise<ToolResult> {
-      try {
-        const [status, ledger] = await Promise.all([service.ledgerStatus(), service.ledgerSnapshots()])
-        const restorable = ledger.snapshots.filter(snapshot => snapshot.valid).length
+        const [orders, trades] = await Promise.all([service.orders(), service.trades()])
+        const pending = orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled')
         const lines = [
-          `账本 ${status.path}${status.exists ? '' : '（尚未创建）'}`,
-          `版本 v${String(ledger.ledgerVersion ?? '?')} · 快照 ${ledger.snapshots.length} 份（可恢复 ${restorable} 份）`,
-          status.blocked ? `已锁定 · 原因：${status.blockedReason ?? '未记录'}` : '账户正常',
+          renderAccount(account),
+          pending.length > 0 ? `挂单 ${pending.length} 笔：\n${pending.map(renderOrder).join('\n')}` : '无挂单',
+          trades.length > 0 ? `最近成交：\n${trades.slice(0, 5).map(item => `- ${item.ts} ${item.side === 'buy' ? '买' : '卖'} ${formatSymbol(item.symbol, item.name)} ${item.qty}@${item.price.toFixed(2)}`).join('\n')}` : '无成交',
         ]
-        if (status.blocked) {
-          lines.push(restorable > 0
-            ? '可用 paper_ledger action=restore 恢复最近一份可用快照（进程内生效，无需重启）'
-            : '没有可恢复的快照：只能导出账本或 paper_account reset=true, confirm=true（会先备份）')
-        }
-        return { summary: lines.join('\n'), data: { ...status, ledgerVersion: ledger.ledgerVersion, snapshots: ledger.snapshots } }
+        return { summary: lines.join('\n\n'), data: { account, orders, trades } }
       } catch (error) {
         return fail(error)
       }
@@ -121,7 +136,29 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
 
   tools.register(defineTool({
     ...base,
-    name: 'paper_quote',
+    name: 'paper_stock_market',
+    parameters: marketParameters,
+    description: '查询交易时段（action=status）或搜索标的（action=search）。',
+    async execute(args: unknown): Promise<ToolResult> {
+      const input = (args ?? {}) as Record<string, unknown>
+      try {
+        if (input.action !== 'search') {
+          const status = await service.marketStatus()
+          const calendar = status.calendar?.source === 'fallback' ? ' · 交易日历降级（按工作日估算）' : ''
+          return { summary: `时段 ${status.phase} · 交易日 ${status.tradeDate} · ${status.canMatch ? '可连续交易' : '不可连续成交'}${calendar}`, data: status }
+        }
+        const hits = await service.search(String(input.query ?? ''), typeof input.limit === 'number' ? input.limit : 10)
+        return { summary: hits.length === 0 ? '没有匹配的标的' : hits.map(hit => formatSymbol(hit.symbol, hit.name)).join('\n'), data: hits }
+      } catch (error) {
+        return fail(error)
+      }
+    },
+  }))
+
+  tools.register(defineTool({
+    ...base,
+    name: 'paper_stock_quote',
+    parameters: quoteParameters,
     description: '查询证券最新行情（现价、买一、卖一、昨收）。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
@@ -145,7 +182,8 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
 
   tools.register(defineTool({
     ...base,
-    name: 'paper_preview',
+    name: 'paper_stock_preview',
+    parameters: previewParameters,
     description: '下单前预览：金额、佣金、印花税、过户费、成交后现金、可卖与最大可买。',
     async execute(args: unknown): Promise<ToolResult> {
       try {
@@ -159,7 +197,8 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
 
   tools.register(defineTool({
     ...base,
-    name: 'paper_order',
+    name: 'paper_stock_order',
+    parameters: orderParameters,
     description: '提交模拟买卖单：支持市价与限价；买入按 100 股整数倍，卖出受 T+1 可卖限制。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
@@ -175,8 +214,9 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
 
   tools.register(defineTool({
     ...base,
-    name: 'paper_cancel',
-    description: '撤销一笔挂单。',
+    name: 'paper_stock_cancel',
+    parameters: cancelParameters,
+    description: '撤销一笔股票挂单。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
@@ -190,78 +230,8 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
 
   tools.register(defineTool({
     ...base,
-    name: 'paper_status',
-    description: '查看账户、持仓、挂单与最近成交。',
-    async execute(): Promise<ToolResult> {
-      try {
-        const [account, orders, trades] = await Promise.all([service.account(), service.orders(), service.trades()])
-        const pending = orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled')
-        const lines = [
-          renderAccount(account),
-          pending.length > 0 ? `挂单 ${pending.length} 笔：\n${pending.map(renderOrder).join('\n')}` : '无挂单',
-          trades.length > 0 ? `最近成交：\n${trades.slice(0, 5).map(item => `- ${item.ts} ${item.side === 'buy' ? '买' : '卖'} ${formatSymbol(item.symbol, item.name)} ${item.qty}@${item.price.toFixed(2)}`).join('\n')}` : '无成交',
-        ]
-        return { summary: lines.join('\n\n'), data: { account, orders, trades } }
-      } catch (error) {
-        return fail(error)
-      }
-    },
-  }))
-
-  tools.register(defineTool({
-    ...base,
-    name: 'paper_tick',
-    description: '刷新挂单与持仓行情，撮合可成交的限价单并处理过期。',
-    async execute(): Promise<ToolResult> {
-      try {
-        const result = await service.tick()
-        const lines = [
-          `刷新完成：${result.tradeDate}`,
-          result.filled.length > 0 ? `成交 ${result.filled.length} 笔：\n${result.filled.map(renderOrder).join('\n')}` : '无成交',
-          result.expired.length > 0 ? `过期 ${result.expired.length} 笔` : '',
-          result.notices.length > 0 ? `提示：${result.notices.join('；')}` : '',
-        ].filter(Boolean)
-        return { summary: lines.join('\n'), data: result }
-      } catch (error) {
-        return fail(error)
-      }
-    },
-  }))
-
-
-  tools.register(defineTool({
-    ...base,
-    name: 'paper_market',
-    description: '查询交易时段、搜索标的或查看全市场列表。',
-    async execute(args: unknown): Promise<ToolResult> {
-      const input = (args ?? {}) as Record<string, unknown>
-      try {
-        const action = input.action === 'search' || input.action === 'list' ? input.action : 'status'
-        if (action === 'status') {
-          const status = await service.marketStatus()
-          const calendar = status.calendar?.source === 'fallback' ? ' · 交易日历降级（按工作日估算）' : ''
-          return { summary: `时段 ${status.phase} · 交易日 ${status.tradeDate} · ${status.canMatch ? '可连续交易' : '不可连续成交'}${calendar}`, data: status }
-        }
-        if (action === 'search') {
-          const hits = await service.search(String(input.query ?? ''), typeof input.limit === 'number' ? input.limit : 10)
-          return { summary: hits.length === 0 ? '没有匹配的标的' : hits.map(hit => formatSymbol(hit.symbol, hit.name)).join('\n'), data: hits }
-        }
-        const page = await service.marketList({
-          board: typeof input.board === 'string' ? input.board : undefined,
-          page: typeof input.page === 'number' ? input.page : 1,
-          pageSize: typeof input.pageSize === 'number' ? input.pageSize : 50,
-        })
-        const lines = page.quotes.map(quote => `${formatSymbol(quote.symbol, quote.name)} ${quote.last.toFixed(2)}`)
-        return { summary: lines.length === 0 ? (page.notice ?? '没有行情') : lines.join('\n'), data: page }
-      } catch (error) {
-        return fail(error)
-      }
-    },
-  }))
-
-  tools.register(defineTool({
-    ...base,
-    name: 'paper_review',
+    name: 'paper_stock_review',
+    parameters: reviewParameters,
     description: '查看模拟盘复盘：权益曲线、最大回撤、成交统计与已实现盈亏。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>

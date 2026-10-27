@@ -19,45 +19,57 @@ const futuresOrder = {
   tradeDate: '2026-10-19',
 }
 
-test('paper_order rejects an unknown side/type instead of guessing a buy', async () => {
+test('paper_stock_order rejects an unknown side/type instead of guessing a buy', async () => {
   let calls = 0
   const tools = collect(registerPaperTools, { place: async () => { calls += 1; return stockOrder }, preview: async () => { throw new Error('service preview must not be reached') } })
   const invalid = [
     { symbol: '600519.SH', side: 'hold', type: 'market', qty: 100 },
-    { symbol: '600519.SH', type: 'market', qty: 100 },
     { symbol: '600519.SH', side: 'BUY', type: 'market', qty: 100 },
     { symbol: '600519.SH', side: 'sell', type: 'stop', qty: 100 },
   ]
   for (const args of invalid) {
-    const result = await tools.paper_order.execute(args)
+    const result = await tools.paper_stock_order.execute(args)
     assert.match(result.summary, /失败/, JSON.stringify(args))
+  }
+  // Missing required fields never reach execute: the schema rejects the call first.
+  for (const args of [
+    { symbol: '600519.SH', type: 'market', qty: 100 },
+    { symbol: '600519.SH', side: 'sell', type: 'market' },
+  ]) {
+    await assert.rejects(() => tools.paper_stock_order.execute(args), /invalid arguments/, JSON.stringify(args))
   }
   assert.equal(calls, 0, 'an invalid draft must not reach the service')
 
-  const preview = await tools.paper_preview.execute({ symbol: '600519.SH', side: 'hold', type: 'market', qty: 100 })
+  const preview = await tools.paper_stock_preview.execute({ symbol: '600519.SH', side: 'hold', type: 'market', qty: 100 })
   assert.match(preview.summary, /失败/, 'preview shares the same validation')
   assert.match(preview.summary, /side/, 'preview reports the bad field')
-  const placed = await tools.paper_order.execute({ symbol: '600519.SH', side: 'sell', type: 'market', qty: 100 })
+  const placed = await tools.paper_stock_order.execute({ symbol: '600519.SH', side: 'sell', type: 'market', qty: 100 })
   assert.equal(calls, 1)
   assert.match(placed.summary, /卖出/)
 })
 
-test('futures_order rejects an unknown side/offset/type instead of opening long', async () => {
+test('paper_futures_order rejects an unknown side/offset/type instead of opening long', async () => {
   let calls = 0
   const tools = collect(registerFuturesTools, { place: async () => { calls += 1; return futuresOrder } })
   const invalid = [
     { symbol: 'RB2611.SHFE', side: 'sell', offset: 'open', type: 'market', qty: 1 },
     { symbol: 'RB2611.SHFE', side: 'long', offset: 'sell', type: 'market', qty: 1 },
     { symbol: 'RB2611.SHFE', side: 'long', offset: 'open', type: 'stop', qty: 1 },
-    { symbol: 'RB2611.SHFE', offset: 'open', type: 'market', qty: 1 },
   ]
   for (const args of invalid) {
-    const result = await tools.futures_order.execute(args)
+    const result = await tools.paper_futures_order.execute(args)
     assert.match(result.summary, /失败/, JSON.stringify(args))
+  }
+  // Missing required fields never reach execute: the schema rejects the call first.
+  for (const args of [
+    { symbol: 'RB2611.SHFE', offset: 'open', type: 'market', qty: 1 },
+    { symbol: 'RB2611.SHFE', side: 'long', offset: 'open', type: 'market' },
+  ]) {
+    await assert.rejects(() => tools.paper_futures_order.execute(args), /invalid arguments/, JSON.stringify(args))
   }
   assert.equal(calls, 0, 'an invalid draft must not reach the service')
 
-  const placed = await tools.futures_order.execute({
+  const placed = await tools.paper_futures_order.execute({
     symbol: 'RB2611.SHFE', side: 'short', offset: 'close', type: 'limit', qty: 1, limitPrice: 3000,
   })
   assert.equal(calls, 1)
@@ -112,13 +124,34 @@ test('tool data survives the DSH lossless-JSON boundary', async () => {
     quote: async () => ({ state: 'ok', quotes: [{ symbol: '600519.SH', name: undefined, last: 11 }] }),
   })
   const calls = [
-    ['paper_status', {}],
-    ['paper_preview', { symbol: '600519.SH', side: 'sell', type: 'limit', qty: 100, limitPrice: 11 }],
-    ['paper_quote', { symbols: ['600519.SH'] }],
+    ['paper_stock_account', {}],
+    ['paper_stock_preview', { symbol: '600519.SH', side: 'sell', type: 'limit', qty: 100, limitPrice: 11 }],
+    ['paper_stock_quote', { symbols: ['600519.SH'] }],
   ]
   for (const [name, args] of calls) {
     const result = await tools[name].execute(args)
     const issues = losslessIssues(result.data)
     assert.deepEqual(issues, [], `${name}: ${JSON.stringify(issues)}`)
   }
+})
+
+test('each tool declares only the parameters it reads', () => {
+  const stock = collect(registerPaperTools, {})
+  assert.deepEqual(Object.keys(stock.paper_stock_account.parameters.properties).sort(), ['confirm', 'reset'])
+  assert.deepEqual(Object.keys(stock.paper_stock_order.parameters.properties).sort(), ['limitPrice', 'note', 'price', 'qty', 'requestId', 'side', 'symbol', 'type'])
+  assert.deepEqual(Object.keys(stock.paper_stock_cancel.parameters.properties).sort(), ['orderId'])
+  assert.deepEqual(stock.paper_stock_order.parameters.required.slice().sort(), ['qty', 'side', 'symbol', 'type'])
+
+  const futures = collect(registerFuturesTools, {})
+  assert.deepEqual(Object.keys(futures.paper_futures_account.parameters.properties).sort(), ['confirm', 'reset'])
+  assert.deepEqual(Object.keys(futures.paper_futures_order.parameters.properties).sort(), ['limitPrice', 'note', 'offset', 'price', 'qty', 'requestId', 'side', 'symbol', 'type'])
+})
+
+test('paper_stock_market declares and forwards the search limit', async () => {
+  const calls = []
+  const tools = collect(registerPaperTools, { search: async (query, limit) => { calls.push([query, limit]); return [] } })
+  assert.ok(Object.hasOwn(tools.paper_stock_market.parameters.properties, 'limit'), 'limit must be declared or the model can never set it')
+  const result = await tools.paper_stock_market.execute({ action: 'search', query: '600', limit: 3 })
+  assert.deepEqual(calls, [['600', 3]])
+  assert.match(result.summary, /没有匹配/)
 })

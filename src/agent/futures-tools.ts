@@ -1,9 +1,11 @@
 /**
- * The eight `futures_*` tools (D10).
+ * The seven `paper_futures_*` tools (D10).
  *
- * Same shape as `paper_*` — a one-paragraph Chinese summary plus the structured
- * view — but the vocabulary is futures (手, 开/平, 多/空) so the model never
- * confuses lots with shares. All of them go through {@link FuturesService}.
+ * Same shape as `paper_stock_*` — a one-paragraph Chinese summary plus the
+ * structured view — but the vocabulary is futures (手, 开/平, 多/空) so the
+ * model never confuses lots with shares. Naming follows the same
+ * `paper_<asset>_<action>` rule, and each tool declares only the parameters it
+ * reads. All of them go through {@link FuturesService}.
  *
  * @module @dsh-ft/dsh-fft-paper-trading/agent/futures-tools
  */
@@ -16,7 +18,6 @@ import type {
   FuturesDraft,
   FuturesExchange,
   FuturesOrderView,
-  FuturesPositionView,
   FuturesPreviewView,
   FuturesQuoteView,
   FuturesReviewView,
@@ -34,7 +35,8 @@ const outputSchema = {
   },
 } as const satisfies ValueSchemaSpec
 
-const parameters = {
+/** One definition per property; each tool composes only what it reads. */
+const param = {
   symbol: { type: 'string', description: '合约代码（行情口径），例如 RB2611.SHFE' },
   symbols: { type: 'array', items: { type: 'string' }, description: '合约代码列表' },
   side: { type: 'string', description: '方向：long（多）或 short（空）' },
@@ -45,6 +47,7 @@ const parameters = {
   price: { type: 'number', description: '无行情时的参考价（仅市价平仓）' },
   orderId: { type: 'string', description: '订单 ID' },
   requestId: { type: 'string', description: '幂等请求 ID；重复调用返回同一订单' },
+  note: { type: 'string', description: '备注，最多 120 字' },
   period: { type: 'string', description: '复盘区间：7d、30d、all' },
   query: { type: 'string', description: '合约搜索关键词（代码/品种/中文名）' },
   exchange: { type: 'string', description: '交易所：SHFE / INE / DCE / CZCE / GFEX' },
@@ -52,8 +55,37 @@ const parameters = {
   refresh: { type: 'boolean', description: '强制刷新合约索引' },
   reset: { type: 'boolean', description: '是否重置期货账户' },
   confirm: { type: 'boolean', description: '重置时必须为 true' },
-  note: { type: 'string', description: '备注，最多 120 字' },
 } as const satisfies ParameterSchemaSpec
+
+/** Mark one property required so DSH rejects a bad call before it reaches the service. */
+function required<T extends ValueSchemaSpec>(property: T): T & { required: true } {
+  return { ...property, required: true }
+}
+
+const accountParameters = { reset: param.reset, confirm: param.confirm } satisfies ParameterSchemaSpec
+const contractsParameters = {
+  query: param.query,
+  exchange: param.exchange,
+  limit: param.limit,
+  refresh: param.refresh,
+} satisfies ParameterSchemaSpec
+const quoteParameters = { symbol: param.symbol, symbols: param.symbols } satisfies ParameterSchemaSpec
+const previewParameters = {
+  symbol: required(param.symbol),
+  side: required(param.side),
+  offset: required(param.offset),
+  type: required(param.type),
+  qty: required(param.qty),
+  limitPrice: param.limitPrice,
+  price: param.price,
+} satisfies ParameterSchemaSpec
+const orderParameters = {
+  ...previewParameters,
+  requestId: param.requestId,
+  note: param.note,
+} satisfies ParameterSchemaSpec
+const cancelParameters = { orderId: required(param.orderId) } satisfies ParameterSchemaSpec
+const reviewParameters = { period: param.period } satisfies ParameterSchemaSpec
 
 type ToolResult = { summary: string; data: any }
 
@@ -93,7 +125,7 @@ function renderAccount(account: FuturesAccountView): string {
   if (account.blocked) {
     lines.push(`锁定原因：${account.blockedReason ?? '未记录'}`)
     if (account.ledgerPath !== undefined) lines.push(`账本：${account.ledgerPath}`)
-    lines.push('修复后可 futures_account reset=true, confirm=true（会先备份）')
+    lines.push('可用 paper_ledger 从备份恢复；也可 paper_futures_account reset=true, confirm=true（会先备份）')
   }
   if (account.positions.length === 0) lines.push('无持仓')
   else {
@@ -113,13 +145,6 @@ function renderOrder(order: FuturesOrderView): string {
   if (order.reason !== undefined) parts.push(`原因 ${order.reason}`)
   if (order.note !== undefined) parts.push(`备注 ${order.note}`)
   return parts.join(' · ')
-}
-
-function renderPositions(positions: FuturesPositionView[]): string {
-  if (positions.length === 0) return '无持仓'
-  return positions.map(position =>
-    `- ${position.symbol} ${sideText(position.side)} ${position.qty} 手（今仓 ${position.todayQty}）均价 ${position.avgPrice} 最新 ${position.lastPrice ?? '—'} 浮盈亏 ${money(position.unrealizedPnlCents)} 保证金 ${money(position.marginCents)}${position.deListDate === undefined ? '' : ` 到期 ${position.deListDate}`}`,
-  ).join('\n')
 }
 
 function renderPreview(preview: FuturesPreviewView): string {
@@ -186,24 +211,30 @@ function fail(error: unknown): ToolResult {
   return { summary: `失败：${error instanceof Error ? error.message : String(error)}`, data: { error: String(error) } }
 }
 
-/** Register the eight `futures_*` tools. */
+/** Register the seven `paper_futures_*` tools. */
 export function registerFuturesTools(tools: ToolsLike, service: FuturesService): void {
   const base = {
-    parameters,
     output: { schema: outputSchema, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String((value as { summary?: string })?.summary ?? '') }] },
   }
 
   tools.register(defineTool({
     ...base,
-    name: 'futures_account',
-    description: '查询期货模拟账户（权益/可用/保证金/风险度/持仓）；reset=true 且 confirm=true 时重置。',
+    name: 'paper_futures_account',
+    parameters: accountParameters,
+    description: '查看期货账户、持仓与挂单（权益/可用/保证金/风险度）；reset=true 且 confirm=true 时重置。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
         const account = input.reset === true
           ? await service.reset(input.confirm === true)
           : await service.account()
-        return { summary: renderAccount(account), data: account }
+        const orders = await service.orders()
+        const pending = orders.filter(order => order.status === 'pending')
+        const lines = [
+          renderAccount(account),
+          pending.length > 0 ? `挂单 ${pending.length} 笔：\n${pending.map(renderOrder).join('\n')}` : '无挂单',
+        ]
+        return { summary: lines.join('\n\n'), data: { account, orders, positions: account.positions } }
       } catch (error) {
         return fail(error)
       }
@@ -212,7 +243,8 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
 
   tools.register(defineTool({
     ...base,
-    name: 'futures_contracts',
+    name: 'paper_futures_contracts',
+    parameters: contractsParameters,
     description: '搜索期货合约（代码/品种/中文名），返回乘数、tick、保证金率与到期日。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
@@ -237,7 +269,8 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
 
   tools.register(defineTool({
     ...base,
-    name: 'futures_quote',
+    name: 'paper_futures_quote',
+    parameters: quoteParameters,
     description: '查询期货合约最新行情（最新价、昨结、成交量、持仓量）。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
@@ -255,7 +288,8 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
 
   tools.register(defineTool({
     ...base,
-    name: 'futures_preview',
+    name: 'paper_futures_preview',
+    parameters: previewParameters,
     description: '开平仓前预览：保证金、手续费、占用后可用、最大可开手数、涨跌停与风险度。',
     async execute(args: unknown): Promise<ToolResult> {
       try {
@@ -269,7 +303,8 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
 
   tools.register(defineTool({
     ...base,
-    name: 'futures_order',
+    name: 'paper_futures_order',
+    parameters: orderParameters,
     description: '提交期货委托：开多/开空/平多/平空 × 市价/限价，qty 单位手，requestId 幂等。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
@@ -285,7 +320,8 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
 
   tools.register(defineTool({
     ...base,
-    name: 'futures_cancel',
+    name: 'paper_futures_cancel',
+    parameters: cancelParameters,
     description: '撤销一笔期货挂单。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
@@ -300,26 +336,8 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
 
   tools.register(defineTool({
     ...base,
-    name: 'futures_positions',
-    description: '查看期货持仓与挂单：按合约×方向分行，显示手数、今仓、均价、浮盈亏与保证金。',
-    async execute(): Promise<ToolResult> {
-      try {
-        const [account, orders] = await Promise.all([service.account(), service.orders()])
-        const pending = orders.filter(order => order.status === 'pending')
-        const lines = [
-          renderAccount(account),
-          pending.length > 0 ? `挂单 ${pending.length} 笔：\n${pending.map(renderOrder).join('\n')}` : '无挂单',
-        ]
-        return { summary: lines.join('\n\n'), data: { account, orders, positions: account.positions } }
-      } catch (error) {
-        return fail(error)
-      }
-    },
-  }))
-
-  tools.register(defineTool({
-    ...base,
-    name: 'futures_review',
+    name: 'paper_futures_review',
+    parameters: reviewParameters,
     description: '查看期货复盘：权益曲线、最大回撤、开平仓统计、已实现盈亏与分品种统计。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
@@ -334,4 +352,4 @@ export function registerFuturesTools(tools: ToolsLike, service: FuturesService):
   }))
 }
 
-export { renderAccount, renderPositions, renderPreview, renderReview, renderOrder }
+export { renderAccount, renderPreview, renderReview, renderOrder }

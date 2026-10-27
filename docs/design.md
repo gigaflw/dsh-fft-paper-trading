@@ -38,7 +38,7 @@
 | 交易 / 持仓 / 订单 / 复盘 | 四个核心页签 | ● | |
 | 事件账本 + 重放 + 对账 | JSONL，失败关闭 | ● | |
 | 按需 tick + 市价/限价 | 简化撮合，全量成交 | ● | |
-| Agent 工具 | 10 个 `paper_*` 工具，见 §10.1 | ● | |
+| Agent 工具 | 15 个：股票 7 个 `paper_stock_*`、期货 7 个 `paper_futures_*`、账本 1 个 `paper_ledger`，见 §10.1 | ● | |
 | 权益曲线 / 复盘统计 | 纯 SVG + 日终快照 | ● | |
 | 交易时段 / 日切 / 收盘开盘快照 | 见 §19.2–19.3 | ● | |
 | 行情时间语义 | `marketTs` + `fetchedAt`，见 §19.3 | ● | |
@@ -62,7 +62,7 @@
 | --- | --- | --- |
 | 浏览器半 | 宿主 Web UI | 左侧栏面板、四个页签、RPC 调用；不 import 宿主模块、不读文件 |
 | 宿主半 | Node 进程 | RPC 路由、应用服务、领域内核、事件账本、行情适配 |
-| Agent 半 | 同进程 | 注册 `paper_*` 工具，调用同一个应用服务 |
+| Agent 半 | 同进程 | 注册 `paper_stock_*` / `paper_futures_*` / `paper_ledger` 工具，调用同一个应用服务 |
 
 **技术选择**
 
@@ -135,7 +135,7 @@ dsh-fft-paper-trading/       # 仓库根即包根
       route.ts               # connection.fetch 路由注册
       errors.ts              # PaperError（错误码 + HTTP 状态）
     agent/
-      tools.ts               # 10 个 paper_* 工具定义
+      tools.ts               # 7 个 paper_stock_* 工具定义
       format.ts              # 结果转模型可读摘要
     client/
       index.js               # ModuleLoader 入口 + 面板 + 页签 + 样式（单文件）
@@ -360,34 +360,42 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 ## 10 Agent 工具与工具卡
 
-### 10.1 工具（11 个）
+### 10.1 工具（15 个：股票 7 + 期货 7 + 账本 1）
+
+命名规则 `paper_<asset>_<action>`：股票 `paper_stock_*`、期货 `paper_futures_*`，两边动作一一对应；跨账本的 `paper_ledger` 是唯一例外（带 `account` 参数，不拆资产段）。每个工具只声明自己读取的参数，必填项在 schema 上标 `required`（缺失在 DSH 层就被拒，不进 service）。
 
 | 工具 | 入参 | 返回 | 卡片 |
 | --- | --- | --- | --- |
-| `paper_account` | `{ reset?, confirm? }` | 账户摘要（锁定时带原因与账本路径） | 待做 |
-| `paper_quote` | `{ symbols }` | 报价表 | 无 |
-| `paper_preview` | `{ symbol, side, qty, type, limitPrice?, price? }` | 金额、费用、占用资金、可卖 | 待做 |
-| `paper_order` | `{ symbol, side, qty, type, limitPrice?, price?, requestId? }` | 订单状态 | 待做 |
-| `paper_cancel` | `{ orderId }` | 订单状态 | 待做 |
-| `paper_status` | 无 | 持仓 + 挂单 + 最近成交 | 待做 |
-| `paper_tick` | 无 | 成交/过期结果 | 无 |
-| `paper_market` | `{ action?, query?, limit?, board?, page?, pageSize? }` | 时段摘要 / 搜索命中 / 全市场列表 | 无 |
-| `paper_export` | 无 | 账本路径、版本、锁定原因与快照摘要（只读） | 无 |
+| `paper_stock_account` | `{ reset?, confirm? }` | 账户、持仓、挂单与最近成交（锁定时带原因与账本路径） | 待做 |
+| `paper_stock_market` | `{ action?, query?, limit? }` | 时段摘要 / 搜索命中（`action` 取 status 或 search） | 无 |
+| `paper_stock_quote` | `{ symbol?, symbols? }` | 报价表 | 无 |
+| `paper_stock_preview` | `{ symbol, side, type, qty, limitPrice?, price? }` | 金额、费用、占用资金、可卖 | 待做 |
+| `paper_stock_order` | `{ symbol, side, type, qty, limitPrice?, price?, requestId?, note? }` | 订单状态 | 待做 |
+| `paper_stock_cancel` | `{ orderId }` | 订单状态 | 待做 |
+| `paper_stock_review` | `{ period? }` | 曲线与统计 | 待做 |
+| `paper_futures_account` | `{ reset?, confirm? }` | 期货权益、风险度、持仓与挂单 | 无 |
+| `paper_futures_contracts` | `{ query?, exchange?, limit?, refresh? }` | 合约要素（乘数/tick/保证金率/到期） | 无 |
+| `paper_futures_quote` | `{ symbol?, symbols? }` | 最新价、昨结、成交量、持仓量 | 无 |
+| `paper_futures_preview` | `{ symbol, side, offset, type, qty, limitPrice?, price? }` | 保证金、手续费、可开/可平、风险度 | 无 |
+| `paper_futures_order` | `{ symbol, side, offset, type, qty, limitPrice?, price?, requestId?, note? }` | 委托状态 | 无 |
+| `paper_futures_cancel` | `{ orderId }` | 委托状态 | 无 |
+| `paper_futures_review` | `{ period? }` | 曲线与统计 | 无 |
 | `paper_ledger` | `{ account?, action?, name?, confirm? }` | 快照列表 / 恢复结果 / 备份结果（股票与期货共用） | 无 |
-| `paper_review` | `{ period? }` | 曲线与统计 | 待做 |
 
-规则：所有工具只调 `PaperService`；`output.render` 产出中文摘要；`presentationMeta` 尚未添加（工具卡的前置条件）。
+规则：股票工具只调 `PaperService`、期货工具只调 `FuturesService`、`paper_ledger` 同时调两者；`output.render` 产出中文摘要；`presentationMeta` 尚未添加（工具卡的前置条件）。
 
-工具当前注册在全局行，标准模式也能看到 `paper_*`。若要把它们收进金融模式，按 §14.8 的做法拆 `/agent` 子路径，不要直接搬走整行（浏览器半会丢）。
+没有 `tick` 工具：撮合与日切由宿主调度器每 5 秒驱动（§19.7），面板另有 `tick` RPC 作可见期补充。没有独立的 `export` 工具：账本路径、版本、锁定原因与快照摘要都在 `paper_ledger` 的 `action=list` 里，账本导出走面板/RPC。`paper_stock_market` 不含全市场列表（`market/list` 只在面板用），搜索的 `limit` 已声明，默认 10。
+
+工具当前注册在全局行，标准模式也能看到 `paper_stock_*` / `paper_futures_*` / `paper_ledger`。若要把它们收进金融模式，按 §14.8 的做法拆 `/agent` 子路径，不要直接搬走整行（浏览器半会丢）。
 
 ### 10.2 工具卡（v0.2）
 
 | 卡 | key | 内容 | 动作 |
 | --- | --- | --- | --- |
-| 预览卡 | `paper_preview` | 代码、方向、数量、限价、金额、费用、现金影响 | 「确认下单」→ `order/place` |
-| 委托卡 | `paper_order` / `paper_cancel` | 状态、成交价、费用、时间 | 挂单「撤单」 |
-| 账户卡 | `paper_status` | 总资产、现金、持仓摘要、挂单数 | 「打开模拟盘」→ 切到 `main` |
-| 复盘卡 | `paper_review` | 权益曲线、回撤、统计 | 「查看复盘」 |
+| 预览卡 | `paper_stock_preview` | 代码、方向、数量、限价、金额、费用、现金影响 | 「确认下单」→ `order/place` |
+| 委托卡 | `paper_stock_order` / `paper_stock_cancel` | 状态、成交价、费用、时间 | 挂单「撤单」 |
+| 账户卡 | `paper_stock_account` | 总资产、现金、持仓摘要、挂单数 | 「打开模拟盘」→ 切到 `main` |
+| 复盘卡 | `paper_stock_review` | 权益曲线、回撤、统计 | 「查看复盘」 |
 
 卡片只能渲染与转发 RPC，不能复制业务规则。注册方式见 §14.2。
 
@@ -529,7 +537,7 @@ $DSH_HOME/paper-trading/
 
 ### 14.8 把工具收进金融模式（preset）
 
-当前 `paper_*` 是全局行。要做成「只在金融模式出现」：
+当前 `paper_stock_*` / `paper_futures_*` / `paper_ledger` 是全局行。要做成「只在金融模式出现」：
 
 1. 全局行继续提供浏览器半与 RPC 路由，并把 service `ctx.provide('paperTrading', service)`。
 2. 新增 `./agent` 子路径导出，只注册工具，`inject: ['paperTrading']`。
@@ -548,7 +556,7 @@ $DSH_HOME/paper-trading/
 | `store.test.mjs` | JSONL 追加、坏尾行隔离 |
 | `adapter.test.mjs` | 代码规范化、分组摊平、日 K 排序 |
 | `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点、无「查行情」按钮、防抖预览与成交回报 |
-| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 11 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
+| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 15 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
 | `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、无迁移路径的旧版本锁户、重置健壮性、日 K 补 `prevClose` |
 | `ledger-recovery.test.mjs` | 自动快照节流、v3→v4 迁移、锁户后从快照恢复、坏快照拒绝、更高版本拒绝、期货同路径、`paper_ledger` 工具 |
 | `scheduler.test.mjs` | 假时钟周期调用、非重叠、start/stop 幂等、异常转 warning |
@@ -653,7 +661,7 @@ interface TradingCalendarPort {
 
 - 适配器 `FtshareTradingCalendar` 调 `ft_v1_time_trading_calendar` 与 `ft_v1_time_get_nth_trade_date`，按区间缓存 1 天；
 - FTShare 日历的入参与返回都是 **YYYYMMDD 整数**（实测 `trade_dates` 为整数数组）；适配器在边界转换，内部统一 `YYYY-MM-DD`；
-- 取不到时回退「周一至周五」并标 `source: 'fallback'`，**失败结果不写缓存**：60 秒后重试，恢复后自动切回；来源经 `market/status` 的 `calendar` 字段暴露，面板副标题显示「交易日历降级（按工作日估算）」，降级期间「下一交易日」写作「下一交易日（按工作日估算）」，`paper_market` 的时段摘要同步带一句；
+- 取不到时回退「周一至周五」并标 `source: 'fallback'`，**失败结果不写缓存**：60 秒后重试，恢复后自动切回；来源经 `market/status` 的 `calendar` 字段暴露，面板副标题显示「交易日历降级（按工作日估算）」，降级期间「下一交易日」写作「下一交易日（按工作日估算）」，`paper_stock_market` 的时段摘要同步带一句；
 - 时段表是交易所规则，集中在 `core/session.ts`，不散落在 service/UI：
 
 | 阶段 | 时间（Asia/Shanghai） | 可提交 | 可连续撮合 | 说明 |
@@ -769,7 +777,7 @@ FTShare 目录里已有的数据源（见主仓 `packages/dsh-fft-ftshare/catalo
 - 匿名通道另有 500 次/天额度（滚动 1 天），额度耗尽时上游返回 429。
 - **失败原因结构化**：适配器保留上游 `notice.code`，`classifyDataProblem` 按 `state + code` 归成 `invalid-key / plan-denied / quota / network / upstream`。配额没有专属码：`UPSTREAM_UNAVAILABLE` 与真实故障同码，额度只写在文案里（「最近 1 天最多访问 500 次」），bundle 还会后缀「免费配额用尽」，所以 `reason = quota` 认的是**耗尽措辞**而不是「额度」二字（后者在套餐提示里也会出现）。bundle 侧（`dsh-fft-ftshare/errors`）的顺序是：显式权限码 → 配额 → 权限文案 → 普通失败。配额本身分两档：独占码（`insufficient_quota` / `quota_exceeded` / `quota_exhausted`）与信封 HTTP 429 可单独定案；共用码 `upstream_unavailable` 与未知码还要「用尽 / 耗尽 / 最多访问」的文案佐证——否则真停机也会被说成额度用尽。`paper-service` 的提示文案与面板 banner 共用这套原因。
 - **面板 banner**：交易/行情页顶部一条可关闭横幅，按原因给动作：无 Key / 额度耗尽 / Key 无效 → 文案指路 `设置 → 金融终端`（额度耗尽另给「重试」，配好 Key 后靠它立刻刷新）；套餐未开通 → 只说明可用日K；网络/上游 → 重试；无数据服务 → 提示装底座。关闭按「原因」记忆（`localStorage: paper-trading:data-banner-dismissed`），原因变化后重新出现。横幅**不再放注册外链**：外链只在设置页「访问凭据」卡里维护（`获取 API Key ↗`），横幅再放一个只会和它漂成两个 URL；宿主 0.2.1-rc.2 也没有让客户端插件打开设置页的 API（`ui-settings` 的 `openSettings` / `openSection` 只是设置槽实现方的 owner props，`pluginNavigation.openBundle` 打开的是插件管理面板），所以只能点名栏目。
-- 期货侧同一条 banner；期货行情、tick、预览警告与开收盘回退都走 `friendlyDataNotice` 的同一套文案（不再透出上游接口名）。`paper_quote` 的摘要对日K回退报价标「收盘（日K）」，对实时报价才写「现价」，`paper_market` 的时段摘要带日历降级说明。
+- 期货侧同一条 banner；期货行情、tick、预览警告与开收盘回退都走 `friendlyDataNotice` 的同一套文案（不再透出上游接口名）。`paper_stock_quote` 的摘要对日K回退报价标「收盘（日K）」，对实时报价才写「现价」，`paper_stock_market` 的时段摘要带日历降级说明。
 
 **已实测的数据缺口**
 
@@ -945,9 +953,9 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 
 **工具**
 
-- 新增 `paper_market`：`{ action: 'status'|'search'|'list', query?, board?, page? }`；
-- `paper_quote` 输出阶段与行情时间；盘后明确「不可成交」；
-- `paper_status` 加日终摘要；`paper_review` 加 `daily` / `roundtrips`；
+- 新增 `paper_stock_market`：`{ action: 'status'|'search', query?, limit? }`；
+- `paper_stock_quote` 输出阶段与行情时间；盘后明确「不可成交」；
+- `paper_stock_account` 加日终摘要；`paper_stock_review` 加 `daily` / `roundtrips`；
 - 下单工具透传 `note`。
 
 **客户端**
@@ -1083,7 +1091,7 @@ src/data/futures-market-data-port.ts
 src/data/futures-market-data.ts  # FTShare 适配器（三套后缀归一、按日缓存、≤20 分批）
 src/service/futures-service.ts   # 编排：账本/行情/日历/时钟；无 IO
 src/service/futures-rpc.ts       # futures/* 端点与 payload 校验
-src/agent/futures-tools.ts       # 8 个 futures_* 工具
+src/agent/futures-tools.ts       # 7 个 paper_futures_* 工具
 src/client/index.js              # 账户切换 + StockDashboard / FuturesDashboard + BasketTab
 ```
 
@@ -1109,7 +1117,7 @@ src/client/index.js              # 账户切换 + StockDashboard / FuturesDashbo
 
 - `src/index.ts` 装配 futures repo/service/scheduler/route/tools；RPC 按前缀分发：`futures/*` → futures handler，其余回落股票 handler，浏览器半只用一条 `/api/ft-paper-trading`。
 - `PaperScheduler` 同时驱动股票与期货 `tick`，面板关闭也照常结算；`ctx.inject(['ftshareData'])` 出现时同时替换股票与期货适配器，dispose 时各自复位。
-- 期货 8 个工具与 `paper_*` 平行、不复用：资金/手数/开平语义不混。
+- 期货 7 个 `paper_futures_*` 工具与股票 7 个 `paper_stock_*` 平行、不复用；`paper_ledger` 是两账本共用的恢复入口：资金/手数/开平语义不混。
 
 ### 20.6 客户端
 

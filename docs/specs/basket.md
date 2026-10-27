@@ -21,7 +21,7 @@
 - 限价单、盘后/午休预埋、未成交挂单。
 - 挂单资金预占（现有 P2 未做，见 [design.md](../design.md) §19.11）。
 - 命名组合、保存/复用、CSV 导出、模板下载。
-- Agent 工具（`paper_basket_*`）。
+- Agent 工具（`paper_stock_basket_*`）。
 - 客户端拆分、批量报价适配器优化。
 
 ## 2 用户流程
@@ -283,7 +283,7 @@ RPC：
 
 1. 限价 + 盘后预埋 + 挂单资金预占。
 2. 卖出/再平衡（按目标权重、T+1、零股）。
-3. Agent 工具 `paper_basket_preview` / `paper_basket_order`（CSV 文本）。
+3. Agent 工具 `paper_stock_basket_preview` / `paper_stock_basket_order`（CSV 文本）。
 4. 命名组合、保存/复用、CSV 模板与持仓导出。
 5. `quotes()` 批量适配器；20 只以上；客户端拆分与打包器。
 

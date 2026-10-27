@@ -5,10 +5,11 @@ import { join } from 'node:path'
 import { apply } from '../lib/index.js'
 
 const TOOL_NAMES = [
-  'paper_account', 'paper_cancel', 'paper_export', 'paper_ledger', 'paper_market', 'paper_order',
-  'paper_preview', 'paper_quote', 'paper_review', 'paper_status', 'paper_tick',
-  'futures_account', 'futures_cancel', 'futures_contracts', 'futures_order', 'futures_positions',
-  'futures_preview', 'futures_quote', 'futures_review',
+  'paper_stock_account', 'paper_stock_cancel', 'paper_stock_market', 'paper_stock_order',
+  'paper_stock_preview', 'paper_stock_quote', 'paper_stock_review',
+  'paper_futures_account', 'paper_futures_cancel', 'paper_futures_contracts', 'paper_futures_order',
+  'paper_futures_preview', 'paper_futures_quote', 'paper_futures_review',
+  'paper_ledger',
 ]
 
 /** Scratch `$DSH_HOME` so both tests open their own ledger. */
@@ -108,10 +109,10 @@ test('wiring: route and tools attach without the market-data service', async () 
     assert.equal(account.value.cash, 100_000)
     assert.match(account.value.ledgerPath ?? '', /events\.jsonl$/, 'the account view names its ledger file')
 
-    const export_ = await tools.find(tool => tool.name === 'paper_export').execute({})
-    assert.match(export_.summary, /events\.jsonl/, 'paper_export prints the ledger path')
-    assert.equal(export_.data.exists, true)
-    assert.equal(export_.data.blocked, false)
+    const stockAccount = await tools.find(tool => tool.name === 'paper_stock_account').execute({})
+    assert.match(stockAccount.summary, /账户/)
+    assert.match(stockAccount.data.account.ledgerPath ?? '', /events\.jsonl$/, 'the account tool names its ledger file')
+    assert.equal(stockAccount.data.account.blocked, false)
 
     const quote = await call('market/quote', { symbols: ['600519.SH'] })
     assert.equal(quote.ok, true)
