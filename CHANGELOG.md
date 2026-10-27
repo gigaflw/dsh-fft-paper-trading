@@ -4,7 +4,7 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.6.0] - 2026-10-27
 
 ### Added
 
@@ -18,11 +18,18 @@
 - 期货账本补上版本门禁，与股票账本一致
 - 锁定提示从「请重置」改为「可从备份恢复」；重置确认框说明旧账本会先归档
 - 破坏性：Agent 工具名统一为 `paper_<asset>_<action>`（`paper_stock_*` / `paper_futures_*`，跨账本的 `paper_ledger` 例外），工具面从 19 个收窄到 15 个：`paper_account`+`paper_status` 合并为 `paper_stock_account`，`futures_account`+`futures_positions` 合并为 `paper_futures_account`，删 `paper_tick`（宿主调度器已驱动）与 `paper_export`（账本信息见 `paper_ledger`），`paper_market` 去掉列表动作并补声明搜索 `limit`
-- 每个工具只声明自己读取的参数并标必填项：18 个工具的 schema 从约 21.8k 字符降到约 5k（约 -76% 固定 token）
+- 每个工具只声明自己读取的参数并标必填项：工具 schema 从约 21.8k 字符降到约 5.4k（约 -75% 固定 token）
 
 ### Fixed
 
 - 只安装未使用也不再持续请求 FTShare：空持仓/无挂单的期货 tick 不再拉合约索引；合约索引失败后 60 秒内走负缓存，不再每 5 秒重试
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.5.1` → `0.6.0`，依赖与内联版本不变
+- `@dsh-ft/dsh-fft-settings`：`0.5.0`（registry 依赖）
+- `@dsh-ft/dsh-fft-ftshare`：`0.3.0`（registry 依赖）
+- `DSH Kline`：`0.4.0-ft.2`（仍内联）
 
 ## [0.5.1] - 2026-10-27
 
@@ -182,6 +189,7 @@
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.6.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.4.0...v0.4.1
