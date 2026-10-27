@@ -1101,7 +1101,7 @@ src/client/index.js              # 账户切换 + StockDashboard / FuturesDashbo
 ### 20.4 行情适配
 
 - `FuturesMarketDataPort` 五组数据：contracts / quotes / limits / settle / closes；四态 `ok|stale|denied|failed`，失败整批不返回半份。
-- 三套后缀（行情 `.SHFE`、基础数据 `.SHF/.CZC`、涨跌停/结算 `.SHF/.ZCE/.CFX`）只在适配器归一；合约索引排除 NIB/CFFEX/缺乘数或 tick，按交易日缓存（内存 + `contracts.json`）。
+- 三套后缀（行情 `.SHFE`、基础数据 `.SHF/.CZC`、涨跌停/结算 `.SHF/.ZCE/.CFX`）只在适配器归一；合约索引排除 NIB/CFFEX/缺乘数或 tick，按交易日缓存（内存 + `contracts.json`）；失败后 60 秒内走负缓存，空持仓/无挂单的 tick 不触达合约索引。
 - 涨跌停优先 `ft_limit`；分钟回退时 `source='minutes'`，风控允许 ±1 tick 容差。`m_ratio`/`long_margin_rate`/`margin_info` 统一成小数。
 - 无 `ftshareData` 时装配 `UnavailableFuturesMarketData`，账本、持仓、历史、重置仍可用；首页明确「期货行情不可用」。
 
@@ -1131,7 +1131,7 @@ src/client/index.js              # 账户切换 + StockDashboard / FuturesDashbo
 - 按成交额计费的品种：SHFE 按千分比、DCE/GFEX 按万分比折算（RB 0.1‰、铁矿 1‱ 实测合理）；折算后超过 0.05% 的异常上游值不猜（INE 会把平今元/手填进费率字段），回退默认手续费并提示「费率单位异常」。有每手费时永远优先每手费；DCE/GFEX 仍待首个交易日用单手成交额复核。
 - 日结算不把浮盈亏划入现金、不重写持仓成本；权益按收盘价重算。要更贴近实盘结算需单独一批改动账本语义。
 - 重启后 `account()` 不取行情，marks 用上次落盘价，首个 5s tick 前显示的浮盈可能滞后；账本与重放不受影响。
-- 合约索引/涨跌停表失败没有负缓存：掉线期间每次预览会重试上游；后续加短 TTL 负缓存。
+- 涨跌停表失败仍没有负缓存：掉线期间每次预览会重试上游；合约索引已加 60 秒负缓存（掉线时不随 5 秒 tick 重试）。
 - 期货 `closes` 逐合约串行；持仓很多时结算会变慢，后续可换批量 K 线接口。
 - 批量不做卖出/再平衡/限价/盘后预埋/Agent 工具，逐步扩；客户端在预览成功时冻结 `batchId`，重试复用同一批。
 - 股票/期货账户切换会卸载另一半仪表盘，表单、搜索和选中合约按设计重置；需要保留草稿时再单独做持久化。

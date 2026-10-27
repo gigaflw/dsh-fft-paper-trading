@@ -553,3 +553,47 @@ test('futures: data failures use the same guidance copy as the stock account', a
     await close(subject)
   }
 })
+
+test('service: an idle account tick never reaches the contract index', async () => {
+  const subject = setup('futures-idle-tick')
+  try {
+    const tick = await subject.service.tick()
+    assert.deepEqual(tick.filled, [])
+    assert.equal(subject.data.contractsCalls, 0, 'the host beat must not poll contracts for an idle account')
+  } finally {
+    await close(subject)
+  }
+})
+
+test('service: a failed contract refresh backs off instead of retrying every tick', async () => {
+  const subject = setup('futures-contract-backoff')
+  try {
+    subject.data.fail = true
+    const first = await subject.service.contracts()
+    assert.equal(first.state, 'stale')
+    assert.match(first.notice, /合约索引不可用/)
+    assert.equal(subject.data.contractsCalls, 1)
+
+    // Inside the retry window a second read serves the stale answer.
+    subject.setNow(clockAt(DATE1, AM + 0.5))
+    const backedOff = await subject.service.contracts()
+    assert.equal(backedOff.state, 'stale')
+    assert.match(backedOff.notice, /合约索引暂不可用/)
+    assert.equal(subject.data.contractsCalls, 1, 'the retry window must suppress the upstream call')
+
+    // After the window one retry is allowed.
+    subject.setNow(clockAt(DATE1, AM + 2))
+    await subject.service.contracts()
+    assert.equal(subject.data.contractsCalls, 2)
+
+    // A manual refresh bypasses the window, and success clears the failure.
+    subject.data.fail = false
+    const refreshed = await subject.service.contracts({ refresh: true })
+    assert.equal(refreshed.state, 'ok')
+    assert.equal(subject.data.contractsCalls, 3)
+    await subject.service.contracts()
+    assert.equal(subject.data.contractsCalls, 3, 'a successful fetch is cached per trade date')
+  } finally {
+    await close(subject)
+  }
+})
