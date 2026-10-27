@@ -18,21 +18,29 @@
  *   --kline-ref <ref>   kline git ref to inline (default: package.json
  *                       release.klineRef, the single pin every builder uses)
  *   --out <dir>         Archive directory for the tarball (default: releases/)
+ *   --no-prune          Keep the pruned files (see scripts/pack-prune.mjs);
+ *                       only for diffing a full payload against a release one
  *   -h, --help          Print this help
  *
  * The tarball is archived under `releases/` (git-ignored build output); only
- * the staging tree lives in `build/`.
+ * the staging tree lives in `build/`. The published content is runtime-only:
+ * `scripts/pack-prune.mjs` drops what the inlined kline archive carries for
+ * other channels (storefront screenshots, the committed sourcemap, tsc
+ * intermediates and the standalone HTML page) and the packer asserts the
+ * archived tarball really carries none of it.
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync, renameSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync, execFileSync } from 'node:child_process'
+import { PRUNE, pruneMatcher, pruneStaged } from './pack-prune.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..')
 const argv = process.argv.slice(2)
 const option = (name, fallback) => { const at = argv.indexOf(`--${name}`); return at === -1 ? fallback : argv[at + 1] }
+const noPrune = argv.includes('--no-prune')
 
 if (argv.includes('-h') || argv.includes('--help')) {
   console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0].split('/**')[1].replace(/^ \* ?/gm, ''))
@@ -110,6 +118,23 @@ function copyPackageFiles(sourceDir, destDir) {
   return manifest
 }
 
+/** What the kline runtime reads: the MCP server, its tools, the client bundle and the two served assets. */
+const KLINE_RUNTIME = [
+  'package.json',
+  'lib/index.js',
+  'lib/client.js',
+  'server.py',
+  'chart_service.py',
+  'tools/__init__.py',
+  'view/vendor/klinecharts.min.js',
+  'view/ft-logo.jpg',
+]
+
+/**
+ * Inline the pinned kline archive, then trim it to runtime content.
+ * @param {string} destDir - staging directory of the inlined package.
+ * @returns {{manifest: object, pruned: {removed: string[], unmatched: string[], bytes: number}}} the inlined manifest and what pruning dropped.
+ */
 function inlineKline(destDir) {
   if (!existsSync(join(klineRepo, '.git'))) fail(`kline checkout not found: ${klineRepo}`)
   mkdirSync(destDir, { recursive: true })
@@ -120,9 +145,11 @@ function inlineKline(destDir) {
   rmSync(tarPath, { force: true })
   const manifest = readManifest(destDir)
   if (manifest.name !== KLINE) fail(`kline archive has unexpected name ${manifest.name}`)
-  if (!existsSync(join(destDir, 'lib', 'index.js'))) fail('kline archive has no lib/index.js')
-  if (!existsSync(join(destDir, 'view'))) fail('kline archive has no view/')
-  return manifest
+  for (const path of KLINE_RUNTIME) {
+    if (!existsSync(join(destDir, path))) fail(`kline archive has no ${path}`)
+  }
+  const pruned = noPrune ? { removed: [], unmatched: [], bytes: 0 } : pruneStaged(KLINE, destDir)
+  return { manifest, pruned }
 }
 
 /** Registry dependencies declared by the paper manifest, minus the inlined edges. */
@@ -159,7 +186,13 @@ if (typeof ftshareRange !== 'string' || ftshareRange === '') {
 rmSync(staging, { recursive: true, force: true })
 mkdirSync(packageDir, { recursive: true })
 
-const klineManifest = inlineKline(join(packageDir, 'node_modules', '@ftshare-lab', 'dsh-kline'))
+const kline = inlineKline(join(packageDir, 'node_modules', '@ftshare-lab', 'dsh-kline'))
+const klineManifest = kline.manifest
+// A rule that no longer matches means the pinned archive changed shape; the
+// content assertion below still guards the artifact, so this is a warning.
+for (const rule of kline.pruned.unmatched) {
+  console.warn(`pack-npm: prune rule ${JSON.stringify(rule)} of ${KLINE} matched nothing; the archive may have cleaned up`)
+}
 
 // The paper package itself: files as declared, manifest rewritten for publishing.
 copyPackageFiles(repoRoot, packageDir)
@@ -214,11 +247,20 @@ const required = [
   'package/lib/index.js',
   'package/lib/client.js',
   'package/cordis.patch.yml',
-  'package/node_modules/@ftshare-lab/dsh-kline/package.json',
-  'package/node_modules/@ftshare-lab/dsh-kline/view/kline.html',
+  ...KLINE_RUNTIME.map(path => `package/node_modules/${KLINE}/${path}`),
 ]
 for (const path of required) {
   if (!listing.includes(path)) fail(`tarball is missing ${path}`)
+}
+// Pruning has to be visible in the archived file list, not only in the staging
+// tree: a rule that silently stopped matching would otherwise ship the bytes
+// again. `--no-prune` is the deliberate exception.
+if (!noPrune) {
+  const prefix = `package/node_modules/${KLINE}/`
+  const matchers = (PRUNE[KLINE] ?? []).map(pruneMatcher)
+  const regressions = listing.filter(path => path.startsWith(prefix)
+    && matchers.some(test => test.test(path.slice(prefix.length))))
+  if (regressions.length > 0) fail(`tarball carries pruned kline paths: ${regressions.slice(0, 5).join(', ')}`)
 }
 // Settings and ftshare resolve from npm: a bundled copy would shadow the
 // published package and drift from the declared range.
@@ -251,6 +293,9 @@ const bytes = statSync(tarballPath).size
 const sha = createHash('sha256').update(readFileSync(tarballPath)).digest('hex')
 console.log(`tarball: ${tarballPath}`)
 console.log(`size:    ${(bytes / 1024 / 1024).toFixed(1)} MB (${listing.length} entries)`)
+if (kline.pruned.removed.length > 0) {
+  console.log(`pruned:  ${kline.pruned.removed.length} kline paths, ${(kline.pruned.bytes / 1024 / 1024).toFixed(1)} MB (--no-prune keeps them)`)
+}
 console.log(`sha256:  ${sha}`)
 console.log(`inlined: ${KLINE}@${klineRef} (manifest ${klineManifest.version})`)
 console.log(`registry: ${INTERNAL_SETTINGS}@${settingsRange}, ${INTERNAL_FTSHARE}@${ftshareRange}`)
