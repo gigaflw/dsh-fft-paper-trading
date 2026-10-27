@@ -87,28 +87,19 @@ const remoteRepo = name => {
 /** The artifact name `pnpm pack` gives a scoped package. */
 const artifactName = (name, version) => `${name.replace(/^@/u, '').replace(/\//gu, '-')}-${version}.tgz`
 
-/** One version's section of CHANGELOG.md, without the heading and the link block. */
-const changelogSection = version => {
-  const path = join(repoRoot, 'CHANGELOG.md')
-  if (!existsSync(path)) fail('CHANGELOG.md is missing')
-  const lines = readFileSync(path, 'utf8').split('\n')
-  const start = lines.findIndex(line => line.startsWith(`## [${version}]`))
-  if (start === -1) fail(`CHANGELOG.md has no "## [${version}]" section`)
-  let end = lines.findIndex((line, index) => index > start && line.startsWith('## ['))
-  if (end === -1) end = lines.findIndex((line, index) => index > start && /^\[[0-9]/u.test(line))
-  if (end === -1) end = lines.length
-  const body = lines.slice(start + 1, end).join('\n').trim()
-  if (body === '') fail(`CHANGELOG.md section ${version} is empty`)
-  return body
-}
-
-/** Absolute path of the release notes, written to build/ when extracted. */
-const notesPath = (tag, version, custom) => {
+/** Absolute path of the release notes; the renderer is shared with the release workflow. */
+const notesPath = (tag, version, custom, artifact) => {
   if (custom !== undefined) return resolve(repoRoot, custom)
   const dir = join(repoRoot, 'build')
   mkdirSync(dir, { recursive: true })
   const path = join(dir, `release-notes-${tag}.md`)
-  writeFileSync(path, `${changelogSection(version)}\n`)
+  const notes = execFileSync(process.execPath, [
+    join(repoRoot, 'scripts', 'release-notes.mjs'),
+    '--version', version,
+    '--tag', tag,
+    '--artifact', artifact,
+  ], { encoding: 'utf8' })
+  writeFileSync(path, notes)
   return path
 }
 
@@ -258,7 +249,7 @@ const main = async () => {
   const tag = option('tag', `v${version}`)
   const file = resolve(repoRoot, option('file', join('releases', artifactName(manifest.name, version))))
   if (!existsSync(file)) fail(`artifact not found: ${file}（先运行 pnpm run pack:npm）`)
-  const notes = notesPath(tag, version, option('notes', undefined))
+  const notes = notesPath(tag, version, option('notes', undefined), file)
   const dryRun = flag('dry-run')
 
   const channels = [flag('gitlab') ? 'gitlab' : undefined, flag('github') ? 'github' : undefined, flag('npm') ? 'npm' : undefined].filter(Boolean)
