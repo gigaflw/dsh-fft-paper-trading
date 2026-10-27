@@ -11,6 +11,8 @@ import type {
   ErrorCode,
   FillView,
   LedgerExport,
+  LedgerSnapshotsView,
+  LedgerSnapshotView,
   MarketStatus,
   OrderDraft,
   OrderView,
@@ -38,7 +40,7 @@ import { toAccountView, toFillView, toOrderView, toReview, previewOrder } from '
 import type { AccountState, LedgerEvent, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js'
-import type { AccountStore } from '../store/port.js'
+import type { AccountStore, LedgerSnapshot } from '../store/port.js'
 import type { ShortlistStore } from '../store/shortlist.js'
 import { PaperError } from './errors.js'
 import { QuoteRefreshGate } from './quote-gate.js'
@@ -111,7 +113,7 @@ export class PaperService {
   /** The single place that turns a blocked state into an error carrying its reason. */
   private blocked(state: AccountState): PaperError {
     const reason = reasonText(state.blockedReason)
-    return new PaperError('ACCOUNT_BLOCKED', `账户已锁定，请重置后继续${reason === '' ? '' : `（${reason}）`}`, 409)
+    return new PaperError('ACCOUNT_BLOCKED', `账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续${reason === '' ? '' : `（${reason}）`}`, 409)
   }
 
   async account(): Promise<AccountView> {
@@ -1072,9 +1074,65 @@ export class PaperService {
     }
   }
 
+  /**
+   * Snapshots that can be restored, newest first, plus the live ledger's state.
+   *
+   * This is the one call an agent needs before recovery: which backups exist,
+   * which replay cleanly, and whether one needs migration first.
+   */
+  async ledgerSnapshots(): Promise<LedgerSnapshotsView> {
+    const state = await this.options.repo.current().catch(() => undefined)
+    const snapshots = await this.options.repo.snapshots()
+    return {
+      path: this.options.repo.ledgerPath ?? '',
+      blocked: state?.blocked === true,
+      blockedReason: state?.blockedReason,
+      ledgerVersion: state?.ledgerVersion,
+      snapshots: snapshots.map(toSnapshotView),
+    }
+  }
+
+  /**
+   * Replace the live ledger with one snapshot.
+   *
+   * Deliberately reachable while blocked and without `sync()`: recovery must not
+   * depend on the current ledger replaying, and the store validates the target
+   * before touching the file.
+   */
+  async restoreLedger(name: string, confirm: boolean): Promise<AccountView> {
+    if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '恢复账本需要 confirm=true', 400)
+    try {
+      return this.viewOf(await this.options.repo.restore(name))
+    } catch (error) {
+      throw new PaperError('LEDGER_RESTORE_FAILED', error instanceof Error ? error.message : String(error), 409)
+    }
+  }
+
+  /** Take one manual snapshot (the automatic one runs at most daily). */
+  async backupLedger(): Promise<boolean> {
+    const stamp = this.ts().replace(/[:.]/g, '-')
+    return this.options.repo.backup(`manual-${stamp}`)
+  }
+
   /** Exposed for tests/scenarios: current equity in cents after advancing the clock. */
   async equityCents(): Promise<number> {
     const state = await this.sync()
     return equityCents(state)
+  }
+}
+
+/** Ledger cents → the yuan the rest of the views use. */
+function toSnapshotView(snapshot: LedgerSnapshot): LedgerSnapshotView {
+  return {
+    name: snapshot.name,
+    createdAt: snapshot.createdAt,
+    bytes: snapshot.bytes,
+    ledgerVersion: snapshot.ledgerVersion,
+    lastSeq: snapshot.lastSeq,
+    tradeDate: snapshot.tradeDate,
+    cash: snapshot.cashCents / 100,
+    valid: snapshot.valid,
+    migratable: snapshot.migratable,
+    problem: snapshot.problem,
   }
 }

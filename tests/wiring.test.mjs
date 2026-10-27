@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { apply } from '../lib/index.js'
 
 const TOOL_NAMES = [
-  'paper_account', 'paper_cancel', 'paper_export', 'paper_market', 'paper_order', 'paper_preview',
-  'paper_quote', 'paper_review', 'paper_status', 'paper_tick',
+  'paper_account', 'paper_cancel', 'paper_export', 'paper_ledger', 'paper_market', 'paper_order',
+  'paper_preview', 'paper_quote', 'paper_review', 'paper_status', 'paper_tick',
   'futures_account', 'futures_cancel', 'futures_contracts', 'futures_order', 'futures_positions',
   'futures_preview', 'futures_quote', 'futures_review',
 ]

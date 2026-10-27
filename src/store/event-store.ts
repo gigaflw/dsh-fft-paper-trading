@@ -1,4 +1,4 @@
-import { copyFile, mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
+import { access, copyFile, mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { LedgerEvent } from '../core/types.js'
 
@@ -6,6 +6,37 @@ export interface ReadResult<T> {
   events: T[]
   /** Malformed tail lines that were dropped (a killed process can leave one). */
   skipped: number
+}
+
+/**
+ * Parse one JSONL ledger file.
+ *
+ * Shared by the live ledger and by snapshots: a restore must read a backup with
+ * exactly the same tolerance as a normal load, otherwise a file that loads fine
+ * could be rejected by the recovery path.
+ */
+export async function readEventsFile<T extends StoredLedgerEvent>(file: string): Promise<ReadResult<T>> {
+  let content: string
+  try {
+    content = await readFile(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { events: [], skipped: 0 }
+    throw error
+  }
+  const events: T[] = []
+  let skipped = 0
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    if (trimmed === '') continue
+    try {
+      const parsed = JSON.parse(trimmed) as T
+      if (typeof parsed?.type === 'string' && typeof parsed?.seq === 'number') events.push(parsed)
+      else skipped += 1
+    } catch {
+      skipped += 1
+    }
+  }
+  return { events, skipped }
 }
 
 /** The only fields the store needs; both the stock and futures ledgers satisfy it. */
@@ -47,27 +78,17 @@ export class EventStore<T extends StoredLedgerEvent = LedgerEvent> {
   }
 
   async readAll(): Promise<ReadResult<T>> {
-    let content: string
+    return readEventsFile<T>(this.file)
+  }
+
+  /** False when the ledger has never been created (first run). */
+  async exists(): Promise<boolean> {
     try {
-      content = await readFile(this.file, 'utf8')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { events: [], skipped: 0 }
-      throw error
+      await access(this.file)
+      return true
+    } catch {
+      return false
     }
-    const events: T[] = []
-    let skipped = 0
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed === '') continue
-      try {
-        const parsed = JSON.parse(trimmed) as T
-        if (typeof parsed?.type === 'string' && typeof parsed?.seq === 'number') events.push(parsed)
-        else skipped += 1
-      } catch {
-        skipped += 1
-      }
-    }
-    return { events, skipped }
   }
 
   /**

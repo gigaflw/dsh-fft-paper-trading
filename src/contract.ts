@@ -366,6 +366,33 @@ export interface LedgerExport {
   notice?: string
 }
 
+/** One ledger snapshot as listed to the panel, an agent, or a human. */
+export interface LedgerSnapshotView {
+  name: string
+  createdAt: string
+  bytes: number
+  /** Version stored in the snapshot, before any migration. */
+  ledgerVersion: number
+  lastSeq: number
+  tradeDate: string
+  /** Free cash at that point, in yuan. */
+  cash: number
+  /** Replays cleanly at the current ledger version (after migration). */
+  valid: boolean
+  /** Needs the loader's migration step before restoring. */
+  migratable: boolean
+  problem?: string
+}
+
+/** `ledger/list`: everything needed to choose a recovery point. */
+export interface LedgerSnapshotsView {
+  path: string
+  blocked: boolean
+  blockedReason?: string
+  ledgerVersion?: number
+  snapshots: LedgerSnapshotView[]
+}
+
 export interface RoundTrip {
   symbol: string
   name?: string
@@ -445,3 +472,4 @@ export type ErrorCode =
   | 'PRICE_LIMIT'
   | 'SUSPENDED'
   | 'UNSUPPORTED_INSTRUMENT'
+  | 'LEDGER_RESTORE_FAILED'

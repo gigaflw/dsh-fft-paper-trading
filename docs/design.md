@@ -158,7 +158,7 @@ dsh-fft-paper-trading/       # 仓库根即包根
 | `core/engine` | 应用命令，产出事件 | 状态 + 命令 → `{events, state}` | IO、随机数 | 全场景 |
 | `core/views` | 状态 → 账户/订单/预览/复盘视图 | 状态 → 视图 | 读写文件 | 预览、回撤 |
 | `store/port` | 持久化端口的唯一声明 | — | 业务规则 | — |
-| `store/repo` | 载入、去重/重放、事务写入、原子替换、对账、价格缓存、备份、导出 | 事件 / 构建函数 → 状态 | 业务规则、创建结算事件 | 坏尾行、并发、修复 |
+| `store/repo` | 载入、去重/重放、版本迁移、事务写入、原子替换、对账、价格缓存、快照/恢复、导出 | 事件 / 构建函数 → 状态 | 业务规则、创建结算事件 | 坏尾行、并发、修复 |
 | `data/port` | 行情端口的唯一声明与四态结果 | — | 账本 | — |
 | `data/ftshare` | FTShare 接口映射、代码规范化、四态归一 | 代码列表 → 报价/日 K | 账本 | mock 端口 |
 | `service` | 编排、校验、串行、错误映射、重置命令 | RPC/工具入参 → 视图 | 直接算撮合、直接读写文件 | 集成 |
@@ -255,6 +255,7 @@ interface AccountState {
 | `day.closed` | 首次跨交易日 tick | 日期、权益、现金、下一交易日 |
 | `ledger.violation` | 启动或写入对账失败 | 失败项；账户随即 `blocked`，此后不再追加事件 |
 | `ledger.repaired` | 载入时丢弃了重复 seq 事件 | 丢弃条数；随后原子压缩账本 |
+| `ledger.migrated` | 载入/恢复时把旧版本账本迁移到当前版本 | 源版本、目标版本；迁移前已备份原文件 |
 
 未落地的事件（`account.settings`、`risk.blocked`）在 §14.3 里说明，当前不写。
 
@@ -267,9 +268,12 @@ interface AccountState {
 1. 读 `events.jsonl`，末尾坏行（进程被杀）丢弃并记录 warning。
 2. 校验 `seq` 严格递增：同一 seq 且内容相同（忽略易变的 `recordedAt`）视为重复写入，丢弃后补一条 `ledger.repaired` 并把压缩结果原子写回；同一 seq 内容不同则是真损坏，保留原文件并失败关闭。
 3. 重放并校验：现金恒等式（`初始资金 + 净入金 + 成交现金变化`）、持仓数量、可卖 ≤ 持仓、成交数量/价格/金额/费用必须是有限值、已成交订单必须有成交记录。
-4. 失败：追加一条 `ledger.violation`，置 `blocked`；原因写进 `AccountState.blockedReason`，界面红条显示「原因 + 账本绝对路径」，可导出账本或重置；工具侧 `paper_account` / `paper_export` 同样给出原因与路径。已锁定的账户不再追加任何事件，避免每 5 秒刷一条。
-5. 写入：`transact` 在写队列内用最新状态重建事件，落盘前强制 `event.seq === state.lastSeq + 1`；不连续直接抛错，绝不写坏账本。
-6. 重置：先原样备份，再用合并默认值后的配置把账本原子替换为单条 `account.reset`（seq 从 1 开始），内存状态直接替换，不依赖旧账本重放成功。
+4. 版本：`account.opened` 的 `ledgerVersion` 等于当前版本时直接重放；等于可迁移版本（目前 v3）时，先备份原文件（`events-pre-migrate-<ts>.jsonl`），迁移事件里的标的为 canonical id，重放校验通过后才原子替换并补一条 `ledger.migrated`；不可迁移或比当前新则保持原文件并锁户。
+5. 自动快照：账本成功载入且未锁定时，若 `backups/` 里最新自动快照超过 24 小时，复制一份 `events-auto-<ts>.jsonl`（保留最近 10 份）。这保证「账本被写坏之前」至少有一份可恢复副本。
+6. 失败：追加一条 `ledger.violation`，置 `blocked`；原因写进 `AccountState.blockedReason`，界面红条显示「原因 + 账本绝对路径」，并提示用 `paper_ledger` 从备份恢复、或导出/重置。已锁定的账户不再追加任何事件，避免每 5 秒刷一条。
+7. 写入：`transact` 在写队列内用最新状态重建事件，落盘前强制 `event.seq === state.lastSeq + 1`；不连续直接抛错，绝不写坏账本。
+8. 恢复：`ledger/list` 列出快照（版本、seq、交易日、现金、是否可恢复、是否需迁移）；`ledger/restore` 校验目标快照能重放且不锁户，先把当前账本备份为 `events-pre-restore-<ts>.jsonl`，再原子替换并热替换内存状态——不需要退出 DSH。锁定状态下同样可用。
+9. 重置：先原样备份，再用合并默认值后的配置把账本原子替换为单条 `account.reset`（seq 从 1 开始），内存状态直接替换，不依赖旧账本重放成功。
 
 ![图 2 · 事件账本与恢复](figures/fig-2.png)
 
@@ -299,7 +303,7 @@ interface AccountState {
 | T+1 | 买入当日 `available = 0`；下一交易日 `day.closed` 解锁 |
 | 涨跌停 | 未做；`risk` 已留 `maxOrderNotionalCents` 单笔上限 |
 
-> 完整的 M2 规则与「什么时候会有挂单」见 §19.5。账本 v4 起以 `代码.市场` 记账；更早的账本直接锁户并提示重置，不做迁移。
+> 完整的 M2 规则与「什么时候会有挂单」见 §19.5。账本 v4 起以 `代码.市场` 记账；v3 账本载入时自动迁移（迁移前备份、迁移后校验），更早的版本锁户并提示改用旧版插件或恢复快照。
 
 `tick` 的顺序：跨日 → 写 `day.closed` 并过期挂单 → 刷新持仓最新价 → 逐笔判断限价单 → 资金/持仓不足则撤单并给 notice。
 
@@ -334,14 +338,17 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 **路由**：`POST /api/ft-paper-trading`，envelope `{ endpoint, payload }` → `{ ok, value | error }`。
 **限制**：只接受 POST；请求体 256 KiB 上限；非对象 body 直接 400。
-**并发**：同一账户的写命令（transact / append / replace / markPrices / backup）进单一 Promise 队列串行；读接口的时钟推进也走 `transact`，因此并发读只会落一份日界事件。
-**错误码**：`ACCOUNT_BLOCKED`、`INVALID_ARGUMENT`、`INVALID_SYMBOL`、`INVALID_QTY`、`INVALID_LOT`、`INSUFFICIENT_CASH`、`INSUFFICIENT_POSITION`、`T1_LOCKED`、`MAX_NOTIONAL`、`ORDER_NOT_FOUND`、`ORDER_NOT_PENDING`、`QUOTE_UNAVAILABLE`、`UNSUPPORTED_INSTRUMENT`。
+**并发**：同一账户的写命令（transact / append / replace / restore / markPrices / backup）进单一 Promise 队列串行；读接口的时钟推进也走 `transact`，因此并发读只会落一份日界事件。
+**错误码**：`ACCOUNT_BLOCKED`、`INVALID_ARGUMENT`、`INVALID_SYMBOL`、`INVALID_QTY`、`INVALID_LOT`、`INSUFFICIENT_CASH`、`INSUFFICIENT_POSITION`、`T1_LOCKED`、`MAX_NOTIONAL`、`ORDER_NOT_FOUND`、`ORDER_NOT_PENDING`、`QUOTE_UNAVAILABLE`、`UNSUPPORTED_INSTRUMENT`、`LEDGER_RESTORE_FAILED`。
 
 | endpoint | 作用 | 状态 |
 | --- | --- | --- |
 | `health` | 路由存活探针 | ● |
 | `account/get` / `account/init` | 查账户（首次自动开户） | ● |
 | `account/reset` | 重置（必须 `confirm=true`；备份后原子重写为单条 genesis） | ● |
+| `ledger/list` | 列快照：版本、seq、交易日、现金、可恢复性（只读） | ● |
+| `ledger/restore` | 从快照恢复（必须 `confirm=true`；先备份当前账本，锁定时可用） | ● |
+| `ledger/backup` | 立即备份当前账本 | ● |
 | `account/export` | 只读返回账本原文 + 绝对路径（锁定横幅的「导出账本」） | ● |
 | `market/quote` / `market/bars` | 行情与日 K | ● |
 | `order/preview` / `order/place` / `order/cancel` | 交易 | ● |
@@ -353,7 +360,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 ## 10 Agent 工具与工具卡
 
-### 10.1 工具（10 个）
+### 10.1 工具（11 个）
 
 | 工具 | 入参 | 返回 | 卡片 |
 | --- | --- | --- | --- |
@@ -365,7 +372,8 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | `paper_status` | 无 | 持仓 + 挂单 + 最近成交 | 待做 |
 | `paper_tick` | 无 | 成交/过期结果 | 无 |
 | `paper_market` | `{ action?, query?, limit?, board?, page?, pageSize? }` | 时段摘要 / 搜索命中 / 全市场列表 | 无 |
-| `paper_export` | 无 | 账本绝对路径、备份目录、锁定原因（只读） | 无 |
+| `paper_export` | 无 | 账本路径、版本、锁定原因与快照摘要（只读） | 无 |
+| `paper_ledger` | `{ account?, action?, name?, confirm? }` | 快照列表 / 恢复结果 / 备份结果（股票与期货共用） | 无 |
 | `paper_review` | `{ period? }` | 曲线与统计 | 待做 |
 
 规则：所有工具只调 `PaperService`；`output.render` 产出中文摘要；`presentationMeta` 尚未添加（工具卡的前置条件）。
@@ -452,7 +460,7 @@ v0.1 只读：`settings/get` 返回开户/重置时写进账本的配置；没�
 | `maxParticipationRate` | 0.10（保留字段，不再参与判定） |
 | `fillModel` | `unlimited` |
 
-`account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段回退默认值，非有限值也被拒绝。`ledgerVersion` 不是当前版本时直接锁户（`账本版本 N 与当前 4 不兼容，请重置账户`），不再猜测旧字段语义。
+`account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段回退默认值，非有限值也被拒绝。`ledgerVersion` 不是当前版本时先尝试相邻版本迁移（v3 → v4），迁移不可用或账本比当前新才锁户，文案指向「改回对应版本插件 / `paper_ledger` 恢复快照」，不提示重置；不再猜测旧字段语义。
 
 写设置的做法见 §14.3：新增 `account.settings` 事件，随账本重放；`contract.ts` 的 `DEFAULT_SETTINGS` 只给新账户默认值。
 FTShare API Key 由全局设置服务解析，本插件不读、不展示、不修改。
@@ -464,15 +472,19 @@ $DSH_HOME/paper-trading/
   default/
     events.jsonl              # 追加写，一行一事件，0600
     backups/
-      events-<ts>.jsonl       # 每次重置前原样复制一份
-      events-repair-<ts>.jsonl # 载入时修复重复 seq 前的原文件
+      events-auto-<ts>.jsonl        # 载入时若最新自动快照超过 24h，保留最近 10 份
+      events-pre-migrate-<ts>.jsonl # 版本迁移前的原文件
+      events-pre-restore-<ts>.jsonl # 恢复前的当前账本
+      events-<ts>.jsonl             # 每次重置前原样复制一份
+      events-repair-<ts>.jsonl      # 载入时修复重复 seq 前的原文件
 ```
 
 - `DSH_HOME` 优先，`~/.dsh` 兜底；目录 700、文件 600。
 - 每次 append 后 `fsync`；写失败直接报错，不吞。
 - 坏尾行读取时丢弃并 warn；重复 seq 先按内容去重修复，冲突或非有限成交才触发 `ledger.violation`。
 - 重置与压缩都用「同目录临时文件 + fsync + rename」原子替换，失败不留半截文件。
-- `meta.json`、备份保留最近 5 份、按年轮转都还没做（§17）。
+- 自动快照按 24 小时节流、保留最近 10 份；`reset / repair / pre-migrate / pre-restore` 快照不自动清理。
+- `meta.json`、按年轮转都还没做（§17）。
 
 ## 14 扩展点（按改动落点）
 
@@ -536,8 +548,9 @@ $DSH_HOME/paper-trading/
 | `store.test.mjs` | JSONL 追加、坏尾行隔离 |
 | `adapter.test.mjs` | 代码规范化、分组摊平、日 K 排序 |
 | `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点、无「查行情」按钮、防抖预览与成交回报 |
-| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 10 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
-| `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、旧版本账本锁户、重置健壮性、日 K 补 `prevClose` |
+| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 11 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
+| `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、无迁移路径的旧版本锁户、重置健壮性、日 K 补 `prevClose` |
+| `ledger-recovery.test.mjs` | 自动快照节流、v3→v4 迁移、锁户后从快照恢复、坏快照拒绝、更高版本拒绝、期货同路径、`paper_ledger` 工具 |
 | `scheduler.test.mjs` | 假时钟周期调用、非重叠、start/stop 幂等、异常转 warning |
 | `brand.test.mjs` | 浏览器半读的 `--ft-*` 兜底值与品牌契约一致（本仓不依赖 settings 包） |
 
@@ -571,6 +584,7 @@ $DSH_HOME/paper-trading/
 | 撮合过于简化 | 与真实成交有差距 | 产品明确选 M2：last 价全量成交，不为真实感额外请求分钟量（§19.5） |
 | 开源许可 | 复制 LGPL/GPL 代码会污染许可 | 只借架构与规则，不复制代码（§19.10） |
 | 公司行为不处理 | 长期成本失真 | README 写明；v0.3 另议 |
+| 账本版本升级/插件降级 | 旧账本被锁，用户以为只能重置 | 相邻版本自动迁移；升级前自动快照；`paper_ledger` 可选快照恢复，锁定态可用 |
 | 客户端单文件 | 页面增多后难维护 | 先按页签拆函数；过 1000 行再引打包器 |
 | 工具在全局模式可见 | 标准模式出现模拟盘工具 | 按 §14.8 收进 preset |
 
@@ -727,7 +741,7 @@ type DayClosed = {
 
 - 事件 `ts` 写边界时间（09:30 / 15:00），`payload.recordedAt` 写实际补算时间；两者分开，重放与展示都不混淆；
 - 账本版本 `PAPER_LEDGER_VERSION` = 4：v4 把标的身份统一成 canonical `代码.市场`，账本 / 行情 / UI 一致；
-- 更早版本（v1–v3 用裸代码或原始输入当 key）不再兼容，载入即锁户并提示重置；新账户在 `account.opened` 的 payload 写当前版本。
+- v3 用裸代码或原始输入当 key，载入时自动迁移为 canonical id（先备份、后校验）；v1/v2 无法还原语义，锁户并提示改用旧版插件或恢复快照；新账户在 `account.opened` 的 payload 写当前版本。
 
 ### 19.4 行情面（P1）
 
@@ -838,7 +852,7 @@ interface MarketListResult {
 **账本版本**
 
 - `PAPER_LEDGER_VERSION` = 4：账本身份 = canonical `代码.市场`；
-- 重放 `ledgerVersion !== 4` 的 `account.opened` 时锁定账户并要求重置，不尝试迁移旧 key；
+- 重放 `ledgerVersion` 不是当前版本的 `account.opened` 时先走迁移入口；只有无迁移路径或版本更新才锁户，且给出「对应版本插件 / 恢复快照」两条出路；
 - `account.reset` 不带版本号，重放时同样钉住；
 - 新账本默认就是 0 / unlimited。
 
@@ -912,7 +926,7 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 - `PriceLimit { upper, lower, ratio, source }`；
 - `DayReport`、`CashFlowEntry`、`RoundTrip`、`SymbolHit`；
 - 事件：新增 `day.opened`；`order.partially_filled` 当前撮合不再写；扩展 `day.closed`、`order.submitted`（阶段、备注）、`order.filled`；
-- 账本版本 4（canonical 标的身份），旧版本锁户并要求重置。
+- 账本版本 4（canonical 标的身份），v3 自动迁移；更早版本锁户并提示换回旧版插件或恢复快照。
 
 **RPC**
 
@@ -975,14 +989,14 @@ src/service/scheduler.ts     # 宿主定时器，周期调用 service.tick（adv
 - 时段：节假日、午休、集合竞价、收盘边界、下一交易日；
 - 行情：`marketTs` 只展示；`last ≤ 0` 不可成交；盘后受时段门禁不可成交；
 - 涨跌停：主板/ST/创业板/北交所、舍入、越界拒单、一字板；
-- M2：市价 `last` 全成、限价穿越即全成、未穿越挂单、收盘过期、无 TTL、旧版本账本锁户并提示重置；
+- M2：市价 `last` 全成、限价穿越即全成、未穿越挂单、收盘过期、无 TTL、无迁移路径的旧账本锁户并提示恢复；
 - 日切：15:00 快照、09:30 T+1、跳空、跨多日补算、离线不补成交；
 - 报表：日终/隔夜/回合/流水与持仓现金对账。
 
 **集成**
 
 - 用假时钟 + 假日历 + 固定行情重放用户故事 8 步；
-- 重启续跑；无行情降级；断网/服务缺失；旧版本账本锁户 → 重置。
+- 重启续跑；无行情降级；断网/服务缺失；无迁移路径的旧账本锁户 → 从快照恢复或重置。
 
 **验收（对应用户故事）**
 

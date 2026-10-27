@@ -153,10 +153,17 @@ export function applyEvent(state: FuturesAccountState, event: FuturesLedgerEvent
   switch (event.type) {
     case 'account.opened': {
       const { settings, initialCashCents, tradeDate, accountId, ledgerVersion } = event.payload
+      const version = ledgerVersion ?? FUTURES_LEDGER_VERSION
       openState(state, settings, initialCashCents, tradeDate)
       state.accountId = accountId
-      state.ledgerVersion = ledgerVersion ?? FUTURES_LEDGER_VERSION
+      state.ledgerVersion = version
       state.createdAt = event.ts
+      // Match the stock ledger: a version this build cannot replay must lock
+      // rather than silently misread fields it does not know about.
+      if (version !== FUTURES_LEDGER_VERSION) {
+        state.blocked = true
+        state.blockedReason = `账本版本 ${version} 与当前 ${FUTURES_LEDGER_VERSION} 不兼容：请改用对应版本的插件，或用 paper_ledger 恢复快照`
+      }
       break
     }
     case 'account.reset': {

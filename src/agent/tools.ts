@@ -1,4 +1,3 @@
-import { dirname, join } from 'node:path'
 import type { ParameterSchemaSpec, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 import { defineJsonTool as defineTool } from './json-tools.js'
 import type { OrderDraft } from '../contract.js'
@@ -98,19 +97,22 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     ...base,
     name: 'paper_export',
     parameters: noParameters,
-    description: '查看账本文件位置与锁定原因，用于手动修复账本。',
+    description: '查看账本位置、版本、锁定原因与可恢复快照；恢复用 paper_ledger。',
     async execute(): Promise<ToolResult> {
       try {
-        const status = await service.ledgerStatus()
+        const [status, ledger] = await Promise.all([service.ledgerStatus(), service.ledgerSnapshots()])
+        const restorable = ledger.snapshots.filter(snapshot => snapshot.valid).length
         const lines = [
           `账本 ${status.path}${status.exists ? '' : '（尚未创建）'}`,
+          `版本 v${String(ledger.ledgerVersion ?? '?')} · 快照 ${ledger.snapshots.length} 份（可恢复 ${restorable} 份）`,
           status.blocked ? `已锁定 · 原因：${status.blockedReason ?? '未记录'}` : '账户正常',
         ]
         if (status.blocked) {
-          lines.push(`备份目录 ${join(dirname(status.path), 'backups')}`)
-          lines.push('修复后需完全退出并重开 DSH；也可 paper_account reset=true, confirm=true（会先备份）')
+          lines.push(restorable > 0
+            ? '可用 paper_ledger action=restore 恢复最近一份可用快照（进程内生效，无需重启）'
+            : '没有可恢复的快照：只能导出账本或 paper_account reset=true, confirm=true（会先备份）')
         }
-        return { summary: lines.join('\n'), data: status }
+        return { summary: lines.join('\n'), data: { ...status, ledgerVersion: ledger.ledgerVersion, snapshots: ledger.snapshots } }
       } catch (error) {
         return fail(error)
       }

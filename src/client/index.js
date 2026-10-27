@@ -374,7 +374,7 @@ window.__ModuleLoader__.load({
     const directionText = (side, offset) => FUTURES_DIRECTION_TEXT[`${side}_${offset}`] ?? '—'
     const orderTypeText = type => type === 'limit' ? '限价' : '市价'
     const ERROR_TEXT = {
-      ACCOUNT_BLOCKED: '账户已锁定，请先重置或导出账本',
+      ACCOUNT_BLOCKED: '账户已锁定：可让 AI 助手从备份恢复，或重置/导出账本',
       INVALID_ARGUMENT: '参数不合法',
       INVALID_SYMBOL: '证券代码不合法',
       INVALID_QTY: '数量不合法',
@@ -1982,7 +1982,7 @@ window.__ModuleLoader__.load({
       }, [loadAll, loadReview, tab, contract, fetchQuote])
 
       const reset = useCallback(async () => {
-        if (!window.confirm('重置期货模拟账户？持仓与挂单会清空，账本会先备份。')) return
+        if (!window.confirm('重置期货模拟账户？持仓与挂单会清空；当前账本会先备份，可在备份里找回。')) return
         setBusy(true)
         try {
           setAccount(await rpc('futures/account/reset', { confirm: true }))
@@ -2108,7 +2108,7 @@ window.__ModuleLoader__.load({
             h('div', null, '期货账本校验失败，账户已锁定。'),
             account.blockedReason ? h('div', { className: 'pt-blocked-detail', title: account.blockedReason }, `原因：${account.blockedReason}`) : null,
             account.ledgerPath ? h('div', { className: 'pt-blocked-detail', title: account.ledgerPath }, `账本：${account.ledgerPath}`) : null,
-            h('div', { className: 'pt-blocked-hint' }, '修复后需完全退出并重开 DSH；重置会先备份。'),
+            h('div', { className: 'pt-blocked-hint' }, '可让 AI 助手用 paper_ledger 从备份恢复；重置会先备份。'),
           ),
           h('div', { className: 'pt-row' },
             h('button', { className: 'pt-btn', onClick: exportLedger, disabled: busy }, '导出账本'),
@@ -2943,7 +2943,7 @@ window.__ModuleLoader__.load({
       }, [])
 
       const reset = useCallback(async () => {
-        if (!window.confirm('重置模拟交易账户？持仓与挂单会清空。')) return
+        if (!window.confirm('重置模拟交易账户？持仓与挂单会清空；当前账本会先备份，可在备份里找回。')) return
         setBusy(true)
         try {
           setAccount(await rpc('account/reset', { confirm: true }))
@@ -3098,7 +3098,7 @@ window.__ModuleLoader__.load({
               h('div', null, '账本校验失败，账户已锁定。'),
               account.blockedReason ? h('div', { className: 'pt-blocked-detail', title: account.blockedReason }, `原因：${account.blockedReason}`) : null,
               account.ledgerPath ? h('div', { className: 'pt-blocked-detail', title: account.ledgerPath }, `账本：${account.ledgerPath}`) : null,
-              h('div', { className: 'pt-blocked-hint' }, '修复后需完全退出并重开 DSH；重置会先备份。'),
+              h('div', { className: 'pt-blocked-hint' }, '可让 AI 助手用 paper_ledger 从备份恢复；重置会先备份。'),
             ),
             h('div', { className: 'pt-row' },
               h('button', { className: 'pt-btn', onClick: exportLedger, disabled: busy }, '导出账本'),

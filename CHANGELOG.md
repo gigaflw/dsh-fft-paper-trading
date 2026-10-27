@@ -4,6 +4,20 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added
+
+- 账本自动快照：载入成功且未锁定时，若最新自动快照超过 24 小时则备份一份，保留最近 10 份
+- `paper_ledger` 工具与 `ledger/list` / `ledger/restore` / `ledger/backup` 路由：锁定的账户可从备份恢复，进程内生效，无需重启 DSH
+- 恢复前自动保留当前账本（`events-pre-restore-*`），恢复本身可回退
+
+### Changed
+
+- v3 账本载入时自动迁移到 v4（迁移前备份、迁移后校验），不再直接锁户；不可迁移或更新的版本仍锁户，但提示改用对应版本插件或恢复快照
+- 期货账本补上版本门禁，与股票账本一致
+- 锁定提示从「请重置」改为「可从备份恢复」；重置确认框说明旧账本会先归档
+
 ## [0.5.1] - 2026-10-27
 
 ### Changed

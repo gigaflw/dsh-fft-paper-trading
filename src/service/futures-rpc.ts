@@ -83,6 +83,14 @@ export function createFuturesRpcHandler(service: FuturesService): FuturesRpcHand
         }
         case 'futures/account/export':
           return ok(await service.exportLedger())
+        case 'futures/ledger/list':
+          return ok(await service.ledgerSnapshots())
+        case 'futures/ledger/restore': {
+          const input = record(payload)
+          return ok(await service.restoreLedger(text(input.name, 'name'), input.confirm === true))
+        }
+        case 'futures/ledger/backup':
+          return ok({ backedUp: await service.backupLedger() })
         case 'futures/account/deposit':
           return ok(await service.deposit(num(record(payload).amount, 'amount')))
         case 'futures/account/withdraw':

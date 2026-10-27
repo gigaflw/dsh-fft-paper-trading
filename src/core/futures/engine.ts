@@ -228,7 +228,7 @@ export function submit(
     return { events, state: working, warnings, order: working.orders[order.id] }
   }
 
-  if (working.blocked) return reject('ACCOUNT_BLOCKED', working.blockedReason ?? '账户已锁定，请重置后继续')
+  if (working.blocked) return reject('ACCOUNT_BLOCKED', working.blockedReason ?? '账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续')
   if (symbol === '') return reject('INVALID_SYMBOL', '缺少合约代码')
   if (!Number.isInteger(qty) || qty <= 0) return reject('INVALID_QTY', '手数必须是正整数')
   if (order.type === 'limit' && !(order.limitPrice !== undefined && order.limitPrice > 0)) {

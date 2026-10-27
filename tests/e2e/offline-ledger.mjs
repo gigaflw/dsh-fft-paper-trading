@@ -6,7 +6,7 @@
  *
  * 覆盖这轮排查里真踩到的几件事：
  *   1. 重复 seq（并发读多写一遍）会被载入时去重修复；
- *   2. 旧版本账本不再兼容，直接锁户并要求重置；
+ *   2. v3 账本自动迁移；v2 等无迁移路径的版本锁户，可从自动快照恢复；
  *   3. 000001 在账本里只以 000001.SZ 存在，指数订单被拒；
  *   4. NaN 成交会让账本判非法并锁定，但「重置」能把账本原子重写成单条 genesis。
  * 数据全部写入 build/，退出码 0=全过。
@@ -107,8 +107,13 @@ await writeFile(ledgerPath, `${(await readFile(ledgerPath, 'utf8')).trim()}\n${J
 const poisoned = new AccountRepo({ home, accountId: 'default', logger: { warn: () => {} } })
 assert('NaN 成交会锁户而不是静默修复', (await poisoned.current()).blocked === true)
 
+const usable = (await poisoned.snapshots()).find(snapshot => snapshot.valid)
+assert('锁户时有可恢复快照', usable !== undefined)
+const restoredState = await poisoned.restore(usable.name)
+assert('锁户可从快照恢复', restoredState.blocked === false && restoredState.cashCents === 10_000_000, restoredState.blockedReason)
+
 const recovered = await new PaperService({ repo: poisoned, data, calendar: new WeekdayTradingCalendar(), now: () => now }).reset(true)
-assert('锁户也能重置', recovered.blocked === false && recovered.cash === 100000)
+assert('重置仍可用', recovered.blocked === false && recovered.cash === 100000)
 const replay = await new AccountRepo({ home, accountId: 'default' }).current()
 assert('重置后重放干净', replay.blocked === false && replay.lastSeq === 1, `lastSeq=${replay.lastSeq}`)
 
@@ -124,8 +129,15 @@ await writeFile(oldLedgerPath, `${JSON.stringify(ev(1, '2026-10-20T01:00:00.000Z
 }))}\n`)
 const oldRepo = new AccountRepo({ home: oldHome, accountId: 'default', logger: { warn: () => {} } })
 const oldState = await oldRepo.current()
-assert('旧版本账本锁户', oldState.blocked === true && /不兼容/.test(oldState.blockedReason ?? ''), oldState.blockedReason)
-const oldService = new PaperService({ repo: oldRepo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
+assert('v3 账本自动迁移而不是锁户', oldState.blocked === false && oldState.ledgerVersion === PAPER_LEDGER_VERSION, oldState.blockedReason)
+
+// v2 has no migration path and still locks; recovery is the documented exit.
+await writeFile(oldLedgerPath, `${JSON.stringify(ev(1, '2026-10-20T01:00:00.000Z', 'account.opened', {
+  accountId: 'default', settings, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: 2,
+}))}\n`)
+const unmigratable = await new AccountRepo({ home: oldHome, accountId: 'default', logger: { warn: () => {} } }).current()
+assert('不可迁移版本锁户', unmigratable.blocked === true && /paper_ledger|不兼容/.test(unmigratable.blockedReason ?? ''), unmigratable.blockedReason)
+const oldService = new PaperService({ repo: new AccountRepo({ home: oldHome, accountId: 'default', logger: { warn: () => {} } }), data, calendar: new WeekdayTradingCalendar(), now: () => now })
 const oldReset = await oldService.reset(true)
 assert('旧账本可一键重置', oldReset.blocked === false && oldReset.cash === 100000)
 

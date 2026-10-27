@@ -242,7 +242,7 @@ test('p0-1: a conflicting duplicate seq still blocks and stops appending', async
     // The lock reason, not the session gate, must explain a refused order.
     await assert.rejects(
       service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),
-      /账户已锁定，请重置后继续（事件序号重复且内容不同: 2）/,
+      /账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续（事件序号重复且内容不同: 2）/,
     )
 
     const before = (await readFile(file, 'utf8')).trim().split('\n').length
@@ -261,7 +261,7 @@ test('p0-1: a conflicting duplicate seq still blocks and stops appending', async
   }
 })
 
-test('p0-2: an older ledger version is blocked instead of replayed', async () => {
+test('p0-2: a ledger version with no migration path is blocked instead of replayed', async () => {
   const home = makeHome('old-version')
   await writeLedger(home, [
     {
@@ -269,7 +269,8 @@ test('p0-2: an older ledger version is blocked instead of replayed', async () =>
       id: 'evt-1',
       ts: '2026-10-20T02:00:00.000Z',
       type: 'account.opened',
-      payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: PAPER_LEDGER_VERSION - 1 },
+      // v2 predates the current semantics and has no migration; it must lock.
+      payload: { accountId: 'default', settings: DEFAULT_SETTINGS, initialCashCents: 10_000_000, tradeDate: '2026-10-20', ledgerVersion: PAPER_LEDGER_VERSION - 2 },
     },
   ])
   const data = makeData()
@@ -279,6 +280,7 @@ test('p0-2: an older ledger version is blocked instead of replayed', async () =>
     const account = await service.account()
     assert.equal(account.blocked, true)
     assert.match(account.blockedReason ?? '', /账本版本 .* 不兼容/)
+    assert.match(account.blockedReason ?? '', /paper_ledger/)
     // The lock is the whole answer: no order may enter an unreadable ledger.
     await assert.rejects(
       service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),

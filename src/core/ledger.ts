@@ -125,12 +125,13 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
       state.accountId = accountId
       state.ledgerVersion = version
       state.createdAt = event.ts
-      // v4 made `code.exchange` the ledger identity. An older file keyed
-      // positions by the raw input (`000001` vs `000001.SZ` were two books), so
-      // it cannot be replayed faithfully: lock the account and ask for a reset.
+      // v4 made `code.exchange` the ledger identity. The loader migrates a
+      // known older version before replay, so reaching this branch means the
+      // ledger is either newer than this build or has no migration path; both
+      // are recoverable (run the matching plugin, or restore a snapshot).
       if (version !== PAPER_LEDGER_VERSION) {
         state.blocked = true
-        state.blockedReason = `账本版本 ${version} 与当前 ${PAPER_LEDGER_VERSION} 不兼容，请重置账户`
+        state.blockedReason = `账本版本 ${version} 与当前 ${PAPER_LEDGER_VERSION} 不兼容：请改用对应版本的插件，或用 paper_ledger 恢复可迁移的快照`
       }
       break
     }
@@ -243,6 +244,11 @@ export function applyEvent(state: AccountState, event: LedgerEvent): AccountStat
     case 'ledger.repaired': {
       // Load-time repair (duplicate seq dropped) is auditable but changes no
       // account value; `lastSeq` advances below like every other event.
+      break
+    }
+    case 'ledger.migrated': {
+      // Audit marker written by the loader after rewriting an older ledger;
+      // the migration itself is already applied to the surrounding events.
       break
     }
   }
