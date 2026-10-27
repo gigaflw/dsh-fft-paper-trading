@@ -67,7 +67,7 @@
 **技术选择**
 
 - 独立子包 `@dsh-ft/dsh-fft-paper-trading`，一行宿主入口 + 浏览器半。
-- 宿主 `tsc` 到 `lib/`；浏览器半是手写单文件 JS，构建时原样复制为 `lib/client.js`，带 `window.__ModuleLoader__.load` banner。
+- 宿主 `tsc` 到 `lib/`（构建产物，不入库）；浏览器半是手写单文件 JS，构建时原样复制为 `lib/client.js`，带 `window.__ModuleLoader__.load` banner。
 - 依赖：`ftshareData`（可选行情）、`tools`（Agent 工具）、`connection`（RPC 路由）、`slots`（UI 位置）。
 - 存储：`$DSH_HOME/paper-trading/` 的 JSONL 事件文件，不引数据库。
 - 图表：自绘 SVG，不引图表库。
@@ -483,7 +483,7 @@ $DSH_HOME/paper-trading/
 - 日 K：`rpc('market/bars', { symbol, limit })`，返回 `{ state, bars, notice }`；图表按 `EquityChart` 的纯 SVG 写法，数据 → path 的纯函数单独抽出来便于测试。
 - 复盘已有，加字段只动 `core/views.ts` 的 `toReview` 与客户端展示。
 
-单文件客户端是 v0.1 的取舍（与投研舱一致）：文件超过约 1000 行或需要多文件复用再引打包器（tsdown/esbuild），不要手写拼接。客户端改完必须跑 `pnpm build`，`lib/client.js` 随提交走。
+单文件客户端是 v0.1 的取舍（与投研舱一致）：文件超过约 1000 行或需要多文件复用再引打包器（tsdown/esbuild），不要手写拼接。客户端改完必须跑 `pnpm build` 自查；`lib/` 是构建产物、不入库，由 `pnpm install` 的 `prepare`、`pack:npm` 与发布 CI 现场生成。
 
 ### 14.2 工具卡
 

@@ -11,6 +11,7 @@
  *   node scripts/sync-profile.mjs [--profile-dir ~/.dsh/profiles/desktop]
  *   （默认 profile 见 DSH_PROFILE_DIR，否则 ~/.dsh/profiles/desktop）
  */
+import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -23,6 +24,9 @@ const profileDir = resolve(
   args.includes('--profile-dir') ? args[args.indexOf('--profile-dir') + 1] : (process.env.DSH_PROFILE_DIR ?? join(homedir(), '.dsh/profiles/desktop')),
 )
 if (!existsSync(join(profileDir, 'package.json'))) throw new Error('找不到 desktop profile：' + profileDir)
+
+// `lib/` 是构建产物、不入库：同步前先构建，干净 clone 里也拷得到最新产物。
+execFileSync('pnpm', ['run', 'build'], { cwd: pkgRoot, stdio: 'inherit' })
 
 const pkg = { name: '@dsh-ft/dsh-fft-paper-trading', src: pkgRoot }
 const vendorRoot = join(profileDir, 'vendor')
