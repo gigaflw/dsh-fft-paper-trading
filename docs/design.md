@@ -1,6 +1,6 @@
 # 模拟盘子插件架构
 
-> 状态：v0.1 已落地；v0.2 P0/P1 已实施（独立仓库 `main`），并完成账本并发/迁移/重置修复、宿主撮合调度与 UI 本地化（§6、§9、§19.7、§19.11），K 线视图由 dsh_kline 的 slot 提供，详见 §19.12。
+> 状态：能力现状以 §3 能力表为准，版本变更见 [CHANGELOG.md](../CHANGELOG.md)；账本与并发语义见 §6、§9，宿主撮合调度见 §19.7，推迟项见 §19.11；K 线视图由 dsh_kline 的 slot 提供，未安装时回退内置简图，见 §19.12。
 > 本文写架构、模块边界、账本与扩展方式；v0.1 的范围与验收见 [mvp.md](mvp.md)。
 > 配图：图 1–3 见文内。
 > 目标包：`@dsh-ft/dsh-fft-paper-trading`
@@ -24,7 +24,7 @@
 
 | 来源 | 借什么 | 落到哪里 |
 | --- | --- | --- |
-| TradingView | 交易页布局、K 线与交易标记 | 交易页；K 线待做 |
+| TradingView | 交易页布局、K 线与交易标记 | 交易页；K 线由 dsh_kline slot 提供（§19.12），交易标记未做 |
 | IG demo | 下单前预览、受理与成交分离 | `order/preview`、订单 `pending` + `tick` |
 | openctp | 稳定契约、撮合模式可配、环境分层 | `contract.ts`、`matching.ts`、service 边界 |
 | 璇玑 | 事件账本、对账、幂等、失败关闭 | `core/ledger`、`core/replay`、启动校验 |
@@ -32,23 +32,25 @@
 
 ## 3 已落地能力与后续阶段
 
-| 能力 | 说明 | v0.1 | 后续 |
+| 能力 | 说明 | 已落地 | 后续 |
 | --- | --- | --- | --- |
 | 左侧栏面板 | `sidebar.panellist` 图标 + `main` 面板 | ● | |
-| 交易 / 持仓 / 订单 / 复盘 | 四个页签 | ● | |
+| 交易 / 持仓 / 订单 / 复盘 | 四个核心页签 | ● | |
 | 事件账本 + 重放 + 对账 | JSONL，失败关闭 | ● | |
 | 按需 tick + 市价/限价 | 简化撮合，全量成交 | ● | |
-| Agent 工具 | 9 个 `paper_*` 工具 | ● | |
+| Agent 工具 | 10 个 `paper_*` 工具，见 §10.1 | ● | |
 | 权益曲线 / 复盘统计 | 纯 SVG + 日终快照 | ● | |
-| 交易时段 / 日切 / 收盘开盘快照 | 真实节奏的基础，见 §19.2–19.3 | ○ | v0.2 P0 |
-| 行情时间语义 | `marketTs` + `fetchedAt`，见 §19.3 | ○ | v0.2 P0 |
-| 搜索 / 备选 / 列表 / 分时 / K 线 | FTShare 有数据源，见 §19.4 | ○ | v0.2 P1 |
-| 涨跌停 / 停牌 | 见 §19.5 | ○ | v0.2 P1 |
-| 日终 / 隔夜 / 回合 / 资金流水 | 从事件推导，见 §19.6 | ○ | v0.2 P1 |
-| 设置页 | 只读 `settings/get` | ○ | v0.3 写入 |
-| 工具卡 | 预览 / 委托 / 账户 / 复盘卡 | ○ | v0.3 |
+| 交易时段 / 日切 / 收盘开盘快照 | 见 §19.2–19.3 | ● | |
+| 行情时间语义 | `marketTs` + `fetchedAt`，见 §19.3 | ● | |
+| 搜索 / 备选 / 列表 / 分时 / K 线 | FTShare 数据源，K 线走 dsh_kline slot，见 §19.4、§19.12 | ● | |
+| 涨跌停 / 停牌 | 见 §19.5 | ● | |
+| 日终 / 隔夜 / 回合 / 资金流水 | 从事件推导，见 §19.6 | ● | |
+| 出入金 | `cash.deposit` / `cash.withdraw`，见 §6.4 | ● | |
+| 商品期货 / 批量 | 独立账本与工具，见 §20 | ● | |
+| 设置页 | 只读 `settings/get` | ○ | 未做，见 §14.3 |
+| 工具卡 | 预览 / 委托 / 账户 / 复盘卡 | ○ | 未做，见 §14.2 |
 | 止损 / 条件单 / 保证金 / 卖空 / 强平 | 现金账户；两融是产品范围变更 | ○ | 另议 |
-| 多账户 / 通知 / 导入导出 | 扩展能力 | ○ | v0.3 |
+| 多账户 / 通知 / 导入导出 | 扩展能力 | ○ | 未做 |
 
 ## 4 总体架构
 
@@ -133,14 +135,12 @@ dsh-fft-paper-trading/       # 仓库根即包根
       route.ts               # connection.fetch 路由注册
       errors.ts              # PaperError（错误码 + HTTP 状态）
     agent/
-      tools.ts               # 9 个 paper_* 工具定义
+      tools.ts               # 10 个 paper_* 工具定义
       format.ts              # 结果转模型可读摘要
     client/
       index.js               # ModuleLoader 入口 + 面板 + 页签 + 样式（单文件）
-  scripts/
-    build-client.mjs         # 复制浏览器半到 lib/client.js
-    scenario.mjs             # 端到端脚本：下单 → 成交 → 复盘
-  tests/                     # 36 个用例，见 §15
+  scripts/                   # build-client / mirror-public / pack-npm / release-notes / sync-profile / upload
+  tests/                     # 用例见 §15
 ```
 
 ### 5.2 模块职责与边界
@@ -353,7 +353,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 
 ## 10 Agent 工具与工具卡
 
-### 10.1 工具（9 个）
+### 10.1 工具（10 个）
 
 | 工具 | 入参 | 返回 | 卡片 |
 | --- | --- | --- | --- |
@@ -364,6 +364,7 @@ FTShare 是 MCP 服务，走 StreamableHTTP（JSON-RPC 2.0）；本插件不直�
 | `paper_cancel` | `{ orderId }` | 订单状态 | 待做 |
 | `paper_status` | 无 | 持仓 + 挂单 + 最近成交 | 待做 |
 | `paper_tick` | 无 | 成交/过期结果 | 无 |
+| `paper_market` | `{ action?, query?, limit?, board?, page?, pageSize? }` | 时段摘要 / 搜索命中 / 全市场列表 | 无 |
 | `paper_export` | 无 | 账本绝对路径、备份目录、锁定原因（只读） | 无 |
 | `paper_review` | `{ period? }` | 曲线与统计 | 待做 |
 
@@ -525,7 +526,7 @@ $DSH_HOME/paper-trading/
 
 ## 15 测试策略
 
-当前 42 个用例（`pnpm test`，构建后跑 `node --test`）：
+测试入口：`pnpm test`（构建后跑 `node --test tests/*.test.mjs` 全量）；下表只列关键文件与覆盖面：
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -535,7 +536,7 @@ $DSH_HOME/paper-trading/
 | `store.test.mjs` | JSONL 追加、坏尾行隔离 |
 | `adapter.test.mjs` | 代码规范化、分组摊平、日 K 排序 |
 | `client.test.mjs` | ModuleLoader 入口、面板/图标注册、整页宽度与容器断点、无「查行情」按钮、防抖预览与成交回报 |
-| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 8 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
+| `wiring.test.mjs` | 没有 `ftshareData` 时路由与 10 个工具仍挂载，账户可读、行情四态失败，宿主调度器随行启动 |
 | `ledger.test.mjs` | 并发读只写一份日界事件、seq 不变量、重复 seq 修复/冲突、旧版本账本锁户、重置健壮性、日 K 补 `prevClose` |
 | `scheduler.test.mjs` | 假时钟周期调用、非重叠、start/stop 幂等、异常转 warning |
 | `brand.test.mjs` | 浏览器半读的 `--ft-*` 兜底值与品牌契约一致（本仓不依赖 settings 包） |
@@ -546,10 +547,13 @@ $DSH_HOME/paper-trading/
 
 | 版本 | 内容 |
 | --- | --- |
-| v0.1（已落地） | 左侧栏面板（交易/持仓/订单/复盘）+ 8 个工具 + 事件账本 + 权益曲线 |
-| v0.2（P0+P1，见 §19） | 交易时段/日切/收盘开盘快照、行情时间语义、M2 撮合、搜索/备选/列表/分时/K 线、涨跌停/停牌、日终/隔夜/回合/资金流水 |
-| v0.3 | 工具卡、设置写入、止损/条件单、多账户、通知、导入导出 |
-| 另议 | 保证金 / 卖空 / 强平（两融模拟，属产品范围变更） |
+| v0.1 | 独立仓库：四页签 + 8 个 `paper_*` 工具 + 事件账本 + 权益曲线 |
+| v0.2 | 一揽子：CSV 权重批量买入 |
+| v0.3 | 商品期货模拟盘（8 个 `futures_*` 工具）、出入金、标的身份统一 |
+| v0.4 | 自带行情与 K 线、数据源状态与降级提示 |
+| v0.5 | 设置与 FTShare 底座改从 registry 获取、反馈入口 |
+
+> 能力现状只看 §3，逐版变更与修复见 [CHANGELOG.md](../CHANGELOG.md)。
 
 > 批量买入 v1（CSV 代码 + 权重、仅买入）的规格见 [basket.md](specs/basket.md)，已实现（§20）。
 
@@ -1101,7 +1105,7 @@ src/client/index.js              # 账户切换 + StockDashboard / FuturesDashbo
 
 ### 20.7 测试
 
-- 单元/服务/RPC/wiring：`pnpm test`（108 条，股票 42 条无回归）。
+- 单元/服务/RPC/wiring：`pnpm test`（全量，股票与期货一起跑）。
 - 离线端到端（真服务 + 真账本 + 假行情）：`tests/e2e/offline-basket.mjs`、`tests/e2e/futures-offline.mjs`。
 - 浏览器端到端（真 React DOM + 真 bundle + 假 RPC，不启 DSH）：`tests/e2e/ui-panel.mjs`，设置 `UI_SHOTS=<dir>` 可截图；方法见 [tests/e2e/README.md](../tests/e2e/README.md)。
 - 应用内验收：同步 profile → ⌘Q 重开后按 [futures-mvp.md](specs/futures-mvp.md) §4 走查。
