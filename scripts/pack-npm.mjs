@@ -135,8 +135,13 @@ function registryDependencies(manifest, inlined) {
   return out
 }
 
+// lib/ is a build output and stays out of git, so packing builds it here: a
+// fresh clone has no lib/, and the local internal channel has no CI behind it
+// to catch a stale one.
+execFileSync('pnpm', ['run', 'build'], { cwd: repoRoot, stdio: 'inherit' })
+
 for (const required of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml']) {
-  if (!existsSync(join(repoRoot, required))) fail(`${required} is missing; run pnpm run build first`)
+  if (!existsSync(join(repoRoot, required))) fail(`${required} is missing after pnpm run build`)
 }
 
 // Settings and ftshare are published packages: the tarball carries the ranges
