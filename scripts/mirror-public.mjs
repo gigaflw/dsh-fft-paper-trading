@@ -24,12 +24,12 @@
  * the new commits and the already published history keeps its SHAs.
  *
  * Usage:
- *   node scripts/mirror-public.mjs [--ref <ref>] [--reset] [--dry-run]
+ *   node scripts/mirror-public.mjs [--ref <ref>] [--reset] [--dry-run] [--remote <name>]
  *   node scripts/mirror-public.mjs --help
  *
- * After it runs:
- *   git push --force github public:main
- *   git push --force github <public sha>:refs/tags/vX.Y.Z   # per release tag
+ * The `next` block prints only the pushes still needed: an unchanged branch or
+ * an already matching tag is reported as up to date instead of a repeated
+ * --force command, and a real history rewrite is called out before its command.
  */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -57,6 +57,8 @@ if (flag('help') || flag('h')) {
 
 const BASE = option('ref', 'HEAD')
 const BRANCH = 'public'
+const REMOTE = option('remote', 'github')
+const REMOTE_BRANCH = 'main'
 const RESET = flag('reset')
 const DRY_RUN = flag('dry-run')
 
@@ -76,6 +78,30 @@ const git = (args, options = {}) =>
 const gitRaw = (args, input) =>
   execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'buffer', input, maxBuffer: 512 * 1024 * 1024 })
 const fail = message => { throw new Error(`mirror-public: ${message}`) }
+
+/** Remote refs (`refs/...` -> sha), or undefined when the remote cannot be read. */
+const readRemoteRefs = () => {
+  try {
+    const refs = new Map()
+    for (const line of git(['ls-remote', REMOTE]).split('\n')) {
+      const [sha, ref] = line.trim().split(/\s+/)
+      if (sha !== undefined && ref !== undefined) refs.set(ref, sha)
+    }
+    return refs
+  } catch {
+    return undefined
+  }
+}
+
+/** Whether `sha` is an ancestor of `of` in the local object database. */
+const isAncestor = (sha, of) => {
+  try {
+    execFileSync('git', ['-C', repoRoot, 'merge-base', '--is-ancestor', sha, of], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
 
 const repoPath = relative => resolve(repoRoot, git(['rev-parse', relative]).trim())
 const gitCommonDir = repoPath('--git-common-dir')
@@ -283,9 +309,49 @@ try {
     for (const [name, sha] of tagTargets) console.log(`    ${name} -> ${sha.slice(0, 12)}`)
   }
   if (skippedTags.length > 0) console.log(`  tags skipped (hit an internal-only commit): ${skippedTags.join(', ')}`)
-  console.log('next (manual):')
-  console.log(`  git push --force github ${BRANCH}:main`)
-  for (const [name, sha] of tagTargets) console.log(`  git push --force github ${sha}:refs/tags/${name}`)
+  const remote = readRemoteRefs()
+  const commands = []
+  const upToDate = []
+  const rewrites = []
+  const tagRemoteCommit = name => remote?.get(`refs/tags/${name}^{}`) ?? remote?.get(`refs/tags/${name}`)
+
+  if (remote === undefined) {
+    console.log(`  remote ${REMOTE} is unreadable; the commands assume it still matches the last push`)
+    commands.push(`git push ${REMOTE} ${BRANCH}:${REMOTE_BRANCH}`)
+    for (const [name, sha] of tagTargets) commands.push(`git push ${REMOTE} ${sha}:refs/tags/${name}`)
+  } else {
+    const remoteMain = remote.get(`refs/heads/${REMOTE_BRANCH}`)
+    if (remoteMain === undefined) commands.push(`git push ${REMOTE} ${BRANCH}:${REMOTE_BRANCH}`)
+    else if (remoteMain === tip) upToDate.push(`${REMOTE_BRANCH} @ ${tip.slice(0, 12)}`)
+    else if (isAncestor(remoteMain, tip)) commands.push(`git push ${REMOTE} ${BRANCH}:${REMOTE_BRANCH}`)
+    else {
+      rewrites.push(`${REMOTE_BRANCH}: remote ${remoteMain.slice(0, 12)} is not an ancestor of ${tip.slice(0, 12)}`)
+      commands.push(`git push --force-with-lease=${REMOTE_BRANCH}:${remoteMain} ${REMOTE} ${BRANCH}:${REMOTE_BRANCH}`)
+    }
+    for (const [name, sha] of tagTargets) {
+      const remoteSha = tagRemoteCommit(name)
+      if (remoteSha === undefined) commands.push(`git push ${REMOTE} ${sha}:refs/tags/${name}`)
+      else if (remoteSha === sha) upToDate.push(`tag ${name} @ ${sha.slice(0, 12)}`)
+      else {
+        rewrites.push(`tag ${name}: ${remoteSha.slice(0, 12)} would move to ${sha.slice(0, 12)}`)
+        commands.push(`git push --force ${REMOTE} ${sha}:refs/tags/${name}`)
+      }
+    }
+  }
+
+  if (rewrites.length > 0) {
+    console.log('  warning: these refs already exist at different commits; moving them rewrites published history:')
+    for (const line of rewrites) console.log(`    ${line}`)
+  }
+  if (commands.length === 0) console.log('next: nothing to push, the remote already matches')
+  else {
+    console.log('next (manual):')
+    for (const command of commands) console.log(`  ${command}`)
+  }
+  if (upToDate.length > 0) {
+    console.log('already up to date:')
+    for (const line of upToDate) console.log(`  ${line}`)
+  }
 } finally {
   rmSync(indexEnv.GIT_INDEX_FILE, { force: true })
 }
