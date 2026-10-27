@@ -242,8 +242,11 @@ try {
     published.set(internalSha, writeCommit(internalSha, tree, parents, rawCommits.get(internalSha)))
   }
 
-  const tip = published.get(baseSha)
-  if (!tip) fail(`${BASE} is not publishable (it only touches internal files)`)
+  // A release is often followed by internal-only commits (skills, docs, local
+  // helpers); those never reach the public branch, so publish the last commit
+  // that does instead of failing the mirror.
+  const tip = published.get(baseSha) ?? firstPublished(baseSha)
+  if (!tip) fail(`${BASE} has no publishable commit in its history`)
   for (const path of CONFIG.requiredPublicFiles) {
     if (git(['ls-tree', tip, '--', path]).trim() === '') fail(`public tree is missing ${path}`)
   }
