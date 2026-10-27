@@ -4,6 +4,24 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.5.1] - 2026-10-27
+
+### Changed
+
+- 插件市场条目补齐商店图标与截图清单，安装前可预览交易、复盘与期货界面
+- 发布链路整理：发版说明改为共享渲染器生成，镜像推送只输出仍需推送的分支与 tag
+
+### Fixed
+
+- 修复发布作业以相对路径传入产物、以及在 registry 尚未出现新版本时判定失败的问题
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.5.0` → `0.5.1`，依赖与内联版本不变
+- `@dsh-ft/dsh-fft-settings`：`0.5.0`（registry 依赖）
+- `@dsh-ft/dsh-fft-ftshare`：`0.3.0`（registry 依赖）
+- `DSH Kline`：`0.4.0-ft.2`（仍内联）
+
 ## [0.5.0] - 2026-10-26
 
 ### Added
@@ -144,6 +162,7 @@
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.5.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.3.2...v0.4.0
