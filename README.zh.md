@@ -2,6 +2,9 @@
 
 [English](README.md) | 中文
 
+[![npm](https://img.shields.io/npm/v/@dsh-ft/dsh-fft-paper-trading)](https://www.npmjs.com/package/@dsh-ft/dsh-fft-paper-trading)
+[![license](https://img.shields.io/npm/l/@dsh-ft/dsh-fft-paper-trading)](LICENSE)
+
 在 DeepSeek Harness 里开一个不用开户的 A 股 / 商品期货账户
 
 ![交易页：填完代码、方向、数量，成本与成交后现金即时算出；右侧常驻 K 线](assets/screenshots/trade.jpg)
