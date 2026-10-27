@@ -78,6 +78,15 @@ import type { LedgerSnapshot } from '../store/port.js'
 const SYMBOL_BATCH = 20
 const MAX_CONTRACTS = 500
 
+/**
+ * Retry gap after a failed contract-index refresh.
+ *
+ * The index changes once a day, so retrying it on the host's 5 s tick only
+ * burns the gateway quota — and a profile without a usable key would keep
+ * failing forever. A manual refresh bypasses the window.
+ */
+export const CONTRACTS_RETRY_MS = 60_000
+
 /** Table/CTP suffix aliases agents may send; the host stores market suffixes. */
 const SYMBOL_SUFFIX: Record<string, string> = {
   SHFE: 'SHFE', SHF: 'SHFE', INE: 'INE', DCE: 'DCE',
@@ -218,6 +227,9 @@ export class FuturesService {
   private readonly accountId: string
   private readonly now: () => Date
   private contractsCache: ContractCache | undefined
+  /** Last failed index refresh; gates the retry so ticks cannot hammer it. */
+  private contractsFailedAt: number | undefined
+  private contractsFailureNotice: string | undefined
   private readonly quoteGate = new QuoteRefreshGate()
   private dataProblem: DataProblem | undefined
 
@@ -474,6 +486,13 @@ export class FuturesService {
   private async ensureContracts(tradeDate: string, refresh = false): Promise<ContractCache> {
     const cached = this.contractsCache
     if (cached !== undefined && cached.tradeDate === tradeDate && !refresh) return cached
+    const nowMs = this.now().getTime()
+    // A failed index must not be retried on every tick: the table changes once
+    // a day, so the 5 s beat only burns the gateway quota and logs. A manual
+    // refresh still bypasses the window.
+    if (!refresh && this.contractsFailedAt !== undefined && nowMs - this.contractsFailedAt < CONTRACTS_RETRY_MS) {
+      return this.staleContracts(tradeDate, cached, `合约索引暂不可用：${this.contractsFailureNotice ?? '上游暂不可用'}`)
+    }
     let result: FuturesDataResult<FuturesContractMeta[]>
     try {
       result = await this.options.data.contracts(refresh)
@@ -482,6 +501,8 @@ export class FuturesService {
       result = { state: 'failed', notice: error instanceof Error ? error.message : String(error) }
     }
     if (result.state === 'ok' && result.value !== undefined) {
+      this.contractsFailedAt = undefined
+      this.contractsFailureNotice = undefined
       const map = new Map<string, ContractTerms>()
       for (const meta of result.value) {
         if (meta.symbol === undefined || !(meta.multiplier > 0) || !(meta.tickSize > 0)) continue
@@ -490,13 +511,22 @@ export class FuturesService {
       this.contractsCache = { tradeDate, map, state: 'ok' }
       return this.contractsCache
     }
+    const cause = friendlyDataNotice(result, '上游暂不可用', this.ts())
+    this.contractsFailedAt = nowMs
+    this.contractsFailureNotice = cause
     if (cached !== undefined && cached.tradeDate === tradeDate) {
       // The adapter composes this cause with the raw upstream text, which carries
       // interface names and codes; keep the cache date, run the cause through the
       // shared filter so the tool summary stays readable.
-      return { ...cached, state: 'stale', notice: `合约索引刷新失败，沿用 ${cached.tradeDate} 缓存（${friendlyDataNotice(result, '上游暂不可用', this.ts())}）` }
+      return { ...cached, state: 'stale', notice: `合约索引刷新失败，沿用 ${cached.tradeDate} 缓存（${cause}）` }
     }
-    return { tradeDate, map: new Map(), state: 'stale', notice: `合约索引不可用：${friendlyDataNotice(result, '上游暂不可用', this.ts())}` }
+    return { tradeDate, map: new Map(), state: 'stale', notice: `合约索引不可用：${cause}` }
+  }
+
+  /** Stale answer inside the retry window; yesterday's cache is reused in place. */
+  private staleContracts(tradeDate: string, cached: ContractCache | undefined, notice: string): ContractCache {
+    if (cached !== undefined && cached.tradeDate === tradeDate) return { ...cached, state: 'stale', notice }
+    return { tradeDate, map: new Map(), state: 'stale', notice }
   }
 
   private async symbolData(state: FuturesAccountState, symbol: string, nowIso: string): Promise<SymbolData> {
@@ -787,6 +817,12 @@ export class FuturesService {
     const symbols = this.symbolsInPlay(state)
     if (state.blocked) {
       return { tradeDate: state.tradeDate, filled: [], expired, notices: [...notices, '账户已锁定，已跳过撮合'] }
+    }
+    // No position and no pending order: nothing can fill and no contract needs
+    // pricing. Return before the contract index so an installed-but-unused
+    // account never calls the data gateway on the host's 5 s beat.
+    if (symbols.length === 0) {
+      return { tradeDate: state.tradeDate, filled: [], expired, notices }
     }
     const contracts = await this.ensureContracts(state.tradeDate)
     const tradable = symbols.filter(symbol => {
