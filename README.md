@@ -2,6 +2,9 @@
 
 English | [中文](https://github.com/gigaflw/dsh-fft-paper-trading/blob/main/README.zh.md)
 
+[![npm](https://img.shields.io/npm/v/@dsh-ft/dsh-fft-paper-trading)](https://www.npmjs.com/package/@dsh-ft/dsh-fft-paper-trading)
+[![license](https://img.shields.io/npm/l/@dsh-ft/dsh-fft-paper-trading)](LICENSE)
+
 Open an A-share / commodity futures account in DeepSeek Harness without opening a brokerage account
 
 ![Trade page: fill in symbol, side and quantity, and the cost and post-trade cash are computed as you type; the K-line chart stays on the right](assets/screenshots/trade.jpg)
