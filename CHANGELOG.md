@@ -4,7 +4,11 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.6.1] - 2026-11-03
+
+### Changed
+
+- 跟随 FTShare 底座 0.4.0：面板与交易日历读到的失败说明改为上游原文
 
 ### Fixed
 
@@ -197,6 +201,7 @@
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.6.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.4.1...v0.5.0
