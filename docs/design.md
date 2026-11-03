@@ -659,9 +659,9 @@ interface TradingCalendarPort {
 }
 ```
 
-- 适配器 `FtshareTradingCalendar` 调 `ft_v1_time_trading_calendar` 与 `ft_v1_time_get_nth_trade_date`，按区间缓存 1 天；
+- 适配器 `FtshareTradingCalendar` 只调 `ft_v1_time_trading_calendar`，**按自然年取一次、进程内缓存**：日历一年一变，首次提问拉整年（`YYYY0101`～`YYYY1231`，上游实测可回全年）存内存，之后任意区间、任意调用方（含 5 秒 tick）都读缓存，并发提问共享同一次在途请求；旧实现按 `from:to` 精确键缓存、失败不缓存，两个 5 秒调度器叠起来约 120 次/小时，会把匿名额度打满；
 - FTShare 日历的入参与返回都是 **YYYYMMDD 整数**（实测 `trade_dates` 为整数数组）；适配器在边界转换，内部统一 `YYYY-MM-DD`；
-- 取不到时回退「周一至周五」并标 `source: 'fallback'`，**失败结果不写缓存**：60 秒后重试，恢复后自动切回；来源经 `market/status` 的 `calendar` 字段暴露，面板副标题显示「交易日历降级（按工作日估算）」，降级期间「下一交易日」写作「下一交易日（按工作日估算）」，`paper_stock_market` 的时段摘要同步带一句；
+- 取不到时回退「周一至周五」并标 `source: 'fallback'`，**失败同样记进缓存**并指数退避重试（1→2→4…上限 10 分钟）；配额文案、401/403 这类重试无用的答案在本自然日（Asia/Shanghai）内不再重试，恢复后自动切回；来源经 `market/status` 的 `calendar` 字段暴露，面板副标题显示「交易日历降级（按工作日估算）」，降级期间「下一交易日」写作「下一交易日（按工作日估算）」，`paper_stock_market` 的时段摘要同步带一句；
 - 时段表是交易所规则，集中在 `core/session.ts`，不散落在 service/UI：
 
 | 阶段 | 时间（Asia/Shanghai） | 可提交 | 可连续撮合 | 说明 |
