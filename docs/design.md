@@ -1056,7 +1056,7 @@ paper-trading main 注册
 - `PaperKlinePanel` 复用 `StandaloneKlineApp`，数据、指标、画线仍由 dsh_kline 负责；
 - 在 K 线内选标的会通过 `onIdentity` 回填交易 ticket 并刷新简图；paper-trading 不直接 import dsh_kline 的运行时值（DSH 禁止跨特性包值导入）；
 - dsh_kline 的 symbol 用自家后缀（`600519.XSHG` / `000001.XSHE` / `920001.BJSE`）；回填时折叠成 canonical `600519.SH`，服务端也通过 `core/symbol.ts` 的别名表接受这些写法，同一标的不会出现第二套身份；
-- dsh_kline 侧改动在本地分支 `feat/paper-trading-panel`，发布新版本后把 bundle 的 `@ftshare-lab/dsh-kline` pin 前移即可；未发布时功能自动降级为内置简图。
+- dsh_kline 侧改动随其新版本发布，发版后把 bundle 的 `@ftshare-lab/dsh-kline` pin 前移即可；未发布时功能自动降级为内置简图。
 - 槽位健康检查必须穿透 open shadow root：dsh_kline 把整块图表挂在 `host.attachShadow()` 内，只查轻 DOM 会把正常图表误判为未加载并替换成简图。
 
 ### 19.11 不做 / 推迟
