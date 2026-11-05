@@ -4,6 +4,25 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.6.2] - 2026-11-05
+
+### Added
+
+- 股票模拟账户初始资金改为 100 万元，重置时可自行指定初始资金（面板「重置」、`account/reset` 的 `initialCash`、`paper_stock_account` 的 `initialCash`）
+
+### Changed
+
+- 盘后、午休与集合竞价时段的市价单不再被拒绝，改为排队到下一交易时段开盘成交；收盘竞价仍拒绝（当天没有后续窗口）。挂单状态显示为「待开盘」并说明顺延时点
+- 资金不足的提示给出差额：工具结果写明需多少、可用多少，下单按钮写明还差多少
+- 内联的 K 线构建前移到 fork 的 v0.6.4-ft.1：Windows 下不再需要手工指定 Python，启动与 Python 环境升级的修复随插件一起到位
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.6.1` → `0.6.2`
+- `@dsh-ft/dsh-fft-settings`：`0.5.0`（registry 依赖）
+- `@dsh-ft/dsh-fft-ftshare`：`0.4.0`（registry 依赖）
+- `DSH Kline`：`v0.4.0-ft.2` → `v0.6.4-ft.1`
+
 ## [0.6.1] - 2026-11-03
 
 ### Changed
@@ -201,6 +220,7 @@
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.6.2]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.0...v0.5.1
