@@ -24,7 +24,7 @@ Open an A-share / commodity futures account in DeepSeek Harness without opening 
 ## Features
 
 - **Everything is priced before you place the order**: type a symbol, side and quantity, and the estimated fill price, commission, stamp duty, transfer fee, post-trade cash and maximum affordable quantity all refresh together — there is no separate quote lookup or preview step.
-- **Stocks and futures, two independent accounts**: both accounts are created automatically the first time you open the panel — 100,000 CNY of simulated cash for A-shares, 1,000,000 CNY for commodity futures; futures trade in lots, reserve margin, allow same-day (T+0) closing and settle at end of day.
+- **Stocks and futures, two independent accounts**: both accounts are created automatically the first time you open the panel — 1,000,000 CNY of simulated cash for A-shares, 1,000,000 CNY for commodity futures; futures trade in lots, reserve margin, allow same-day (T+0) closing and settle at end of day.
 - **One ledger shared with the AI**: say “buy 200 shares of 000001 at market” or “review my trades this week” in the conversation and the model calls the ordering and review tools directly; the panel and the model trade the same account.
 - **Order straight from the K-line**: the panel keeps a full K-line chart on screen; pick a symbol on the chart and its code is carried over to the trade page. The quotes page lets you page through sectors and add the symbols you follow to the shortlist.
 - **Build positions in bulk by weight**: import a `code,weight` CSV, set a budget, and buy up to 20 symbols in one batch; check shares, fees and remaining cash before submitting the whole batch.
@@ -45,9 +45,9 @@ Requires DSH `>= 0.2.0-rc.2`. The plugin ships FTShare quotes, the trading calen
 
 ## Get started in three steps
 
-1. Open “Paper Trading” in the sidebar and the accounts are created automatically: 100,000 CNY of simulated cash for stocks and 1,000,000 CNY for futures. Use “Funds” in the account header to deposit or withdraw at any time.
+1. Open “Paper Trading” in the sidebar and the accounts are created automatically: 1,000,000 CNY of simulated cash for stocks and 1,000,000 CNY for futures. Use “Funds” in the account header to deposit or withdraw at any time.
 2. On the trade page, enter a symbol (such as `000001`), choose side, quantity and market or limit, then confirm the preview and submit. A limit order that does not cross rests as a pending order and can be canceled under “Orders”.
-3. “Review” shows equity, drawdown and fills, “Positions” shows sellable quantity and unrealized P&L; you can reset the account at any time (a backup is taken first).
+3. “Review” shows equity, drawdown and fills, “Positions” shows sellable quantity and unrealized P&L; you can reset the account at any time and pick the starting cash (a backup is taken first).
 
 In the conversation, you can simply say:
 
@@ -68,7 +68,7 @@ The panel header shows the data-source state (live / free / unavailable / invali
 
 ## Simulation rules and scope
 
-- **Stocks**: a market order fills once at the latest price, with no partial fills; a limit order rests only if it does not cross and is valid for the day. Price limits, trading halts, T+1 sellable quantity and commission / stamp duty / transfer fee are simulated per A-share rules; when quotes are missing you can order with a reference price.
+- **Stocks**: a market order fills once at the latest price, with no partial fills; a limit order rests only if it does not cross and is valid for the day. Price limits, trading halts, T+1 sellable quantity and commission / stamp duty / transfer fee are simulated per A-share rules; when quotes are missing you can order with a reference price. Orders placed outside continuous trading are accepted and queued: they fill at the next session's price.
 - **Futures**: commodity futures only (SHFE / INE / DCE / CZCE / GFEX), and orders are accepted only during the day session (09:00–11:30, 13:30–15:00). Positions settle at the closing price at 15:30 and go through the risk check. Night sessions, index and treasury futures, delivery and rollover are out of scope for this release.
 - **Scope**: no live trading, no margin trading or securities lending, no options, no Hong Kong / US stocks, and no strategy backtesting.
 

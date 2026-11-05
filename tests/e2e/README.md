@@ -10,7 +10,7 @@ tests/e2e/
   flow-fake.mjs          # 用假后端把用户故事 9 步跑一遍并断言
   offline-ledger.mjs     # 账本：重复 seq / 旧 settings / NaN 锁户 / 重置 / 导出
   offline-matching.mjs   # 撮合：最新价全成 / 挂单 / 无 TTL / 旧账本迁移
-  offline-basket.mjs     # 批量：预览/整批下单/幂等/收盘拒绝（真服务+真账本）
+  offline-basket.mjs     # 批量：预览/整批下单/幂等/收盘顺延（真服务+真账本）
   futures-offline.mjs    # 期货：开多/保证金/重启重放/平仓/日结算/收盘拒单
   ui-panel.mjs           # 面板 UI：真 React DOM + 真 bundle + 假 RPC（不启 DSH）
   ui-fake.js             # ui-panel 的假后端与点击剧本

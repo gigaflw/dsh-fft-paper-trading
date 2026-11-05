@@ -6,7 +6,7 @@
  *
  * 不启应用、不碰 ~/.dsh；数据写 build/。退出码 0 = 全过。
  * 覆盖：CSV 预览、费用/整手/剩余现金、RPC 下单、逐行成交、账本落盘、
- * 同 batchId 幂等、收盘后整批拒绝。
+ * 同 batchId 幂等、收盘后整批顺延为次日委托。
  */
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -101,13 +101,16 @@ await rm(home, { recursive: true, force: true })
   const rpc = createPaperRpcHandler(service)
   const preview = (await rpc('basket/preview', { csv }, new AbortController().signal)).value
   assert('closed preview still works', preview !== undefined && preview.rows.length === 3)
+  assert('closed preview says it will queue', preview.warnings.some(warning => /下一交易时段撮合/.test(warning)), preview.warnings.join('；'))
   const before = (await service.orders()).length
-  const blocked = await rpc('basket/place', {
+  const tradesBefore = (await service.trades()).length
+  const queued = await rpc('basket/place', {
     rows: preview.rows.filter(row => row.qty > 0).map(row => ({ symbol: row.symbol, qty: row.qty })),
   }, new AbortController().signal)
-  assert('closed place rejected', blocked.ok === false)
-  assert('closed rejection code', blocked.ok === false && ['SESSION_CLOSED', 'AUCTION_ONLY'].includes(blocked.error.code), blocked.ok === false ? blocked.error.code : '')
-  assert('no orders written when closed', (await service.orders()).length === before)
+  assert('closed place accepted', queued.ok === true, JSON.stringify(queued))
+  assert('every closed row queued', queued.ok === true && queued.value.rows.every(row => row.order && row.order.status === 'queued'), JSON.stringify(queued))
+  assert('no fill while closed', (await service.trades()).length === tradesBefore)
+  assert('orders written when closed', (await service.orders()).length === before + (queued.ok === true ? queued.value.rows.length : 0))
 }
 
 await rm(home, { recursive: true, force: true })

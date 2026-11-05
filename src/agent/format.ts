@@ -47,6 +47,9 @@ export function renderOrder(order: OrderView): string {
   }
   const parts = [`${status[order.status]}：${order.side === 'buy' ? '买入' : '卖出'} ${formatSymbol(order.symbol, order.name)} ${order.qty} 股`]
   if (order.type === 'limit' && order.limitPrice !== undefined) parts.push(`限价 ${order.limitPrice.toFixed(2)}`)
+  // A queued order is not "waiting for a price to cross": it has no matching
+  // window yet, so say when it will be tried.
+  if (order.status === 'queued') parts.push('下一交易时段开盘后撮合')
   if (order.fillPrice !== undefined) parts.push(`成交价 ${order.fillPrice.toFixed(2)}`)
   if (order.reason !== undefined) parts.push(`原因 ${order.reason}`)
   if (order.note !== undefined) parts.push(`备注 ${order.note}`)
