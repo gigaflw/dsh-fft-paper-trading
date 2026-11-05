@@ -186,8 +186,9 @@ test('browser bundle: the basket tab imports a CSV and places the previewed rows
   for (const label of ['合计金额', '剩余现金', '成交后现金', '费用']) {
     assert.ok(source.includes(label), `missing basket summary ${label}`)
   }
-  // Confirm is gated by the session, the account and the preview, not by a failed quote.
-  assert.match(source, /preview\.session\.canMatch === false/)
+  // Confirm is gated by the account, the preview and the closing auction, not
+  // by a failed quote: outside the session the batch is queued instead.
+  assert.match(source, /preview\.session\.phase === 'auction_close'/)
   assert.match(source, /没有可下单的行/)
   // Row-level issues and host warnings are shown compactly, never as prose.
   assert.match(source, /preview\.issues/)

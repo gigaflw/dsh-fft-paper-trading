@@ -417,14 +417,12 @@ export class PaperService {
     const now = this.ts()
     const phase = this.phaseFor(state, now)
     const matchable = canMatch(phase)
-    if (!canSubmit(phase, draft.type)) {
-      throw new PaperError(
-        phase === 'closed' ? 'SESSION_CLOSED' : 'AUCTION_ONLY',
-        phase === 'auction_close'
-          ? '收盘竞价暂不支持模拟撮合'
-          : draft.type === 'market' ? '当前时段不接受市价单，请改限价预埋' : '当前时段不接受委托',
-        409,
-      )
+    // A market order outside continuous trading cannot fill now, but a real
+    // broker still accepts it as an order for the next matching window, so it
+    // is taken as a queued order instead of a rejection. The closing auction
+    // has no window left today, so it stays rejected.
+    if (phase === 'auction_close') {
+      throw new PaperError('AUCTION_ONLY', '收盘竞价暂不支持模拟撮合', 409)
     }
     const quote = await this.quoteFor(draft)
     const tradeDate = await this.orderDateFor(state, now, phase)
@@ -475,9 +473,10 @@ export class PaperService {
     })
     const session = await this.marketStatusAt(state, this.ts())
     const warnings = [...parsed.warnings, ...allocation.warnings]
-    // The plan is still readable after the close; the hint is why the client
-    // must keep the confirm button disabled.
-    if (!session.canMatch) warnings.push('当前时段不能市价成交，只能预览')
+    // The plan is still readable after the close: the rows stay visible, and a
+    // confirmed batch is simply planted for the next matching window.
+    if (session.phase === 'auction_close') warnings.push('收盘竞价暂不支持模拟撮合，请等收盘后再下单')
+    else if (!session.canMatch) warnings.push('当前时段不能立即成交，确认后委托将在下一交易时段撮合')
     return {
       budgetCents: budget,
       cashCents,
@@ -509,12 +508,10 @@ export class PaperService {
     if (state.blocked) throw this.blocked(state)
     const now = this.ts()
     const phase = this.phaseFor(state, now)
-    if (!canSubmit(phase, 'market')) {
-      throw new PaperError(
-        phase === 'closed' ? 'SESSION_CLOSED' : 'AUCTION_ONLY',
-        '当前时段不接受市价单，请改限价预埋或连续竞价时段重试',
-        409,
-      )
+    // Outside continuous trading the batch is queued like a single market
+    // order; only the closing auction is rejected because no window follows.
+    if (phase === 'auction_close') {
+      throw new PaperError('AUCTION_ONLY', '收盘竞价暂不支持模拟撮合', 409)
     }
     const matchable = canMatch(phase)
 
@@ -985,15 +982,21 @@ export class PaperService {
    * the current defaults, so a legacy account does not inherit its missing
    * fields. The write is an atomic temp-file rename.
    */
-  async reset(confirm: boolean): Promise<AccountView> {
+  async reset(confirm: boolean, initialCashCents?: number): Promise<AccountView> {
     if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '重置需要 confirm=true', 400)
+    if (initialCashCents !== undefined && (!Number.isSafeInteger(initialCashCents) || initialCashCents <= 0)) {
+      throw new PaperError('INVALID_ARGUMENT', '初始资金必须是正整数（分）', 400)
+    }
     const ts = this.ts()
     await this.options.repo.backup(ts)
     const previous = await this.options.repo.current().catch(error => {
       this.options.logger?.warn(`paper-trading: reset could not replay the old ledger: ${String(error)}`)
       return undefined
     })
-    const settings = normalizeSettings(previous !== undefined && previous.tradeDate !== '' ? previous.settings : this.settings)
+    const merged = normalizeSettings(previous !== undefined && previous.tradeDate !== '' ? previous.settings : this.settings)
+    // A reset keeps the previous settings, so an existing 10 万 account would
+    // never pick up a new default; the caller may pass the starting cash.
+    const settings = initialCashCents === undefined ? merged : { ...merged, initialCashCents }
     const tradeDate = previous !== undefined && previous.tradeDate !== '' ? previous.tradeDate : await this.tradeDateForNow()
     const genesis: LedgerEvent = {
       seq: 1,

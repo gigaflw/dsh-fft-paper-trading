@@ -326,7 +326,7 @@ try {
   const stockSuspended = await scenario('stock-suspended')
   assert('a suspended stock is disabled with a reason', stockSuspended.title === '停牌', JSON.stringify(stockSuspended))
   const stockPreopen = await scenario('stock-preopen')
-  assert('pre-open still allows a limit order to be planted', stockPreopen.enabled === true && typeof stockPreopen.header === 'string' && stockPreopen.header.includes('仅可预埋限价单'), JSON.stringify(stockPreopen))
+  assert('pre-open still allows a limit order to be planted', stockPreopen.enabled === true && typeof stockPreopen.header === 'string' && stockPreopen.header.includes('集合竞价，09:30 开盘撮合'), JSON.stringify(stockPreopen))
   const stockAuctionClose = await scenario('stock-auction-close')
   assert('auction-close limit orders are blocked with an explanation', stockAuctionClose.title === '收盘竞价暂不支持模拟撮合' && typeof stockAuctionClose.header === 'string' && stockAuctionClose.header.includes('收盘竞价暂不支持下单'), JSON.stringify(stockAuctionClose))
   const reviewRace2 = await scenario('review-race2')

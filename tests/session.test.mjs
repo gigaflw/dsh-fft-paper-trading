@@ -99,10 +99,10 @@ test('service: pre-open queues, opens at 09:30 and fills', async () => {
   try {
     setQuote(data, 10, now.current.toISOString())
     await service.account()
-    await assert.rejects(
-      service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),
-      /当前时段不接受市价单/,
-    )
+    // The auction has no matching window yet, so a market order is queued for
+    // the 09:30 open instead of being refused.
+    const market = await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
+    assert.equal(market.status, 'queued')
     const queued = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 10.5 })
     assert.equal(queued.status, 'queued')
 
