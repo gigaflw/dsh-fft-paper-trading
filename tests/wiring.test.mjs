@@ -106,7 +106,7 @@ test('wiring: route and tools attach without the market-data service', async () 
 
     const account = await call('account/get')
     assert.equal(account.ok, true)
-    assert.equal(account.value.cash, 100_000)
+    assert.equal(account.value.cash, 1_000_000)
     assert.match(account.value.ledgerPath ?? '', /events\.jsonl$/, 'the account view names its ledger file')
 
     const stockAccount = await tools.find(tool => tool.name === 'paper_stock_account').execute({})

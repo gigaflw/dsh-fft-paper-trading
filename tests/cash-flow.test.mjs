@@ -60,13 +60,13 @@ test('cash: stock deposit and withdrawal replay into cash and verify', () => {
   const withdrawn = withdrawCash(deposited.state, 500_000, NOW.toISOString())
   const { state, issues } = replay([...opened.events, ...deposited.events, ...withdrawn.events], 'default')
   assert.deepEqual(issues, [])
-  assert.equal(state.cashCents, 11_500_000)
+  assert.equal(state.cashCents, 101_500_000)
   assert.equal(state.cashFlows.length, 2)
   assert.deepEqual(state.cashFlows.map(flow => flow.type), ['deposit', 'withdraw'])
   // The invariant checks the running cash against initial + flows + fills.
   assert.deepEqual(verify(state), [])
 
-  assert.throws(() => withdrawCash(state, 11_500_001, NOW.toISOString()), /exceeds cash/)
+  assert.throws(() => withdrawCash(state, 101_500_001, NOW.toISOString()), /exceeds cash/)
   assert.throws(() => depositCash(state, 0, NOW.toISOString()), /positive integer/)
   assert.throws(() => depositCash(state, 10.5, NOW.toISOString()), /positive integer/)
 })
@@ -96,27 +96,27 @@ test('cash: stock service and RPC move cash, log the flow and reject over-withdr
   try {
     let result = await handler('account/deposit', { amount: 20000 }, signal())
     assert.equal(result.ok, true)
-    assert.equal(result.value.cash, 120_000)
+    assert.equal(result.value.cash, 1_020_000)
     assert.equal(result.value.netCashFlow, 20_000)
     assert.equal(result.value.pnl, 0)
     assert.equal(result.value.todayPnl, 0)
     const afterDeposit = await repo.current()
     assert.deepEqual(verify(afterDeposit), [])
-    assert.equal(afterDeposit.cashCents, 12_000_000)
+    assert.equal(afterDeposit.cashCents, 102_000_000)
 
     result = await handler('account/withdraw', { amount: 5000 }, signal())
     assert.equal(result.ok, true)
-    assert.equal(result.value.cash, 115_000)
+    assert.equal(result.value.cash, 1_015_000)
     assert.equal(result.value.netCashFlow, 15_000)
 
     const flow = await service.cashFlow()
     assert.deepEqual(flow.map(row => row.type), ['open', 'deposit', 'withdraw'])
     assert.equal(flow[1].amount, 20_000)
     assert.equal(flow[2].amount, -5_000)
-    assert.equal(flow[2].balance, 115_000)
+    assert.equal(flow[2].balance, 1_015_000)
 
     const before = (await repo.current()).cashCents
-    result = await handler('account/withdraw', { amount: 999_999 }, signal())
+    result = await handler('account/withdraw', { amount: 9_999_999 }, signal())
     assert.equal(result.ok, false)
     assert.equal(result.error.code, 'INSUFFICIENT_CASH')
     // A rejected withdrawal writes nothing.

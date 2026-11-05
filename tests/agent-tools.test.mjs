@@ -137,7 +137,7 @@ test('tool data survives the DSH lossless-JSON boundary', async () => {
 
 test('each tool declares only the parameters it reads', () => {
   const stock = collect(registerPaperTools, {})
-  assert.deepEqual(Object.keys(stock.paper_stock_account.parameters.properties).sort(), ['confirm', 'reset'])
+  assert.deepEqual(Object.keys(stock.paper_stock_account.parameters.properties).sort(), ['confirm', 'initialCash', 'reset'])
   assert.deepEqual(Object.keys(stock.paper_stock_order.parameters.properties).sort(), ['limitPrice', 'note', 'price', 'qty', 'requestId', 'side', 'symbol', 'type'])
   assert.deepEqual(Object.keys(stock.paper_stock_cancel.parameters.properties).sort(), ['orderId'])
   assert.deepEqual(stock.paper_stock_order.parameters.required.slice().sort(), ['qty', 'side', 'symbol', 'type'])

@@ -72,8 +72,16 @@ export function checkOrder(
   const amount = amountCents(price, draft.qty)
   if (draft.side === 'buy') {
     const fees = computeFees(amount, 'buy', settings)
-    if (state.cashCents < amount + fees.totalCents) {
-      return { ok: false, code: 'INSUFFICIENT_CASH', message: '可用资金不足（含费用）' }
+    const needCents = amount + fees.totalCents
+    if (state.cashCents < needCents) {
+      // Name both numbers: "可用资金不足" alone leaves the user guessing
+      // whether a cheaper lot or a deposit is the way out.
+      const yuan = (cents: number) => (cents / 100).toFixed(2)
+      return {
+        ok: false,
+        code: 'INSUFFICIENT_CASH',
+        message: `可用资金不足（需 ${yuan(needCents)} 元，可用 ${yuan(state.cashCents)} 元）`,
+      }
     }
     if (settings.maxOrderNotionalCents > 0 && amount > settings.maxOrderNotionalCents) {
       return { ok: false, code: 'MAX_NOTIONAL', message: '超过单笔金额上限' }

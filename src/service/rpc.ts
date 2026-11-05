@@ -60,6 +60,17 @@ function basketBudget(value: unknown): number | undefined {
   return value
 }
 
+/** Optional reset starting cash, entered in yuan like every other panel amount. */
+function initialCashCents(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined
+  const yuan = num(value, 'initialCash')
+  const cents = Math.round(yuan * 100)
+  if (!Number.isSafeInteger(cents) || cents <= 0) {
+    throw new PaperError('INVALID_ARGUMENT', 'initialCash 必须是正数（元）')
+  }
+  return cents
+}
+
 function basketRows(value: unknown): BasketOrderInput[] {
   if (!Array.isArray(value)) throw new PaperError('INVALID_ARGUMENT', 'rows 必须是数组')
   if (value.length < 1 || value.length > BASKET_MAX_ROWS) {
@@ -104,7 +115,7 @@ export function createPaperRpcHandler(service: PaperService, options: PaperRpcOp
           return ok(await service.account())
         case 'account/reset': {
           const input = record(payload ?? {})
-          return ok(await service.reset(input.confirm === true))
+          return ok(await service.reset(input.confirm === true, initialCashCents(input.initialCash)))
         }
         case 'account/deposit':
           return ok(await service.deposit(num(record(payload).amount, 'amount')))

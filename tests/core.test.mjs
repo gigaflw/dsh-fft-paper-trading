@@ -99,7 +99,7 @@ test('engine: buy fills, replay is deterministic, close/open moves the day', () 
   const open = openAccount(emptyState('t'), DEFAULT_SETTINGS, '2026-10-19', DAY1, 't')
   const bought = submit(open.state, { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }, quote(10), 'r1', DAY1)
   assert.equal(bought.order.status, 'filled')
-  assert.equal(bought.state.cashCents, 10_000_000 - 100_000 - 501)
+  assert.equal(bought.state.cashCents, 100_000_000 - 100_000 - 501)
   assert.equal(bought.state.positions['600519.SH'].available, 0)
 
   const events = [...open.events, ...bought.events]

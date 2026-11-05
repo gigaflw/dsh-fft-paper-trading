@@ -171,7 +171,7 @@ test('rpc: index routes futures/* to the futures handler and keeps the stock end
     assert.equal(futures.value.initialCash, 1_000_000)
     const stock = await call('account/get', {})
     assert.equal(stock.ok, true)
-    assert.equal(stock.value.cash, 100_000)
+    assert.equal(stock.value.cash, 1_000_000)
     const futuresStatus = await call('futures/status', {})
     assert.equal(futuresStatus.ok, true)
     assert.ok(['pre_open', 'lunch', 'closed', 'trading'].includes(futuresStatus.value.phase))

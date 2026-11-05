@@ -43,7 +43,9 @@ export interface PaperSettings {
 }
 
 export const DEFAULT_SETTINGS: PaperSettings = {
-  initialCashCents: 10_000_000,
+  // 100 万，A 股模拟盘的常规默认值：1 手贵州茅台（约 14.5 万）也能买，
+  // 10 万会让新账户连一手高价股都下不了单。
+  initialCashCents: 100_000_000,
   commissionRate: 0.00025,
   minCommissionCents: 500,
   stampDutyRate: 0.0005,
