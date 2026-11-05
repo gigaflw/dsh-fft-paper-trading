@@ -295,7 +295,7 @@ window.__ModuleLoader__.load({
     }
 
     const STATUS_TEXT = {
-      queued: '排队',
+      queued: '待开盘',
       pending: '挂单',
       partially_filled: '部分成交',
       filled: '成交',
@@ -307,7 +307,9 @@ window.__ModuleLoader__.load({
     const sessionNote = session => {
       if (!session || session.canMatch) return ''
       if (session.phase === 'auction_close') return '（收盘竞价暂不支持下单）'
-      return '（仅可预埋限价单）'
+      if (session.phase === 'pre_open') return '（集合竞价，09:30 开盘撮合）'
+      if (session.phase === 'lunch') return '（午休，13:00 开盘撮合）'
+      return '（盘后委托顺延至下一交易时段开盘）'
     }
     const PHASE_TEXT = {
       pre_open: '集合竞价',
@@ -761,6 +763,7 @@ window.__ModuleLoader__.load({
     }
 
     const CASH_QUICK_AMOUNTS = [10000, 50000, 100000]
+    const RESET_QUICK_AMOUNTS = [500000, 1000000, 2000000]
 
     /**
      * Inline cash in/out panel shared by the stock and futures headers.
@@ -792,6 +795,38 @@ window.__ModuleLoader__.load({
           h('button', {
             className: 'pt-btn pt-btn-primary', onClick: onSubmit, disabled: busy || reason !== '', title: reason || undefined,
           }, busy ? '处理中…' : side === 'deposit' ? '确认注资' : '确认提款'),
+        ),
+        reason !== '' ? h('div', { className: 'pt-note pt-risk-high' }, reason) : null,
+      )
+    }
+
+    /**
+     * Inline reset confirmation with the starting cash.
+     *
+     * A reset keeps the previous settings, so an account opened at 10 万 would
+     * otherwise stay there forever; the input lets the user pick the starting
+     * cash in the same step, and reuses the cash panel's atoms.
+     */
+    function ResetPanel({ initialCash, amount, onAmount, busy, onCancel, onSubmit }) {
+      const cents = cashAmountCents(amount)
+      const reason = cents === null ? '初始资金需为正数' : ''
+      return h('div', { className: 'pt-cash' },
+        h('div', { className: 'pt-row' },
+          h('div', { className: 'pt-note' }, '初始资金（元）'),
+          h('input', {
+            className: 'pt-input', style: { width: 130 }, inputMode: 'decimal', placeholder: `当前 ${money(initialCash)}`,
+            value: amount, onChange: event => onAmount(event.target.value),
+          }),
+          RESET_QUICK_AMOUNTS.map(value => h('button', {
+            key: value, className: 'pt-btn', onClick: () => onAmount(String(value)),
+          }, `${value / 10000}万`)),
+        ),
+        h('div', { className: 'pt-row' },
+          h('div', { className: 'pt-note' }, '重置会清空持仓与挂单，账本先备份'),
+          h('button', { className: 'pt-btn', onClick: onCancel, disabled: busy }, '取消'),
+          h('button', {
+            className: 'pt-btn pt-btn-danger', onClick: onSubmit, disabled: busy || reason !== '', title: reason || undefined,
+          }, busy ? '处理中…' : '确认重置'),
         ),
         reason !== '' ? h('div', { className: 'pt-note pt-risk-high' }, reason) : null,
       )
@@ -1151,7 +1186,7 @@ window.__ModuleLoader__.load({
         )
       }
       const pendingText = order.status === 'queued'
-        ? '当前时段不撮合，进入连续竞价后按最新价判定'
+        ? '当前时段不撮合，已受理为下一交易时段开盘委托'
         : '现价未穿越，成交前一直挂单'
       return h('div', { className: 'pt-receipt', 'data-state': 'resting', title: order.id },
         `挂单：${side} ${symbol} ${count(order.qty)} 股${order.limitPrice === undefined ? '' : ` @ ${money(order.limitPrice)}`} · ${pendingText} · 单 ${order.id}`,
@@ -1283,7 +1318,7 @@ window.__ModuleLoader__.load({
             ))),
           ),
           pending.some(order => order.status === 'queued')
-            ? h('div', { className: 'pt-note' }, '「排队」：当前时段不撮合，下一交易时段会尝试成交，可随时撤单。')
+            ? h('div', { className: 'pt-note' }, '「待开盘」：当前时段不撮合，下一交易时段开盘后按当时价格尝试成交，可随时撤单。')
             : null,
         ),
         h('div', null,
@@ -1492,7 +1527,7 @@ window.__ModuleLoader__.load({
         if (account !== null && account.blocked === true) return '账户已锁定'
         if (preview === null) return '先批量预览'
         if (rows.length === 0) return '没有可下单的行'
-        if (preview.session && preview.session.canMatch === false) return '当前时段不能市价成交'
+        if (preview.session && preview.session.phase === 'auction_close') return '收盘竞价暂不支持模拟撮合'
         return ''
       }, [account, preview, rows])
 
@@ -2509,6 +2544,10 @@ window.__ModuleLoader__.load({
       const [cashOpen, setCashOpen] = useState(false)
       const [cashSide, setCashSide] = useState('deposit')
       const [cashAmount, setCashAmount] = useState('')
+      // Inline reset strip: picking the starting cash is part of the reset, so
+      // it replaces the browser confirm dialog instead of living in settings.
+      const [resetOpen, setResetOpen] = useState(false)
+      const [resetCash, setResetCash] = useState('')
       const submitting = useRef(false)
       const placeKey = useRef({ key: '', id: '' })
       const [preview, setPreview] = useState(null)
@@ -2943,23 +2982,26 @@ window.__ModuleLoader__.load({
       }, [])
 
       const reset = useCallback(async () => {
-        if (!window.confirm('重置模拟交易账户？持仓与挂单会清空；当前账本会先备份，可在备份里找回。')) return
+        const cents = cashAmountCents(resetCash)
+        if (cents === null) return
         setBusy(true)
         try {
-          setAccount(await rpc('account/reset', { confirm: true }))
+          setAccount(await rpc('account/reset', { confirm: true, initialCash: cents / 100 }))
           setPreview(null)
           setReceipt(null)
           await loadAll(true)
           await loadReviewDetail()
           setPreviewNonce(value => value + 1)
           setResetNonce(value => value + 1)
-          setNotice('账户已重置')
+          setResetOpen(false)
+          setResetCash('')
+          setNotice(`账户已重置，初始资金 ${money(cents / 100)}`)
         } catch (cause) {
           setError(errorOf(cause))
         } finally {
           setBusy(false)
         }
-      }, [loadAll, loadReviewDetail])
+      }, [resetCash, loadAll, loadReviewDetail])
 
       /** 注资/提款：写一条账本事件，现金与总资产随之更新，盈亏剔除净入金。 */
       const moveCash = useCallback(async () => {
@@ -3018,14 +3060,15 @@ window.__ModuleLoader__.load({
         if (form.side === 'buy' && qty % 100 !== 0) return '买入需 100 股整数倍'
         if (form.type === 'limit' && !(Number(form.limitPrice) > 0)) return '填写限价'
         if (session !== null && session.phase === 'auction_close') return '收盘竞价暂不支持模拟撮合'
-        if (form.type === 'market' && session !== null && !session.canMatch) return '当前时段不能市价成交'
         if (form.type === 'market' && quote === null && !(Number(form.price) > 0)) return '无行情，请填参考价'
         if (preview !== null && preview.quote?.status === 'suspended') return '停牌'
         if (preview !== null && form.type === 'limit' && preview.priceLimit !== undefined) {
           const price = Number(form.limitPrice)
           if (price < preview.priceLimit.lower || price > preview.priceLimit.upper) return '价格超出涨跌停'
         }
-        if (form.side === 'buy' && preview !== null && preview.cashAfterCents < 0) return '资金不足'
+        if (form.side === 'buy' && preview !== null && preview.cashAfterCents < 0) {
+          return `资金不足（还差 ${cents(-preview.cashAfterCents)}）`
+        }
         if (form.side === 'sell' && preview !== null && qty > preview.availableQty) return '可卖不足'
         return ''
       }, [blocked, form, session, quote, preview])
@@ -3073,9 +3116,18 @@ window.__ModuleLoader__.load({
                 onClick: () => {
                   setError(null)
                   setCashOpen(value => !value)
+                  setResetOpen(false)
                 },
               }, '资金'),
-              h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
+              h('button', {
+                className: 'pt-btn pt-btn-danger', 'data-active': resetOpen, disabled: busy,
+                onClick: () => {
+                  setError(null)
+                  setResetOpen(value => !value)
+                  setResetCash(String(account.initialCash))
+                  setCashOpen(false)
+                },
+              }, '重置'),
               h(FeedbackLink),
             ),
           ),
@@ -3092,6 +3144,17 @@ window.__ModuleLoader__.load({
               setCashAmount('')
             },
             onSubmit: moveCash,
+          }) : null,
+          resetOpen ? h(ResetPanel, {
+            initialCash: account.initialCash,
+            amount: resetCash,
+            onAmount: setResetCash,
+            busy,
+            onCancel: () => {
+              setResetOpen(false)
+              setResetCash('')
+            },
+            onSubmit: reset,
           }) : null,
           account.blocked ? h('div', { className: 'pt-blocked' },
             h('div', { className: 'pt-blocked-text' },

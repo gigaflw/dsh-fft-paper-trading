@@ -142,7 +142,7 @@ test('rpc: basket preview and place payloads', async () => {
 
     const defaultBudget = await call('basket/preview', { csv: '600519.SH,100%' })
     assert.equal(defaultBudget.ok, true)
-    assert.equal(defaultBudget.value.budgetCents, 10_000_000, 'budget defaults to cash')
+    assert.equal(defaultBudget.value.budgetCents, 100_000_000, 'budget defaults to cash')
 
     await rejects('basket/preview', {})
     await rejects('basket/preview', { csv: '   ' })

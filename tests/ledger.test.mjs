@@ -127,7 +127,7 @@ test('p0-1: five concurrent reads write each day-boundary event once', async () 
     const account = await restarted.service.account()
     assert.equal(account.blocked, false)
     assert.equal(account.tradeDate, '2026-10-22')
-    assert.equal(account.cash, 98_994.99)
+    assert.equal(account.cash, 998_994.99)
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -288,7 +288,7 @@ test('p0-2: a ledger version with no migration path is blocked instead of replay
     )
     const reset = await service.reset(true)
     assert.equal(reset.blocked, false)
-    assert.equal(reset.cash, 100_000)
+    assert.equal(reset.cash, 1_000_000)
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -368,15 +368,15 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
     const reset = await service.reset(true)
     assert.equal(reset.blocked, false)
     assert.equal(reset.blockedReason, undefined)
-    assert.equal(reset.cash, 100_000)
-    assert.equal(reset.initialCash, 100_000)
+    assert.equal(reset.cash, 1_000_000)
+    assert.equal(reset.initialCash, 1_000_000)
     assert.equal(reset.positions.length, 0)
 
     const rewritten = (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
     assert.equal(rewritten.length, 1, 'reset compacts the ledger to one genesis event')
     assert.equal(rewritten[0].type, 'account.reset')
     assert.equal(rewritten[0].seq, 1)
-    assert.equal(rewritten[0].payload.initialCashCents, 10_000_000)
+    assert.equal(rewritten[0].payload.initialCashCents, 100_000_000)
     assert.deepEqual(replay(rewritten, 'default').issues, [])
 
     const backups = await readdir(backupsDir(home, 'default'))
@@ -397,7 +397,7 @@ test('p0-3: reset rewrites a single genesis event and survives a locked ledger',
     const reloaded = await restarted.service.account()
     assert.equal(reloaded.blocked, false)
     assert.equal(reloaded.positions.length, 1)
-    assert.equal(reloaded.cash, 98_994.99)
+    assert.equal(reloaded.cash, 998_994.99)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

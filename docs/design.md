@@ -456,7 +456,7 @@ v0.1 只读：`settings/get` 返回开户/重置时写进账本的配置；没�
 
 | 字段 | 默认 |
 | --- | --- |
-| `initialCashCents` | 10,000,000（10 万元） |
+| `initialCashCents` | 100,000,000（100 万元） |
 | `commissionRate` | 0.00025 |
 | `minCommissionCents` | 500（5 元） |
 | `stampDutyRate` | 0.0005 |
@@ -469,6 +469,8 @@ v0.1 只读：`settings/get` 返回开户/重置时写进账本的配置；没�
 | `fillModel` | `unlimited` |
 
 `account.opened` / `account.reset` 重放时，payload 里的 settings 先经 `core/settings.ts` 的 `normalizeSettings` 与 `DEFAULT_SETTINGS` 合并：缺失字段回退默认值，非有限值也被拒绝。`ledgerVersion` 不是当前版本时先尝试相邻版本迁移（v3 → v4），迁移不可用或账本比当前新才锁户，文案指向「改回对应版本插件 / `paper_ledger` 恢复快照」，不提示重置；不再猜测旧字段语义。
+
+重置会继承上一份 settings，所以改 `DEFAULT_SETTINGS` 只对新账户生效；老账户的初始资金要用 `account/reset` 的 `initialCash`（元）参数改，面板「重置」旁的输入框和 `paper_stock_account` 的 `initialCash` 都是它的入口。默认 100 万是照 A 股模拟盘惯例选的：10 万连 1 手贵州茅台（约 14.5 万）都买不起。
 
 写设置的做法见 §14.3：新增 `account.settings` 事件，随账本重放；`contract.ts` 的 `DEFAULT_SETTINGS` 只给新账户默认值。
 FTShare API Key 由全局设置服务解析，本插件不读、不展示、不修改。
@@ -634,7 +636,7 @@ $DSH_HOME/paper-trading/
 - 交易时段、午休、节假日、集合竞价、收盘/开盘时点；
 - 行情时间语义（`marketTs` vs `fetchedAt`）；
 - 15:00 收盘快照、次日 09:30 开盘快照与 T+1 解锁；
-- 盘后只预埋、市价拒绝；离线跨日不补成交。
+- 盘后只预埋：市价与限价都顺延为下一交易时段的委托，盘后不成交；离线跨日不补成交。
 
 **P1（随后，故事的体验）**
 
@@ -666,23 +668,23 @@ interface TradingCalendarPort {
 
 | 阶段 | 时间（Asia/Shanghai） | 可提交 | 可连续撮合 | 说明 |
 | --- | --- | --- | --- | --- |
-| `pre_open` | 09:15–09:30 | 限价 | 否 | 集合竞价；09:20/09:25 的撤单差异先按可撤简化，落地前按交易所规则复核 |
+| `pre_open` | 09:15–09:30 | 市价/限价（排队） | 否 | 集合竞价；09:30 开盘后按当时价格撮合，09:20/09:25 的撤单差异先按可撤简化 |
 | `continuous_am` | 09:30–11:30 | 市价/限价 | 是 | |
-| `lunch` | 11:30–13:00 | 限价预埋 | 否 | 市价拒绝 |
+| `lunch` | 11:30–13:00 | 市价/限价（排队） | 否 | 排队到 13:00 |
 | `continuous_pm` | 13:00–14:57 | 市价/限价 | 是 | |
-| `auction_close` | 14:57–15:00 | 不接受 | 否 | MVP 不模拟收盘竞价撮合，避免接受后 15:00 过期 |
-| `closed` | 15:00–次日 09:15 | 限价预埋 | 否 | 市价拒绝；当日未成交单已在 15:00 过期，新单为次日预埋 |
+| `auction_close` | 14:57–15:00 | 不接受 | 否 | MVP 不模拟收盘竞价撮合；当天没有后续窗口可顺延，所以拒绝 |
+| `closed` | 15:00–次日 09:15 | 市价/限价（预埋） | 否 | 为下一交易日预埋（`tradeDate = nextTradingDay`）；当日未成交单已在 15:00 过期 |
 
 **订单门禁**
 
 - `place` 先调 `advanceTo(now)`，再取 `sessionAt(now)`：
-  - 市价只在 `continuous_am` / `continuous_pm` 接受；其余阶段返回 `SESSION_CLOSED` 或 `AUCTION_ONLY`（A 股竞价阶段实际也接受市价申报，这里先按拒绝简化，落地前复核）；
-  - 限价在任意阶段可接受：撮合阶段进 `pending`，非撮合阶段进 `queued`，都写 `order.submitted`；
-  - 竞价阶段的限价单不连续撮合，开盘/收盘按开盘价/收盘价判定是否成交；
+  - 市价与限价在任意阶段可接受（`auction_close` 除外，返回 `AUCTION_ONLY`）：撮合阶段进 `pending`，非撮合阶段进 `queued`，都写 `order.submitted`；
+  - 非撮合阶段的委托是**顺延委托**，不成交只排队：集合竞价、午休、盘后都等下一个连续竞价窗口，按当时的行情判定；盘后（15:00 之后）的新单记 `tradeDate = nextTradingDay`，与限价预埋同口径；
+  - 竞价阶段不连续撮合，开盘按开盘价判定是否成交；
   - 当日有效：15:00 对 `tradeDate == 当日` 的未成交单写 `order.canceled(reason=expired)`，不再等次日首次 tick；
-  - 收盘后（`closed`）的限价单是**为下一交易日预埋**：订单记 `tradeDate = nextTradingDay`、状态 `queued`，不参与当日 15:00 过期，次日 09:15 起归入新交易日。
+  - 收盘后（`closed`）的委托是**为下一交易日预埋**：订单记 `tradeDate = nextTradingDay`、状态 `queued`，不参与当日 15:00 过期，次日 09:15 起归入新交易日。
 - 撤单任意阶段可用；已成交/已过期返回 `ORDER_NOT_PENDING`。
-- 新错误码：`SESSION_CLOSED`、`AUCTION_ONLY`、`PRICE_LIMIT`、`SUSPENDED`；代码无法解析返回 `INVALID_SYMBOL`，指数/基金下单返回 `UNSUPPORTED_INSTRUMENT`。
+- 新错误码：`AUCTION_ONLY`、`PRICE_LIMIT`、`SUSPENDED`（`SESSION_CLOSED` 仅期货残余）；代码无法解析返回 `INVALID_SYMBOL`，指数/基金下单返回 `UNSUPPORTED_INSTRUMENT`。
 
 **日切与补算**
 

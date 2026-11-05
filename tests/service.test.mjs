@@ -56,7 +56,7 @@ test('service: buy, T+1 block, next-day sell, review and reset', async () => {
   const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
   try {
     const account = await service.account()
-    assert.equal(account.cash, 100_000)
+    assert.equal(account.cash, 1_000_000)
     assert.equal(account.positions.length, 0)
 
     setQuote(data, 10, DAY1_ISO)
@@ -97,16 +97,21 @@ test('service: buy, T+1 block, next-day sell, review and reset', async () => {
     assert.deepEqual(replayed.issues, [])
 
     const reset = await service.reset(true)
-    assert.equal(reset.cash, 100_000)
+    assert.equal(reset.cash, 1_000_000)
     assert.equal(reset.positions.length, 0)
     const backups = await readdir(backupsDir(home, 'default'))
     assert.equal(backups.length, 1, 'reset copies the pre-reset ledger aside')
+
+    // Reset keeps the previous settings, so a starting cash chosen by the user
+    // has to be passed in; the panel does that on every reset.
+    const repriced = await service.reset(true, 20_000_000)
+    assert.equal(repriced.cash, 200_000, 'reset may pick the starting cash')
   } finally {
     await rm(home, { recursive: true, force: true })
   }
 })
 
-test('service: a weekend is closed for matching and market orders', async () => {
+test('service: a weekend is closed for matching and only queues orders', async () => {
   const home = makeHome('weekend')
   const data = makeData()
   const now = new Date('2026-10-24T02:00:00.000Z') // Saturday 10:00 Asia/Shanghai
@@ -118,17 +123,72 @@ test('service: a weekend is closed for matching and market orders', async () => 
     const status = await service.marketStatus()
     assert.equal(status.phase, 'closed')
     assert.equal(status.canMatch, false, 'a weekend must never match')
-    await assert.rejects(
-      () => service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),
-      error => error.code === 'SESSION_CLOSED',
-    )
+
+    // A market order is accepted as a queued order for the next trading day;
+    // the ledger only fills it once a matching window is open.
+    const market = await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
+    assert.equal(market.status, 'queued')
+    const stored = Object.values((await repo.current()).orders).find(order => order.id === market.id)
+    assert.equal(stored?.tradeDate, '2026-10-26', 'planted for the next weekday')
 
     // A limit order queued for the next trading day must not fill over the weekend.
     const queued = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 11 })
     assert.equal(queued.status, 'queued')
-    setQuote(data, 10, now.toISOString())
     const tick = await service.tick()
     assert.equal(tick.filled.length, 0, 'weekend tick must not fill')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: a market order after the close fills at the next open', async () => {
+  const home = makeHome('overnight')
+  const data = makeData()
+  const afterClose = new Date('2026-10-19T08:00:00.000Z') // Monday 16:00 Asia/Shanghai
+  let now = afterClose
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
+  try {
+    await service.account()
+    setQuote(data, 10, afterClose.toISOString())
+    assert.equal((await service.marketStatus()).phase, 'closed')
+    const order = await service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
+    assert.equal(order.status, 'queued', 'an after-close market order never fills today')
+    const stored = Object.values((await repo.current()).orders).find(item => item.id === order.id)
+    assert.equal(stored?.tradeDate, '2026-10-20', 'it belongs to the next trade date')
+    assert.equal((await service.account()).positions.length, 0)
+
+    // Next morning the queued order is released and fills at the opening price.
+    now = new Date('2026-10-20T01:30:00.000Z') // 09:30 Asia/Shanghai
+    setQuote(data, 11, now.toISOString())
+    const tick = await service.tick()
+    assert.equal(tick.filled.length, 1)
+    assert.equal(tick.filled[0].fillPrice, 11)
+    const after = await service.account()
+    assert.equal(after.positions[0].qty, 100)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('service: the closing auction still refuses new orders', async () => {
+  const home = makeHome('auction-close')
+  const data = makeData()
+  const now = new Date('2026-10-19T06:58:00.000Z') // 14:58 Asia/Shanghai
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => now })
+  try {
+    await service.account()
+    setQuote(data, 10, now.toISOString())
+    assert.equal((await service.marketStatus()).phase, 'auction_close')
+    await assert.rejects(
+      () => service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 }),
+      error => error.code === 'AUCTION_ONLY',
+    )
+    await assert.rejects(
+      () => service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 11 }),
+      error => error.code === 'AUCTION_ONLY',
+    )
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -249,7 +309,7 @@ test('service: account still opens and rejects orders when market data is unavai
   const service = new PaperService({ repo, data: new UnavailableMarketData(), calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
   try {
     const account = await service.account()
-    assert.equal(account.cash, 100_000)
+    assert.equal(account.cash, 1_000_000)
 
     const quote = await service.quote(['600519.SH'])
     assert.equal(quote.state, 'failed')
@@ -287,6 +347,9 @@ test('service: basket preview splits the budget and clamps it to cash', async ()
   const csv = '600519.SH,25%\n000001.SZ,25%\n300750.SZ,25%\n600000.SH,25%'
   try {
     await service.account()
+    // Pin the 10 万 case: the allocation maths below is about lot rounding,
+    // not about the default starting cash.
+    await service.reset(true, 10_000_000)
     setAnyQuote(data, '600519.SH', 300, DAY1_ISO)
     setAnyQuote(data, '000001.SZ', 10, DAY1_ISO)
     setAnyQuote(data, '300750.SZ', 20, DAY1_ISO)
@@ -405,6 +468,8 @@ test('service: basket pre-check rejects the whole batch without writing', async 
   const rows = [{ symbol: '600519.SH', qty: 100 }, { symbol: '000001.SZ', qty: 100 }]
   try {
     await service.account()
+    // The cash pre-check below is calibrated to 10 万 of starting cash.
+    await service.reset(true, 10_000_000)
     setAnyQuote(data, '600519.SH', 10, DAY1_ISO)
 
     // One row without a quote refuses the batch before anything is written.
@@ -467,7 +532,7 @@ test('service: basket shape validation runs before any quote fetch', async () =>
   }
 })
 
-test('service: basket preview warns outside continuous trading and place is refused', async () => {
+test('service: basket preview warns outside continuous trading and place queues', async () => {
   const home = basketHome('session')
   const data = makeData()
   let now = new Date('2026-10-19T04:00:00.000Z') // 12:00 Asia/Shanghai, lunch
@@ -478,16 +543,24 @@ test('service: basket preview warns outside continuous trading and place is refu
     setAnyQuote(data, '600519.SH', 10, now.toISOString())
     const preview = await service.basketPreview('600519.SH,100%')
     assert.equal(preview.session.canMatch, false)
-    assert.ok(preview.warnings.some(warning => /当前时段不能市价成交，只能预览/.test(warning)), preview.warnings.join('；'))
+    assert.ok(preview.warnings.some(warning => /下一交易时段撮合/.test(warning)), preview.warnings.join('；'))
+
+    // Lunch break: the batch is accepted and queued for the 13:00 window.
+    const lunch = await service.basketPlace([{ symbol: '600519.SH', qty: 100 }])
+    assert.equal(lunch.rows[0].order.status, 'queued')
+
+    // After the close: queued for the next trade date, still no fill today.
+    now = new Date('2026-10-19T08:00:00.000Z') // 16:00, closed
+    const overnight = await service.basketPlace([{ symbol: '600519.SH', qty: 100 }])
+    assert.equal(overnight.rows[0].order.status, 'queued')
+    const stored = Object.values((await repo.current()).orders).find(item => item.id === overnight.rows[0].order.id)
+    assert.equal(stored?.tradeDate, '2026-10-20')
+
+    // The closing auction has no window left today, so it still refuses.
+    now = new Date('2026-10-19T06:58:00.000Z') // 14:58, auction_close
     await assert.rejects(
       () => service.basketPlace([{ symbol: '600519.SH', qty: 100 }]),
       error => error.code === 'AUCTION_ONLY',
-    )
-
-    now = new Date('2026-10-19T08:00:00.000Z') // 16:00, closed
-    await assert.rejects(
-      () => service.basketPlace([{ symbol: '600519.SH', qty: 100 }]),
-      error => error.code === 'SESSION_CLOSED',
     )
   } finally {
     await rm(home, { recursive: true, force: true })

@@ -47,6 +47,7 @@ const param = {
   period: { type: 'string', description: '复盘区间：7d、30d、all' },
   reset: { type: 'boolean', description: '是否重置账户' },
   confirm: { type: 'boolean', description: '重置时必须为 true' },
+  initialCash: { type: 'number', description: '重置时的初始资金（元），不填沿用当前设置' },
   action: { type: 'string', description: '动作：status 查交易时段 / search 搜标的' },
   query: { type: 'string', description: '搜索关键词（代码或名称）' },
   limit: { type: 'number', description: '返回条数上限，默认 10' },
@@ -57,7 +58,7 @@ function required<T extends ValueSchemaSpec>(property: T): T & { required: true 
   return { ...property, required: true }
 }
 
-const accountParameters = { reset: param.reset, confirm: param.confirm } satisfies ParameterSchemaSpec
+const accountParameters = { reset: param.reset, confirm: param.confirm, initialCash: param.initialCash } satisfies ParameterSchemaSpec
 const marketParameters = { action: param.action, query: param.query, limit: param.limit } satisfies ParameterSchemaSpec
 const quoteParameters = { symbol: param.symbol, symbols: param.symbols } satisfies ParameterSchemaSpec
 const previewParameters = {
@@ -113,12 +114,13 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     ...base,
     name: 'paper_stock_account',
     parameters: accountParameters,
-    description: '查看模拟盘账户、持仓、挂单与最近成交；reset=true 且 confirm=true 时重置账户。',
+    description: '查看模拟盘账户、持仓、挂单与最近成交；reset=true 且 confirm=true 时重置账户（可用 initialCash 指定初始资金，元）。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
+        const startingCash = typeof input.initialCash === 'number' ? Math.round(input.initialCash * 100) : undefined
         const account = input.reset === true
-          ? await service.reset(input.confirm === true)
+          ? await service.reset(input.confirm === true, startingCash)
           : await service.account()
         const [orders, trades] = await Promise.all([service.orders(), service.trades()])
         const pending = orders.filter(order => order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled')
