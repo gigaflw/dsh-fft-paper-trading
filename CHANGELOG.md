@@ -4,6 +4,20 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.6.3] - 2026-11-06
+
+### Changed
+
+- 内联的 K 线构建前移到 fork 的 v0.6.7-ft.1：首次安装时依赖准备不再占用宿主重连次数，无 Key 时可查看港股与美股日 K
+- 发布清单内 `@ftshare-lab/dsh-kline` 的声明由精确版本改为下界（`>=`）：本包只声明 `paperTrading.kline` 槽位、不调用其 API，此后升 K 线不必再等本包发版
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.6.2` → `0.6.3`
+- `@dsh-ft/dsh-fft-settings`：`0.5.1`（registry 依赖）
+- `@dsh-ft/dsh-fft-ftshare`：`0.4.0`（registry 依赖）
+- `DSH Kline`：`v0.6.4-ft.1` → `v0.6.7-ft.1`
+
 ## [0.6.2] - 2026-11-05
 
 ### Added
@@ -220,6 +234,7 @@
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.6.3]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.5.1...v0.6.0
