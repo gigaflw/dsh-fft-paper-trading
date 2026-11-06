@@ -200,7 +200,13 @@ copyPackageFiles(repoRoot, packageDir)
 const inlined = new Set([KLINE])
 const merged = {
   ...registryDependencies(paper, inlined),
-  [KLINE]: klineManifest.version,
+  // A lower bound, not the exact inlined version. This package never calls
+  // kline's API: it only names the `paperTrading.kline` slot that kline's
+  // client fills, so any build at or above the one it was tested with works.
+  // Pinning it exactly would drag the composition bundle to this version —
+  // pack-tarball refuses to inline two versions that disagree — and force this
+  // package to publish again for every kline upgrade.
+  [KLINE]: `>=${klineManifest.version}`,
 }
 const published = {
   name: paper.name,
