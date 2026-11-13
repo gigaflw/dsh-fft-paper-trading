@@ -5,3 +5,4 @@ minimumReleaseAgeExclude:
   - '@dsh-ft/dsh-fft-settings@0.5.0'
   - '@dsh-ft/dsh-fft-settings@0.6.0'
   - '@dsh-ft/dsh-fft-settings@0.7.0'
+  - '@ftshare-lab/dsh-kline@0.6.11'

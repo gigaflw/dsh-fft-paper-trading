@@ -4,6 +4,20 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.2] - 2026-11-13
+
+发布产物不再内联 K 线：K 线改为 npm 依赖，安装后的功能与外观不变，包体积从约 1 MB 降到约 120 KB。
+
+### Changed
+
+- `@ftshare-lab/dsh-kline` 改为 registry 依赖（下界 `>=0.6.11`），不再复制进产物、不再声明 `bundledDependencies`
+- 发布流水线不再 clone 上游 K 线仓；`package.json` 的 `release.klineRef` 移除，K 线版本由依赖范围表达
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.7.1` → `0.7.2`
+- `DSH Kline`：不再随包内联，改为依赖 `>=0.6.11`
+
 ## [0.7.1] - 2026-11-13
 
 ### Changed
