@@ -46,7 +46,9 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.equal(typeof exportsObject.apply, 'function')
 
   const registrations = []
-  const ctx = {
+  const mountedSeats = []
+  /** A renderer ctx: required slots plus whatever optional host services it names. */
+  const context = (hostServices = {}) => ({
     slots: {
       inject: (_name, callback) => { callback(); return () => {} },
       register: (options, component) => {
@@ -54,7 +56,12 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
         return () => {}
       },
     },
-  }
+    inject: (_deps, callback) => {
+      callback({ get: name => hostServices[name] })
+      return () => {}
+    },
+  })
+  const ctx = context({ klinePanels: { mount: seat => { mountedSeats.push(seat); return () => {} } } })
   exportsObject.apply(ctx)
 
   const panellist = registrations.find(item => item.options.name === 'sidebar.panellist')
@@ -66,6 +73,10 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.deepEqual(main.options.children, {
     'paperTrading.kline': { kind: 'single', scope: 'root' },
   })
+  // The slot is filled through the chart's optional host contract; a host
+  // without the chart (or an older one) keeps the built-in fallback instead.
+  assert.deepEqual(mountedSeats, ['paperTrading.kline'])
+  assert.doesNotThrow(() => exportsObject.apply(context()))
   assert.match(source, /market\/status/)
   assert.match(source, /review\/daily/)
   assert.match(source, /paperTrading\.kline/)
