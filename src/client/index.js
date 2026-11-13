@@ -3257,6 +3257,14 @@ window.__ModuleLoader__.load({
           'paperTrading.kline': { kind: 'single', scope: 'root' },
         },
       }, Dashboard))
+      // The declared slot stays empty until dsh_kline fills it through its
+      // optional host contract; without that plugin (or on an older chart) the
+      // rail keeps its built-in simplified chart instead.
+      ctx.inject(['klinePanels'], scope => {
+        const panels = scope.get('klinePanels')
+        if (panels === undefined) return () => {}
+        return panels.mount('paperTrading.kline')
+      })
     }
 
     const inject = ['slots']

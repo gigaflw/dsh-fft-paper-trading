@@ -44,19 +44,20 @@ curl -s https://registry.npmjs.org/@dsh-ft%2Fdsh-fft-paper-trading \
 
 ## kline 版本联动（发布必看）
 
-本包对外发布时内联 `@ftshare-lab/dsh-kline`,并在发布 manifest 里把它声明成**下界** `>=<内联版本>`。
-本包从不调用 kline 的 API, 只声明 `paperTrading.kline` 槽位名、由 kline 的客户端填充, 所以任何不低于
-内联版本的 kline 都能用; 写死成精确版本会把它和组合包的 kline 边绑在一起。
+本包对外发布时内联 `@ftshare-lab/dsh-kline`，并在发布 manifest 里把它声明成**下界** `>=<内联版本>`：
+本包只依赖 kline 的客户端宿主契约 `klinePanels.mount('paperTrading.kline')`（自上游 v0.6.11 起提供），
+不调用 kline 的其他 API，所以任何不低于该契约版本的 kline 都能用；写死精确版本会和组合包的 kline 边绑死。
 
-- kline 版本由 `package.json` 的 `release.klineRef` 决定, `publish.yml` 按该 ref 从 `gigaflw/dsh_kline` clone
-  构建。ref 形如 `vX.Y.Z-ft.N`——**不是上游 `FTShare-Lab/dsh_kline` 的 tag**:工作台需要的三项集成
-  (图表挂进宿主面板、画布图表面板 `ftCanvas.panel.body`、本包的 `paperTrading.kline` 槽位)只活在 fork
-  的 FT 构建里, 钉上游 tag 会让本包面板的 K 线回落到内置 SVG 简图。
-- fork 的 tag 必须先存在且已推送, 否则 CI 的 clone 直接失败。
-- `klineRef` 落后于组合包是正常状态, **升 kline 不需要本包先发版**: 组合包按自己的边内联 kline, 并丢弃
-  本包内嵌的 `node_modules`, 两边的 pin 互不影响。本包只在下界不再满足时才必须重发。
-- 发布前确认: `node scripts/pack-npm.mjs --kline <fork checkout>` 产物内联的 kline 版本与 `klineRef` 一致,
-  且 manifest 里声明的是 `>=` 下界而非精确版本。
+- kline 版本由 `package.json` 的 `release.klineRef` 决定；`publish.yml` 按该 ref 从上游
+  `FTShare-Lab/dsh_kline` clone 构建（fork 已退役，不再有 `-ft.N` 构建）。
+- 上游 tag 必须先存在并已推送，否则 CI 的 clone 直接失败。
+- 契约版本是硬下界：低于 v0.6.11 的 kline 没有 `klinePanels`，本包面板会回落到内置简图；
+  `klineRef` 不能回退到更早版本。
+- `klineRef` 落后于组合包是正常状态，**升 kline 不需要本包先发版**：组合包按自己的边内联 kline，并丢弃
+  本包内嵌的 `node_modules`，两边的 pin 互不影响。本包只在 kline 宿主契约发生破坏性变更时才必须重发。
+- 发布前确认：`node scripts/pack-npm.mjs --kline <upstream checkout>` 产物内联的 kline 版本与
+  `klineRef` 一致，且 manifest 里声明的是 `>=` 下界；`tests/client.test.mjs` 覆盖 slot 通过
+  `klinePanels.mount` 填充、无该服务时保持内置回退。
 
 ## 需求表
 
