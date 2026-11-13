@@ -4,6 +4,19 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.1] - 2026-11-13
+
+### Changed
+
+- 面板 K 线槽位改由 K 线上游宿主契约填充：客户端向已安装的 K 线请求 `klinePanels.mount('paperTrading.kline')`，
+  不再依赖 FT 定制的 K 线构建；没有该契约的旧版 K 线仍回落到内置简图
+- 随包内联的 `DSH Kline` 由 `v0.6.7-ft.1` 升到上游 `v0.6.11`
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.7.0` → `0.7.1`
+- `DSH Kline`：`v0.6.7-ft.1` → `v0.6.11`（上游 tag，不再有 `-ft` 构建）
+
 ## [0.7.0] - 2026-11-13
 
 设置与 FTShare 两个底座都发布了新版本，本次跟随升级，用户可见的变化集中在设置页与取数目录。
