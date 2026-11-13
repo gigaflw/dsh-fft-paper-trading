@@ -4,6 +4,32 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.0] - 2026-11-13
+
+设置与 FTShare 两个底座都发布了新版本，本次跟随升级，用户可见的变化集中在设置页与取数目录。
+
+### Added
+
+- 设置页在首次启动时于左下角提示获取免费的 FTShare API Key：不盖遮罩、不抢焦点，12 秒后自动淡出
+  （鼠标悬停暂停），设备级只出现一次
+- 设置页「金融终端」分区显示 FT 徽标图标，不再落到宿主的通用齿轮；分区名跟随界面语言
+  （中文「金融终端」、其它「FT Terminal」）
+
+### Changed
+
+- 「获取 API Key」与升级订阅入口带 `utm_source=dsh-fft`，站点点位据此区分来自插件的访问
+- FTShare 随包接口目录 250 → 256 条：新增全市场公告与定期报告的文件下载、股指期货与指数深度、
+  上金所现货品种主档；这六条此前只能被 `ftshare_status` 报告为「与随包不一致」，无法直调
+- `ft:services` 提示词改为点名真正挂载的 dsh-kline 与 `ftshare_*`：原先点名的 `cockpit_*` 与
+  `factor-intake-standard` 已从组合包下线，点名它们会让模型去找装不上的工具
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.6.3` → `0.7.0`
+- `@dsh-ft/dsh-fft-settings`：`0.5.1` → `0.7.0`（registry 依赖）
+- `@dsh-ft/dsh-fft-ftshare`：`0.4.0` → `0.4.2`（registry 依赖）
+- `DSH Kline`：`v0.6.7-ft.1`（未变）
+
 ## [0.6.3] - 2026-11-06
 
 ### Changed
