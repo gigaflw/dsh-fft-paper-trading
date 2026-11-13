@@ -1,3 +1,5 @@
 minimumReleaseAgeExclude:
   - '@dsh-ft/dsh-fft-ftshare@0.4.0'
+  - '@dsh-ft/dsh-fft-ftshare@0.4.1'
   - '@dsh-ft/dsh-fft-settings@0.5.0'
+  - '@dsh-ft/dsh-fft-settings@0.6.0'
