@@ -46,13 +46,11 @@ jobs:
       - name: Build and test
         run: pnpm test
 
-      - name: Build the self-contained tarball
+      - name: Build the tarball
         id: pack
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          KLINE_REF=$(node -p "require('./package.json').release.klineRef")
-          git clone --depth 1 --branch "$KLINE_REF" https://github.com/FTShare-Lab/dsh_kline.git "$RUNNER_TEMP/dsh_kline"
-          node scripts/pack-npm.mjs --kline "$RUNNER_TEMP/dsh_kline"
+          node scripts/pack-npm.mjs
           TARBALL=$(realpath releases/*.tgz)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"

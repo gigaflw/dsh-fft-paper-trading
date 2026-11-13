@@ -64,7 +64,8 @@
   },
   "dependencies": {
     "@dsh-ft/dsh-fft-settings": "^0.7.0",
-    "@dsh-ft/dsh-fft-ftshare": "^0.4.2"
+    "@dsh-ft/dsh-fft-ftshare": "^0.4.2",
+    "@ftshare-lab/dsh-kline": ">=0.6.11"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
@@ -94,8 +95,5 @@
     "engines": {
       "dsh": ">=0.2.0-rc.2"
     }
-  },
-  "release": {
-    "klineRef": "v0.6.11"
   }
 }

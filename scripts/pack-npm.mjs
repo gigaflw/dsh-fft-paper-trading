@@ -2,52 +2,38 @@
 /**
  * Pack @dsh-ft/dsh-fft-paper-trading as an npm tarball.
  *
- * Only kline is self-contained: it is carried under the package's own
- * `node_modules` and listed in `bundledDependencies`. Settings and ftshare are
- * published packages of their own, so the tarball declares them as caret
- * registry ranges (`^<version>`) and lets npm resolve them; a plain
- * `dsh plugin add @dsh-ft/dsh-fft-paper-trading` therefore installs the whole
- * stack from npm, with no git or tarball edge (no `blockExoticSubdeps` switch,
- * no ssh).
+ * Every dependency resolves from npm: the manifest declares settings, ftshare
+ * and kline, and `dsh plugin add @dsh-ft/dsh-fft-paper-trading` installs the
+ * whole stack from the registry — no git or tarball edge (no
+ * `blockExoticSubdeps` switch, no ssh) and nothing copied into the tarball.
  *
  * Usage:
  *   node scripts/pack-npm.mjs [options]
  *
  * Options:
- *   --kline <dir>       dsh_kline checkout (default: ../dsh_kline)
- *   --kline-ref <ref>   kline git ref to inline (default: package.json
- *                       release.klineRef, the single pin every builder uses)
  *   --out <dir>         Archive directory for the tarball (default: releases/)
- *   --no-prune          Keep the pruned files (see scripts/pack-prune.mjs);
- *                       only for diffing a full payload against a release one
  *   -h, --help          Print this help
  *
  * The tarball is archived under `releases/` (git-ignored build output); only
- * the staging tree lives in `build/`. The published content is runtime-only:
- * `scripts/pack-prune.mjs` drops what the inlined kline archive carries for
- * other channels (storefront screenshots, the committed sourcemap, tsc
- * intermediates and the standalone HTML page) and the packer asserts the
- * archived tarball really carries none of it.
+ * the staging tree lives in `build/`. The published content is the package
+ * itself: the packer asserts the archive carries no `node_modules/` at all.
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync, renameSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync, execFileSync } from 'node:child_process'
-import { PRUNE, pruneMatcher, pruneStaged } from './pack-prune.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(here, '..')
 const argv = process.argv.slice(2)
 const option = (name, fallback) => { const at = argv.indexOf(`--${name}`); return at === -1 ? fallback : argv[at + 1] }
-const noPrune = argv.includes('--no-prune')
 
 if (argv.includes('-h') || argv.includes('--help')) {
   console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0].split('/**')[1].replace(/^ \* ?/gm, ''))
   process.exit(0)
 }
 
-const klineRepo = resolve(option('kline', join(repoRoot, '..', 'dsh_kline')))
 const outDir = resolve(option('out', join(repoRoot, 'releases')))
 const workDir = join(repoRoot, 'build', 'npm-pack')
 const staging = join(workDir, 'staging')
@@ -62,11 +48,6 @@ const readManifest = dir => JSON.parse(readFileSync(join(dir, 'package.json'), '
 const fail = message => { throw new Error(`pack-npm: ${message}`) }
 
 const paper = readManifest(repoRoot)
-const pinnedKlineRef = paper.release?.klineRef
-if (typeof pinnedKlineRef !== 'string' || pinnedKlineRef === '') {
-  fail('package.json release.klineRef is missing; it pins the inlined kline build')
-}
-const klineRef = option('kline-ref', pinnedKlineRef)
 
 /** Expand one-level globs (`locale/*.json`) in a manifest `files` list. */
 function expandFilesEntries(sourceDir, entries) {
@@ -118,48 +99,9 @@ function copyPackageFiles(sourceDir, destDir) {
   return manifest
 }
 
-/** What the kline runtime reads: the MCP server, its tools, the client bundle and the two served assets. */
-const KLINE_RUNTIME = [
-  'package.json',
-  'lib/index.js',
-  'lib/client.js',
-  'server.py',
-  'chart_service.py',
-  'tools/__init__.py',
-  'view/vendor/klinecharts.min.js',
-  'view/ft-logo.jpg',
-]
-
-/**
- * Inline the pinned kline archive, then trim it to runtime content.
- * @param {string} destDir - staging directory of the inlined package.
- * @returns {{manifest: object, pruned: {removed: string[], unmatched: string[], bytes: number}}} the inlined manifest and what pruning dropped.
- */
-function inlineKline(destDir) {
-  if (!existsSync(join(klineRepo, '.git'))) fail(`kline checkout not found: ${klineRepo}`)
-  mkdirSync(destDir, { recursive: true })
-  const tarPath = join(staging, 'kline.tar')
-  execFileSync('git', ['-C', klineRepo, 'archive', klineRef, '-o', tarPath])
-  const result = spawnSync('tar', ['-xf', tarPath, '-C', destDir], { encoding: 'utf8' })
-  if (result.status !== 0) fail(`tar failed: ${result.stderr}`)
-  rmSync(tarPath, { force: true })
-  const manifest = readManifest(destDir)
-  if (manifest.name !== KLINE) fail(`kline archive has unexpected name ${manifest.name}`)
-  for (const path of KLINE_RUNTIME) {
-    if (!existsSync(join(destDir, path))) fail(`kline archive has no ${path}`)
-  }
-  const pruned = noPrune ? { removed: [], unmatched: [], bytes: 0 } : pruneStaged(KLINE, destDir)
-  return { manifest, pruned }
-}
-
-/** Registry dependencies declared by the paper manifest, minus the inlined edges. */
-function registryDependencies(manifest, inlined) {
-  const out = {}
-  for (const [name, range] of Object.entries(manifest.dependencies ?? {})) {
-    if (inlined.has(name)) continue
-    out[name] = range
-  }
-  return out
+/** Registry dependencies declared by the paper manifest. */
+function registryDependencies(manifest) {
+  return { ...(manifest.dependencies ?? {}) }
 }
 
 // lib/ is a build output and stays out of git, so packing builds it here: a
@@ -186,28 +128,14 @@ if (typeof ftshareRange !== 'string' || ftshareRange === '') {
 rmSync(staging, { recursive: true, force: true })
 mkdirSync(packageDir, { recursive: true })
 
-const kline = inlineKline(join(packageDir, 'node_modules', '@ftshare-lab', 'dsh-kline'))
-const klineManifest = kline.manifest
-// A rule that no longer matches means the pinned archive changed shape; the
-// content assertion below still guards the artifact, so this is a warning.
-for (const rule of kline.pruned.unmatched) {
-  console.warn(`pack-npm: prune rule ${JSON.stringify(rule)} of ${KLINE} matched nothing; the archive may have cleaned up`)
-}
-
 // The paper package itself: files as declared, manifest rewritten for publishing.
 copyPackageFiles(repoRoot, packageDir)
 
-const inlined = new Set([KLINE])
-const merged = {
-  ...registryDependencies(paper, inlined),
-  // A lower bound, not the exact inlined version. This package never calls
-  // kline's API: it only names the `paperTrading.kline` slot that kline's
-  // client fills, so any build at or above the one it was tested with works.
-  // Pinning it exactly would drag the composition bundle to this version —
-  // pack-tarball refuses to inline two versions that disagree — and force this
-  // package to publish again for every kline upgrade.
-  [KLINE]: `>=${klineManifest.version}`,
-}
+// A lower bound, not an exact pin. This package never calls kline's API: it
+// only names the `paperTrading.kline` slot that kline's client fills, so any
+// build at or above the one it was tested with works, and a kline release does
+// not force this package to publish again.
+const merged = registryDependencies(paper)
 const published = {
   name: paper.name,
   version: paper.version,
@@ -224,7 +152,6 @@ const published = {
   exports: paper.exports,
   files: paper.files,
   dependencies: merged,
-  bundledDependencies: [KLINE],
   peerDependencies: paper.peerDependencies,
   engines: paper.engines,
   dsh: paper.dsh,
@@ -253,33 +180,28 @@ const required = [
   'package/lib/index.js',
   'package/lib/client.js',
   'package/cordis.patch.yml',
-  ...KLINE_RUNTIME.map(path => `package/node_modules/${KLINE}/${path}`),
 ]
 for (const path of required) {
   if (!listing.includes(path)) fail(`tarball is missing ${path}`)
 }
-// Pruning has to be visible in the archived file list, not only in the staging
-// tree: a rule that silently stopped matching would otherwise ship the bytes
-// again. `--no-prune` is the deliberate exception.
-if (!noPrune) {
-  const prefix = `package/node_modules/${KLINE}/`
-  const matchers = (PRUNE[KLINE] ?? []).map(pruneMatcher)
-  const regressions = listing.filter(path => path.startsWith(prefix)
-    && matchers.some(test => test.test(path.slice(prefix.length))))
-  if (regressions.length > 0) fail(`tarball carries pruned kline paths: ${regressions.slice(0, 5).join(', ')}`)
-}
+// Nothing is bundled: every dependency resolves from the registry, so a
+// `node_modules/` entry would shadow the published package it should install.
+const bundledPaths = listing.filter(path => path.startsWith('package/node_modules/'))
+if (bundledPaths.length > 0) fail(`tarball carries bundled dependencies: ${bundledPaths.slice(0, 5).join(', ')}`)
 // Settings and ftshare resolve from npm: a bundled copy would shadow the
 // published package and drift from the declared range.
 const bundledInternal = listing.filter(path => path.startsWith('package/node_modules/@dsh-ft/'))
 if (bundledInternal.length > 0) fail(`tarball bundles settings/ftshare: ${bundledInternal.slice(0, 5).join(', ')}`)
 // Read the shipped manifest back instead of trusting the staging tree.
 const shipped = JSON.parse(execFileSync('tar', ['-xOzf', tarballPath, 'package/package.json'], { encoding: 'utf8' }))
-for (const [name, range] of [[INTERNAL_SETTINGS, settingsRange], [INTERNAL_FTSHARE, ftshareRange]]) {
+const klineRange = paper.dependencies?.[KLINE]
+if (typeof klineRange !== 'string' || klineRange === '') fail(`package.json dependencies must declare ${KLINE}`)
+for (const [name, range] of [[INTERNAL_SETTINGS, settingsRange], [INTERNAL_FTSHARE, ftshareRange], [KLINE, klineRange]]) {
   const actual = shipped.dependencies?.[name]
   if (actual !== range) fail(`tarball dependency ${name} is ${JSON.stringify(actual)}, expected ${JSON.stringify(range)}`)
 }
-if (JSON.stringify(shipped.bundledDependencies) !== JSON.stringify([KLINE])) {
-  fail(`tarball bundledDependencies is ${JSON.stringify(shipped.bundledDependencies)}, expected ${JSON.stringify([KLINE])}`)
+if (shipped.bundledDependencies !== undefined) {
+  fail(`tarball declares bundledDependencies ${JSON.stringify(shipped.bundledDependencies)}; nothing is inlined any more`)
 }
 // Internal paths must never reach a published artifact: the npm files list and
 // the inlined packages are the only allowed sources, so a hit here means the
@@ -299,10 +221,6 @@ const bytes = statSync(tarballPath).size
 const sha = createHash('sha256').update(readFileSync(tarballPath)).digest('hex')
 console.log(`tarball: ${tarballPath}`)
 console.log(`size:    ${(bytes / 1024 / 1024).toFixed(1)} MB (${listing.length} entries)`)
-if (kline.pruned.removed.length > 0) {
-  console.log(`pruned:  ${kline.pruned.removed.length} kline paths, ${(kline.pruned.bytes / 1024 / 1024).toFixed(1)} MB (--no-prune keeps them)`)
-}
 console.log(`sha256:  ${sha}`)
-console.log(`inlined: ${KLINE}@${klineRef} (manifest ${klineManifest.version})`)
-console.log(`registry: ${INTERNAL_SETTINGS}@${settingsRange}, ${INTERNAL_FTSHARE}@${ftshareRange}`)
+console.log(`registry: ${INTERNAL_SETTINGS}@${settingsRange}, ${INTERNAL_FTSHARE}@${ftshareRange}, ${KLINE}@${klineRange}`)
 console.log(`install: dsh plugin --profile <name> add ${tarballPath}`)
