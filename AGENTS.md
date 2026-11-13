@@ -42,21 +42,20 @@ curl -s https://registry.npmjs.org/@dsh-ft%2Fdsh-fft-paper-trading \
   agent 只做: 改版本与 CHANGELOG、构建、`pack-npm` 产出与自检、打印推送与 `gh` 命令, **不执行**
   `git push`、`gh` 与 `npm publish`。
 
-## kline 版本联动（发布必看）
+## kline 依赖（发布必看）
 
-本包对外发布时内联 `@ftshare-lab/dsh-kline`，并在发布 manifest 里把它声明成**下界** `>=<内联版本>`：
-本包只依赖 kline 的客户端宿主契约 `klinePanels.mount('paperTrading.kline')`（自上游 v0.6.11 起提供），
-不调用 kline 的其他 API，所以任何不低于该契约版本的 kline 都能用；写死精确版本会和组合包的 kline 边绑死。
+本包把 `@ftshare-lab/dsh-kline` 当**普通 registry 依赖**：manifest 声明下界 `>=0.6.11`，安装时由 npm
+解析，产物里不再带 kline 副本（0.7.2 起；此前是内联 + `bundledDependencies`）。
 
-- kline 版本由 `package.json` 的 `release.klineRef` 决定；`publish.yml` 按该 ref 从上游
-  `FTShare-Lab/dsh_kline` clone 构建（fork 已退役，不再有 `-ft.N` 构建）。
-- 上游 tag 必须先存在并已推送，否则 CI 的 clone 直接失败。
-- 契约版本是硬下界：低于 v0.6.11 的 kline 没有 `klinePanels`，本包面板会回落到内置简图；
-  `klineRef` 不能回退到更早版本。
-- `klineRef` 落后于组合包是正常状态，**升 kline 不需要本包先发版**：组合包按自己的边内联 kline，并丢弃
-  本包内嵌的 `node_modules`，两边的 pin 互不影响。本包只在 kline 宿主契约发生破坏性变更时才必须重发。
-- 发布前确认：`node scripts/pack-npm.mjs --kline <upstream checkout>` 产物内联的 kline 版本与
-  `klineRef` 一致，且 manifest 里声明的是 `>=` 下界；`tests/client.test.mjs` 覆盖 slot 通过
+- 本包只用 kline 的客户端宿主契约 `klinePanels.mount('paperTrading.kline')`（上游 v0.6.11 起提供），
+  不调用 kline 的其他 API，所以任何不低于该契约的版本都能用。
+- 写**下界**而不是精确版本：精确 pin 会把组合包和自己绑在一起，且每升一次 kline 就要重发本包。
+  下界也意味着 `0.7.x` 会被接受——上游若破坏 `klinePanels` 契约，本包面板会回落到内置简图，
+  所以**升 kline 前要看上游变更**，必要时收窄范围。
+- 契约版本是硬下界：低于 v0.6.11 的 kline 没有 `klinePanels`。
+- 升 kline 不需要本包先发版；只有契约破坏时才必须重发。
+- 发布前确认：`node scripts/pack-npm.mjs` 产物里**没有** `node_modules/`，manifest 的
+  `dependencies['@ftshare-lab/dsh-kline']` 仍是 `>=` 下界；`tests/client.test.mjs` 覆盖 slot 通过
   `klinePanels.mount` 填充、无该服务时保持内置回退。
 
 ## 需求表
