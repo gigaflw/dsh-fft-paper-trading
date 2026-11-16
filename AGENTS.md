@@ -25,6 +25,9 @@
 
 ## 发版与推送
 
+对外分支的生成语义、校验项与推送纪律见工作区 skill `ft-public-branch`（本仓用自带脚本 `scripts/mirror-public.mjs`），
+本节只列本仓的命令。
+
 被问到 bump / 发版 / 推送时，先用一条命令取齐事实，直接给结论，不要先翻 `ft-release` 或推演流程：
 
 ```bash

@@ -1,35 +1,13 @@
 #!/usr/bin/env node
 /**
- * Mirror the internal history onto the `public` branch that the GitHub
- * repository carries.
- *
- * The public repo ships the plugin, its tests and the changelog only. Design
- * notes, agent instructions and the local helpers stay internal, so every
- * internal commit is replayed with the same tree minus `docs/` and
- * `.agents/`, minus `AGENTS.md`, `scripts/sync-profile.mjs` and
- * `scripts/mirror-public.mjs`, and
- * with the `sync-profile`, `public:snapshot` and `public:mirror` npm scripts
- * removed from the manifest. Message, author, committer and dates are
- * byte-for-byte the internal ones, so GitHub shows the real commit history
- * instead of one squashed snapshot. A commit that only touches internal files
- * is dropped rather than published empty.
- *
- * Nothing touches the worktree or the real index: trees are built in a scratch
- * index, commit objects are written straight to the object database, and only
- * `refs/heads/public` moves. Pushing and tagging stay manual, and the internal
- * dev history is never rewritten.
- *
- * The rewrite is incremental and deterministic: the internal→public mapping is
- * cached in `<git-dir>/public-mirror.public.json`, so a later run replays only
- * the new commits and the already published history keeps its SHAs.
+ * Mirror the internal history onto the `public` branch the GitHub repository
+ * carries. Semantics — which files stay internal, how replay stays a pure
+ * function of dev, the mapping cache, the `next` block — live in the workspace
+ * skill `ft-public-branch`; this script is the repo-side implementation.
  *
  * Usage:
  *   node scripts/mirror-public.mjs [--ref <ref>] [--reset] [--dry-run] [--remote <name>]
  *   node scripts/mirror-public.mjs --help
- *
- * The `next` block prints only the pushes still needed: an unchanged branch or
- * an already matching tag is reported as up to date instead of a repeated
- * --force command, and a real history rewrite is called out before its command.
  */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
