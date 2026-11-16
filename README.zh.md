@@ -62,7 +62,7 @@ dsh plugin add @dsh-ft/dsh-fft-paper-trading
 - **已配置 API Key**：实时行情。
 - **未配置 API Key**：免费档，报价取最近一个收盘价（盘中等于上一交易日收盘），分钟线与实时接口不可用；匿名额度有限，用尽后行情暂停，可用手填参考价继续交易，额度恢复后自动恢复（滚动约 24 小时）。
 
-API Key 在 DSH「设置 → 金融终端」中配置，申请地址：<https://ftai.chat/ftshare>。
+API Key 在 DSH「设置 → 金融终端」中配置，申请地址：[FTShare 官网](https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh)。
 
 面板顶栏会显示数据源状态（正常 / 免费 / 无 / 无效）；行情不可用时会说明原因并给出「获取 API Key」或「重试」入口。交易日历降级为「周一至周五」时面板会标注（此时节假日会被当作交易日，T+1、挂单过期与结算按工作日估算）。
 

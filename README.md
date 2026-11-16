@@ -62,7 +62,7 @@ Market data comes from FTShare in two tiers:
 - **API key configured**: real-time quotes.
 - **No API key**: the free tier. Quotes use the latest close — during the session that is the previous trading day's close — and minute bars and the real-time endpoints are unavailable. The anonymous quota is limited: once it runs out, quotes pause. You can keep trading with a hand-entered reference price, and quotes resume automatically when the quota recovers (about 24 hours, rolling).
 
-Configure the API key in DSH under “Settings → Financial Terminal”; request one at <https://ftai.chat/ftshare>.
+Configure the API key in DSH under “Settings → Financial Terminal”; request one at [the FTShare website](https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh).
 
 The panel header shows the data-source state (live / free / unavailable / invalid); when quotes are unavailable it says why and offers “Get API key” or “Retry”. When the trading calendar degrades to “Monday to Friday”, the panel flags it (holidays then count as trading days, and T+1, pending-order expiry and settlement are estimated on business days).
 
