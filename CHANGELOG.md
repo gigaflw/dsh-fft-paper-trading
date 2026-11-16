@@ -4,6 +4,19 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.3] - 2026-11-16
+
+README 的 API Key 申请入口改为 FTShare 落地页，并补齐 UTM 归因；运行代码不变。
+
+### Changed
+
+- README（中/英）的申请地址改为 `https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh`
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.7.2` → `0.7.3`
+- `DSH Kline`：未变
+
 ## [0.7.2] - 2026-11-13
 
 发布产物不再内联 K 线：K 线改为 npm 依赖，安装后的功能与外观不变，包体积从约 1 MB 降到约 120 KB。
