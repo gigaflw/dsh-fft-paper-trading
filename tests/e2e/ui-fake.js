@@ -60,6 +60,9 @@
   }
 
   const handlers = {
+    // The panel header reads the data-source badge on every load; without it the
+    // whole account read rejects and the panel stays on its loading branch.
+    'market/data-source': () => ({ state: 'free' }),
     'account/get': () => stockAccount,
     'account/export': () => ({ path: '/tmp/paper-trading/events.jsonl', exists: true, content: '{"type":"account.opened"}\n' }),
     'account/reset': () => stockAccount,
@@ -281,6 +284,8 @@
     const e2e = window.__e2e
     const result = { name }
     if (name === 'stock') {
+      // The panel is ready before the account RPC lands; wait for the ticket.
+      await e2e.wait(() => document.querySelector('.pt-ticket-form input.pt-input'))
       result.tabs = [...document.querySelectorAll('.pt-tab')].map(el => el.textContent.trim())
       result.stats = [...document.querySelectorAll('.pt-stat')].map(el => el.innerText.replace(/\n/g, ' '))
       result.previewText = e2e.text('.pt-preview-pane')
@@ -590,7 +595,6 @@
       return result
     }
     if (name === 'reset-account') {
-      window.confirm = () => true
       const resetAccount = {
         accountId: 'default', currency: 'CNY', initialCash: 1000000, cash: 1000000,
         marketValue: 0, equity: 1000000, pnl: 0, pnlPct: 0, todayPnl: 0,
@@ -602,6 +606,9 @@
       if (tab) e2e.click(tab)
       const reset = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '重置')
       if (reset) e2e.click(reset)
+      // The reset amount lives in an inline strip, not a browser confirm.
+      const confirmReset = await e2e.wait(() => [...document.querySelectorAll('button')].find(button => button.innerText === '确认重置'), 4000)
+      if (confirmReset) e2e.click(confirmReset)
       result.notice = await e2e.wait(() => {
         const text = document.querySelector('.pt-inner')?.innerText ?? ''
         return text.includes('账户已重置') ? text : null
@@ -1000,9 +1007,10 @@
       e2e.click(e2e.byText('批量预览')[0])
       await e2e.wait(() => [...document.querySelectorAll('.pt-main table')].some(table => table.innerText.includes('目标权重')), 5000)
       result.rowsBefore = document.querySelectorAll('.pt-main table tbody tr').length
-      window.confirm = () => true
       const reset = [...document.querySelectorAll('.pt-head button')].find(button => button.innerText === '重置')
       if (reset) e2e.click(reset)
+      const confirmReset = await e2e.wait(() => [...document.querySelectorAll('button')].find(button => button.innerText === '确认重置'), 4000)
+      if (confirmReset) e2e.click(confirmReset)
       await e2e.wait(() => (document.querySelector('.pt-inner')?.innerText ?? '').includes('账户已重置'), 4000)
       await new Promise(done => setTimeout(done, 500))
       result.rowsAfter = document.querySelectorAll('.pt-main table tbody tr').length
@@ -1992,6 +2000,9 @@
         inject: (_name, callback) => { callback(); return () => {} },
         register: (options, component) => { registrations.push({ options, component }); return () => {} },
       },
+      // Optional host services: the panel falls back to its own defaults when a
+      // service is absent, which is exactly what this harness exercises.
+      inject: (_deps, callback) => { callback({ get: () => undefined }); return () => {} },
     }
     exportsObject.apply(ctx)
     const main = registrations.find(item => item.options.name === 'main')

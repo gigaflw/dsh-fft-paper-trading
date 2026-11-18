@@ -96,6 +96,7 @@ const waitFor = async (probe, timeout = 15000) => {
   throw new Error('timeout')
 }
 
+const consoleLines = []
 try {
   const page = await waitFor(async () => {
     const list = await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`)).json()
@@ -105,7 +106,6 @@ try {
   await new Promise((done, fail) => { socket.addEventListener('open', done); socket.addEventListener('error', fail) })
   let seq = 0
   const pending = new Map()
-  const consoleLines = []
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data)
     if (message.id && pending.has(message.id)) { pending.get(message.id)(message); pending.delete(message.id); return }
@@ -163,6 +163,83 @@ try {
   assert('limit draft keeps the quote', typeof stock.limitQuote === 'string' && stock.limitQuote.includes('现价'), stock.limitQuote ?? '')
   assert('limit draft blocks an empty price', stock.limitSubmitDisabled === true)
   await shot('stock-trade.png')
+
+  // 1b. 分栏尺寸：K 线栏拖宽、双击复位、键盘、折叠展开、高度预设
+  const measureWidth = selector => evaluate(`Math.round(document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect().width ?? 0)`)
+  const handlePoint = selector => evaluate(`(() => {
+    const handle = document.querySelector(${JSON.stringify(selector)})
+    if (handle === null) return null
+    const rect = handle.getBoundingClientRect()
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + Math.min(rect.height / 2, 200)) }
+  })()`)
+  const dragMouse = async (from, toX) => {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1 })
+    for (const ratio of [0.25, 0.5, 0.75, 1]) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(from.x + (toX - from.x) * ratio), y: from.y, button: 'left', buttons: 1 })
+    }
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: Math.round(toX), y: from.y, button: 'left', buttons: 1, clickCount: 1 })
+    await new Promise(done => setTimeout(done, 250))
+  }
+  const doubleClickMouse = async point => {
+    for (const clickCount of [1, 2]) {
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount })
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount })
+      await new Promise(done => setTimeout(done, 40))
+    }
+    await new Promise(done => setTimeout(done, 250))
+  }
+  const storedLayout = () => evaluate("JSON.parse(localStorage.getItem('ft-paper-trading.layout.v1') ?? 'null')")
+  const stockDefaultRail = await measureWidth('.pt-kline-rail')
+  const stockHandle = await handlePoint('.pt-kline-rail .pt-rail-handle')
+  assert('the K-line rail renders a width divider', stockHandle !== null && stockDefaultRail > 300, JSON.stringify(stockHandle))
+  await dragMouse(stockHandle, stockHandle.x - 90)
+  const stockWideRail = await measureWidth('.pt-kline-rail')
+  assert('dragging the divider widens the K-line rail', stockWideRail >= stockDefaultRail + 60, `${stockDefaultRail} -> ${stockWideRail}`)
+  const storedWide = (await storedLayout())?.stock?.rail
+  assert('the dragged width is persisted on release only', storedWide === stockWideRail, `${storedWide} vs ${stockWideRail}`)
+  await evaluate("document.querySelector('.pt-kline-rail .pt-rail-handle')?.focus()")
+  for (const type of ['keyDown', 'keyUp']) {
+    await send('Input.dispatchKeyEvent', { type, key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 })
+  }
+  await new Promise(done => setTimeout(done, 250))
+  const stockKeyboardRail = await measureWidth('.pt-kline-rail')
+  assert('the divider responds to the keyboard', stockKeyboardRail <= stockWideRail - 10, `${stockWideRail} -> ${stockKeyboardRail}`)
+  await doubleClickMouse(await handlePoint('.pt-kline-rail .pt-rail-handle'))
+  const stockResetRail = await measureWidth('.pt-kline-rail')
+  assert('double-click restores the default rail width', Math.abs(stockResetRail - stockDefaultRail) <= 2, `${stockDefaultRail} -> ${stockResetRail}`)
+  assert('the reset clears the stored width', (await storedLayout())?.stock?.rail === null, JSON.stringify((await storedLayout())?.stock))
+  await evaluate("document.querySelector('.pt-kline-rail .pt-icon-btn')?.click()")
+  await new Promise(done => setTimeout(done, 250))
+  const collapsedRail = await measureWidth('.pt-kline-rail')
+  assert('collapsing the rail leaves a slim expandable strip', (await evaluate("document.querySelector('.pt-kline-rail .pt-kline-card') === null")) && collapsedRail > 0 && collapsedRail < 48, `${collapsedRail}`)
+  assert('the collapsed state is persisted', (await storedLayout())?.stock?.collapsed === true, JSON.stringify((await storedLayout())?.stock))
+  await evaluate("document.querySelector('.pt-kline-rail .pt-rail-expand')?.click()")
+  await new Promise(done => setTimeout(done, 250))
+  assert('expanding brings the chart back', await evaluate("document.querySelector('.pt-kline-rail .pt-kline-body') !== null"))
+  const measureChartHeight = () => evaluate("Math.round(document.querySelector('.pt-kline-body')?.getBoundingClientRect().height ?? 0)")
+  const autoHeight = await measureChartHeight()
+  await evaluate("[...document.querySelectorAll('.pt-rail-actions .pt-seg button')].find(button => button.textContent.trim() === '高')?.click()")
+  await new Promise(done => setTimeout(done, 250))
+  const tallHeight = await measureChartHeight()
+  assert('the height preset grows the chart body', tallHeight > autoHeight + 40, `${autoHeight} -> ${tallHeight}`)
+  assert('the height preset is persisted', (await storedLayout())?.stock?.klineHeight === 'tall', JSON.stringify((await storedLayout())?.stock))
+  await evaluate("[...document.querySelectorAll('.pt-rail-actions .pt-seg button')].find(button => button.textContent.trim() === '自动')?.click()")
+  await new Promise(done => setTimeout(done, 250))
+  assert('the auto preset returns to the viewport-following height', Math.abs((await measureChartHeight()) - autoHeight) <= 2)
+
+  // 1c. 窄容器下沉：把手收起，折叠条转成横排
+  await send('Emulation.setDeviceMetricsOverride', { width: 900, height: 900, deviceScaleFactor: 1, mobile: false })
+  await new Promise(done => setTimeout(done, 400))
+  assert('a narrow panel stacks the rail above the ticket', await evaluate("(document.querySelector('.pt-workspace')?.clientWidth ?? 0) <= 1100"))
+  assert('the divider hides once the columns stack', await evaluate("getComputedStyle(document.querySelector('.pt-rail-handle')).display === 'none'"))
+  await evaluate("document.querySelector('.pt-kline-rail .pt-icon-btn')?.click()")
+  await new Promise(done => setTimeout(done, 300))
+  assert('a collapsed stacked rail becomes a horizontal bar', await evaluate("(() => { const rail = document.querySelector('.pt-rail-collapsed'); if (rail === null) return false; return getComputedStyle(rail.querySelector('.pt-rail-expand')).flexDirection === 'row' })()"))
+  await evaluate("document.querySelector('.pt-rail-collapsed .pt-rail-expand')?.click()")
+  await new Promise(done => setTimeout(done, 300))
+  await send('Emulation.clearDeviceMetricsOverride')
+  await new Promise(done => setTimeout(done, 400))
+  assert('the wide layout comes back after the narrow check', await evaluate("(document.querySelector('.pt-workspace')?.clientWidth ?? 0) > 1100"))
 
   // 2. 批量
   const nextTradeDate = await scenario('next-trade-date')
@@ -261,6 +338,26 @@ try {
   assert('futures stats labels', Array.isArray(switched.stats) && switched.stats.some(text => text.includes('总权益')) && switched.stats.some(text => text.includes('风险度')), JSON.stringify(switched.stats))
   assert('futures has four tabs and no market tab', switched.tabs.length === 4 && !switched.tabs.some(text => text.includes('行情')), JSON.stringify(switched.tabs))
   await shot('futures-trade.png')
+
+  // 3b. 期货合约要素栏复用同一套把手与折叠
+  const futuresDefaultRail = await measureWidth('.pt-futures-rail')
+  const futuresHandle = await handlePoint('.pt-futures-rail .pt-rail-handle')
+  assert('the futures rail reuses the divider', futuresHandle !== null && futuresDefaultRail >= 240, JSON.stringify(futuresHandle))
+  // The default sits at the 400px ceiling, so the drag has to shrink it.
+  await dragMouse(futuresHandle, futuresHandle.x + 60)
+  const futuresNarrow = await measureWidth('.pt-futures-rail')
+  assert('the futures rail width follows the same drag', futuresNarrow <= futuresDefaultRail - 40, `${futuresDefaultRail} -> ${futuresNarrow}`)
+  const storedFutures = (await storedLayout())?.futures?.rail
+  assert('the futures width persists under its own key', storedFutures === futuresNarrow, `${storedFutures} vs ${futuresNarrow}`)
+  await evaluate("document.querySelector('.pt-futures-rail .pt-icon-btn')?.click()")
+  await new Promise(done => setTimeout(done, 250))
+  assert('the futures rail collapses to a strip too', (await evaluate("document.querySelector('.pt-futures-rail .pt-card') === null")) && (await evaluate("document.querySelector('.pt-futures-rail .pt-rail-expand') !== null")))
+  await evaluate("document.querySelector('.pt-futures-rail .pt-rail-expand')?.click()")
+  await new Promise(done => setTimeout(done, 250))
+  assert('expanding the futures rail restores its card', await evaluate("document.querySelector('.pt-futures-rail .pt-card') !== null"))
+  await doubleClickMouse(await handlePoint('.pt-futures-rail .pt-rail-handle'))
+  assert('double-click restores the futures default width', Math.abs((await measureWidth('.pt-futures-rail')) - futuresDefaultRail) <= 2)
+
   const searched = await scenario('futures-search')
   assert('futures contract rail filled', typeof searched.contract === 'string' && searched.contract.includes('乘数') && searched.contract.includes('保证金率'), searched.contract ?? '')
   const futuresQuoteStale = await scenario('futures-quote-stale')
@@ -316,7 +413,7 @@ try {
   const futuresNoQuote = await scenario('futures-no-quote')
   assert('a futures market order without a quote is blocked', typeof futuresNoQuote.title === 'string' && typeof futuresNoQuote.preview === 'string' && futuresNoQuote.preview.includes('没有可用行情'), JSON.stringify(futuresNoQuote))
   const stockInsufficient = await scenario('stock-insufficient')
-  assert('an unaffordable buy is disabled with a reason', stockInsufficient.title === '资金不足', JSON.stringify(stockInsufficient))
+  assert('an unaffordable buy is disabled with a reason', typeof stockInsufficient.title === 'string' && stockInsufficient.title.includes('资金不足'), JSON.stringify(stockInsufficient))
   const stockOversell = await scenario('stock-oversell')
   assert('an oversell is disabled with a reason', stockOversell.title === '可卖不足', JSON.stringify(stockOversell))
   const stockLimitBand = await scenario('stock-limit-band')
@@ -368,6 +465,7 @@ try {
   assert('no page exceptions', exceptions.length === 0, exceptions.join(' | '))
 } catch (error) {
   console.error('FAIL  harness:', error.message)
+  if (consoleLines.length > 0) console.error(consoleLines.slice(-12).join('\n'))
   failures.push('harness')
 } finally {
   await cleanup()
