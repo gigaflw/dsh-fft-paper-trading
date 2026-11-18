@@ -3244,11 +3244,35 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
+      // The sidebar renders this row, so its text is host chrome and follows the
+      // host interface language — not the panel copy, which stays Chinese. The
+      // host re-reads `label` on every locale change, so a thunk is enough; the
+      // two product names match `locale/zh.json` and `locale/en.json`, which
+      // carry the same names into the plugin list.
+      let hostLocale
+      const panelLabel = () => {
+        let active
+        try {
+          active = hostLocale?.getLocale?.().active
+        } catch {
+          active = undefined
+        }
+        const tag = active ?? (typeof navigator === 'undefined' ? '' : navigator.language)
+        return String(tag).toLowerCase().startsWith('zh') ? '模拟交易' : 'Paper Trading'
+      }
+      // Optional: hosts without the locale service keep browser-language naming
+      // instead of losing the whole client half to an unmet injection.
+      ctx.inject(['locale'], scope => {
+        const locale = scope.get('locale')
+        if (locale === undefined) return () => {}
+        hostLocale = locale
+        return () => { if (hostLocale === locale) hostLocale = undefined }
+      })
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
         name: 'sidebar.panellist',
         id: PANEL_ID,
         order: 30,
-        label: '模拟交易',
+        label: panelLabel,
       }, PaperGlyph))
       ctx.slots.inject('main', () => ctx.slots.register({
         name: 'main',
