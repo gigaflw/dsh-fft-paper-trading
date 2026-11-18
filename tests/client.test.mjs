@@ -126,6 +126,22 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /function ReceiptLine/)
   assert.match(source, /receipt\.failure/)
   assert.match(source, /成交后现金/)
+  // The rails are user-sized: the divider previews a px hint and persists it on
+  // release only, the collapsed strip keeps the rail one click away, and the
+  // height presets ride the same workspace attributes as the stored width.
+  assert.match(source, /LAYOUT_KEY = 'ft-paper-trading\.layout\.v1'/)
+  assert.match(source, /RAIL_MAIN_RESERVE = 570/)
+  assert.match(source, /data-rail-width/)
+  assert.match(source, /data-rail-collapsed/)
+  assert.match(source, /data-kline-height/)
+  assert.match(source, /role: 'separator'/)
+  assert.match(source, /'aria-orientation': 'vertical'/)
+  assert.match(source, /className: 'pt-rail-handle'/)
+  assert.match(source, /onDoubleClick: onReset/)
+  assert.match(source, /requestAnimationFrame/, 'a drag previews at most one update per frame')
+  // A collapsed rail unmounts the chart slot; its paint deadline must not keep
+  // running, or the next expand would show the "chart failed" fallback.
+  assert.match(source, /\[hasSlot, symbol, slotNonce, collapsed\]/)
   const glyph = panellist.component({ size: 16 })
   assert.ok(glyph, 'glyph did not render')
 })
@@ -175,6 +191,25 @@ test('browser bundle: the page surface fills the column, only the content is cap
   assert.ok(!source.includes('pt-trade-grid'), 'the loose two-card trade grid must be gone')
   assert.match(css, /\.pt-kline-rail \{[^}]*position:sticky/)
   assert.match(css, /\.pt-kline-body \{[^}]*clamp\(420px/)
+  // The rail width is a variable so a drag can pin a px hint while the CSS
+  // clamps stay authoritative; the divider costs no layout width (it rides the
+  // 10px gap), and a collapse shrinks the track without dropping the stored px.
+  assert.match(css, /\.pt-workspace \{ --pt-rail: clamp\(380px, 38%, 760px\)/)
+  assert.match(css, /grid-template-columns:minmax\(0, 1fr\) var\(--pt-rail\)/)
+  assert.match(css, /\.pt-workspace\[data-rail-width\] \{ --pt-rail: clamp\(320px, var\(--pt-rail-width\), min\(760px, calc\(100% - 570px\)\)\)/)
+  assert.match(css, /\.pt-workspace\[data-rail-collapsed\]/)
+  assert.match(css, /\.pt-workspace-futures\[data-rail-width\] \{ --pt-rail: clamp\(240px/)
+  assert.match(css, /\.pt-rail-handle \{ position:absolute/)
+  assert.match(css, /\.pt-rail-collapsed \{/)
+  // Height presets are attrs on the workspace, so the narrow breakpoint can
+  // choose its own sizes without losing the stored preference.
+  assert.match(css, /\.pt-workspace\[data-kline-height="tall"\] \.pt-kline-body/)
+  assert.match(css, /\.pt-workspace\[data-kline-height="full"\] \.pt-kline-body/)
+  const stacked = /@container paper-panel \(max-width: 1100px\) \{[\s\S]*?\n      \}/.exec(css)
+  assert.ok(stacked, 'stacked breakpoint missing')
+  assert.match(stacked[0], /\.pt-rail-handle \{ display:none/)
+  assert.match(stacked[0], /\.pt-rail-expand \{ flex-direction:row/)
+  assert.match(stacked[0], /data-kline-height="tall"/)
   assert.match(css, /\.pt-table-wrap \{ overflow-x:auto/)
   assert.match(css, /\.pt-btn\[data-active="true"\]/, 'selected board/watch/period buttons need visible state')
   // A selected segment is state, not action: it keeps the soft tint so the only

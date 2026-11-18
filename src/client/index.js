@@ -278,6 +278,70 @@ window.__ModuleLoader__.load({
         return ''
       }
     }
+
+    /* ------------------------------------------------------ rail layout --
+       The rail's size is a user preference, never the layout authority: a drag
+       stores a px hint, CSS clamps it against the workspace (the trading column
+       keeps room for its ticket before the rail takes space), and the narrow
+       container query drops to one column no matter what was stored. The hint
+       is written on release only — a drag reports dozens of widths a second,
+       and every write is synchronous local storage. */
+
+    const LAYOUT_KEY = 'ft-paper-trading.layout.v1'
+    const RAIL_LIMITS = {
+      stock: { min: 320, max: 760 },
+      futures: { min: 240, max: 400 },
+    }
+    // `pad`: how much of the workspace the trading column must keep for its
+    // ticket before the rail may grow (560px form+preview + the 10px gap).
+    const RAIL_MAIN_RESERVE = 570
+    const KLINE_HEIGHTS = ['auto', 'tall', 'full']
+
+    /** Defaults for both accounts; a missing or malformed entry falls back here. */
+    function emptyLayout() {
+      return {
+        stock: { rail: null, collapsed: false, klineHeight: 'auto' },
+        futures: { rail: null, collapsed: false },
+      }
+    }
+
+    /** Clamp a rail width into its account's contract range. */
+    function clampRail(value, mode) {
+      const limits = RAIL_LIMITS[mode] ?? RAIL_LIMITS.stock
+      return Math.min(limits.max, Math.max(limits.min, Math.round(value)))
+    }
+
+    /** Read the persisted layout; anything unreadable or malformed is ignored. */
+    function readLayout() {
+      const layout = emptyLayout()
+      try {
+        const raw = window.localStorage.getItem(LAYOUT_KEY)
+        if (raw === null) return layout
+        const saved = JSON.parse(raw)
+        for (const mode of ['stock', 'futures']) {
+          const slice = saved === null || typeof saved !== 'object' ? undefined : saved[mode]
+          if (slice === null || slice === undefined || typeof slice !== 'object') continue
+          if (typeof slice.rail === 'number' && Number.isFinite(slice.rail)) layout[mode].rail = clampRail(slice.rail, mode)
+          layout[mode].collapsed = slice.collapsed === true
+          if (mode === 'stock' && KLINE_HEIGHTS.includes(slice.klineHeight)) layout.stock.klineHeight = slice.klineHeight
+        }
+      } catch {
+        // A private window or a truncated write: the panel starts at its defaults.
+      }
+      return layout
+    }
+
+    /** Persist one account's preference without clobbering the other's. */
+    function writeLayout(mode, patch) {
+      try {
+        const next = readLayout()
+        next[mode] = { ...next[mode], ...patch }
+        window.localStorage.setItem(LAYOUT_KEY, JSON.stringify(next))
+      } catch {
+        // Losing a size preference is acceptable; losing the panel is not.
+      }
+    }
+
     /** Both sides are canonical ids (`000001.SZ`), so compare them verbatim. */
     const shortlisted = (shortlist, symbol) => shortlist.some(item => item === symbol)
 
@@ -557,19 +621,53 @@ window.__ModuleLoader__.load({
       .pt-card-title { font-size:11px; font-weight:500; letter-spacing:.04em;
         color:var(--dsw-alias-label-secondary, #49525f); margin-bottom:8px; }
       /* Main workspace: the K-line rail sets the row height, so the left column
-         stretches to the same bottom edge instead of ending mid-air. */
-      .pt-workspace { display:grid; grid-template-columns:minmax(0, 1fr) clamp(380px, 38%, 760px);
+         stretches to the same bottom edge instead of ending mid-air. The rail
+         track is a variable so a drag can pin a px width while the container's
+         own clamps stay in charge; the divider rides in the 10px gap. */
+      .pt-workspace { --pt-rail: clamp(380px, 38%, 760px);
+        display:grid; grid-template-columns:minmax(0, 1fr) var(--pt-rail);
         gap:10px; align-items:stretch; min-width:0; }
+      /* 100% is the workspace, so the trading column is guaranteed its 570px
+         reserve before the stored rail width is honoured. */
+      .pt-workspace[data-rail-width] { --pt-rail: clamp(320px, var(--pt-rail-width), min(760px, calc(100% - 570px))); }
       .pt-main { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0;
         container:paper-main / inline-size; }
       .pt-tab-body { display:flex; flex-direction:column; gap:10px; flex:1 1 auto; min-height:0; }
       .pt-kline-rail { position:sticky; top:calc(12px + var(--dsh-frame-top-clearance, 0px)); align-self:start; min-width:0; }
+      /* The divider sits in the grid gap, so it costs no layout width. The rail
+         is positioned (sticky), which anchors the absolutely placed handle. */
+      .pt-rail-handle { position:absolute; z-index:3; top:0; bottom:0; left:-10px; width:10px;
+        cursor:col-resize; touch-action:none; }
+      .pt-rail-handle::before { content:""; position:absolute; left:4px; top:0; bottom:0; width:1px;
+        background:transparent; transition:background .12s; }
+      .pt-rail-handle:hover::before, .pt-rail-handle[data-dragging="true"]::before { background:var(--pt-accent); }
+      .pt-rail-handle:focus-visible { outline:2px solid var(--pt-accent); outline-offset:2px; }
+      .pt-resizing, .pt-resizing * { cursor:col-resize !important; user-select:none !important; }
+      .pt-rail-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+      .pt-icon-btn { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
+        padding:0; border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.18));
+        border-radius:var(--dsw-radius-xs, 4px); background:var(--dsw-alias-bg-layer-1, #fff);
+        color:inherit; cursor:pointer; }
+      .pt-icon-btn:hover { border-color:var(--pt-accent); color:var(--pt-accent); }
+      /* Collapsed rail: a slim strip in wide layouts, a short bar once the panel
+         stacks them; either way the rail stays one click away. */
+      .pt-rail-collapsed { display:flex; align-items:flex-start; justify-content:center;
+        min-height:32px; padding-top:8px; }
+      .pt-rail-expand { display:flex; flex-direction:column; align-items:center; gap:6px; padding:4px 0;
+        border:0; background:transparent; color:var(--dsw-alias-label-secondary, #49525f); cursor:pointer; }
+      .pt-rail-expand:hover { color:var(--pt-accent); }
+      .pt-rail-expand-text { writing-mode:vertical-rl; font-size:11px; letter-spacing:.08em; }
       .pt-kline-card { display:flex; flex-direction:column; min-width:0; }
       .pt-kline-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
       .pt-kline-title { min-width:0; }
       .pt-kline-body { height:clamp(420px, calc(100vh - 250px), 720px); min-height:0; overflow:hidden;
         border:0.5px solid var(--dsw-alias-border-l4, rgba(45,49,66,.08)); border-radius:var(--dsw-radius-sm, 8px);
         background:var(--dsw-alias-bg-layer-2, #f7f8fa); }
+      /* Height presets: the rail body is the only vertical knob that also sizes
+         the holdings book (the left column stretches to the rail), so it gets
+         two explicit sizes next to the viewport-following default. */
+      .pt-workspace[data-kline-height="tall"] .pt-kline-body { height:clamp(520px, calc(100vh - 170px), 820px); }
+      .pt-workspace[data-kline-height="full"] .pt-kline-body { height:clamp(420px, calc(100vh - 120px), 1200px); }
       .pt-kline-slot, .pt-kline-body > div { width:100%; height:100%; min-height:0; }
       .pt-kline-body .pt-chart { height:100%; }
       .pt-kline-hint { margin-top:6px; font-size:11px; }
@@ -626,8 +724,13 @@ window.__ModuleLoader__.load({
         border-radius:var(--dsw-radius-sm, 8px); padding:8px; }
       /* Futures: the element rail is narrower than the K-line rail, and the
          risk figure turns amber before the account reaches the liquidation line. */
-      .pt-workspace-futures { grid-template-columns:minmax(0, 1fr) clamp(260px, 30%, 400px); }
+      .pt-workspace-futures { --pt-rail: clamp(260px, 30%, 400px); }
+      .pt-workspace-futures[data-rail-width] { --pt-rail: clamp(240px, var(--pt-rail-width), min(400px, calc(100% - 570px))); }
+      /* A stored width survives a collapse (it comes back on expand), so the
+         collapsed track has to win the cascade regardless of the drag rule. */
+      .pt-workspace[data-rail-collapsed], .pt-workspace-futures[data-rail-collapsed] { --pt-rail: 32px; }
       .pt-futures-rail { position:sticky; top:calc(12px + var(--dsh-frame-top-clearance, 0px)); align-self:start; min-width:0; }
+      .pt-card-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
       .pt-risk-high { color:var(--dsw-alias-state-warn-primary, #8a6410); }
       /* Breakpoints follow the panel's own width, not the window's: the centre
          column also yields to the sidebar and the right pane, so a wide screen
@@ -642,7 +745,14 @@ window.__ModuleLoader__.load({
         .pt-workspace, .pt-workspace-futures { grid-template-columns:minmax(0, 1fr); }
         .pt-kline-rail { position:static; order:-1; }
         .pt-futures-rail { position:static; order:-1; }
+        /* Stacked rows own the full width, so a width drag has nothing to do. */
+        .pt-rail-handle { display:none; }
+        .pt-rail-collapsed { align-items:center; padding:6px 10px; }
+        .pt-rail-expand { flex-direction:row; width:100%; justify-content:center; }
+        .pt-rail-expand-text { writing-mode:horizontal-tb; }
         .pt-kline-body { height:360px; }
+        .pt-workspace[data-kline-height="tall"] .pt-kline-body { height:520px; }
+        .pt-workspace[data-kline-height="full"] .pt-kline-body { height:clamp(360px, calc(100vh - 160px), 900px); }
       }
       @container paper-panel (max-width: 760px) {
         .pt-stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -932,12 +1042,179 @@ window.__ModuleLoader__.load({
         over. Wall clock, so background timer throttling cannot stretch it. */
     const SLOT_PAINT_TIMEOUT = 6000
 
+    /** Small chevron shared by the rail's collapse and expand controls. */
+    function ChevronIcon({ direction }) {
+      return h('svg', {
+        width: 14, height: 14, viewBox: '0 0 16 16', 'aria-hidden': 'true',
+        fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round',
+      }, h('path', { d: direction === 'left' ? 'M10 3 5 8l5 5' : 'M6 3l5 5-5 5' }))
+    }
+
+    /** Collapse a rail to its slim strip (the strip carries the expand control). */
+    function RailToggle({ label, onClick }) {
+      return h('button', {
+        type: 'button', className: 'pt-icon-btn',
+        title: `收起${label}`, 'aria-label': `收起${label}`, 'aria-expanded': 'true',
+        onClick,
+      }, h(ChevronIcon, { direction: 'right' }))
+    }
+
+    /**
+     * The collapsed rail: a slim vertical strip, or a short full-width bar once
+     * the panel stacks its columns. It keeps the rail one click away instead of
+     * leaving an unreachable chart behind a hidden toggle.
+     */
+    function CollapsedRail({ label, className, onExpand }) {
+      return h('aside', { className: `pt-rail-collapsed ${className}`, 'aria-label': label },
+        h('button', {
+          type: 'button', className: 'pt-rail-expand',
+          title: `展开${label}`, 'aria-label': `展开${label}`, 'aria-expanded': 'false',
+          onClick: onExpand,
+        },
+          h(ChevronIcon, { direction: 'left' }),
+          h('span', { className: 'pt-rail-expand-text' }, label),
+        ),
+      )
+    }
+
+    /**
+     * K-line height presets. The rail body also sets how tall the holdings book
+     * gets (the trading column stretches to it), so it is an explicit choice
+     * instead of a second drag dimension.
+     */
+    function HeightPreset({ value, onChange }) {
+      return h('div', { className: 'pt-seg', role: 'group', 'aria-label': 'K 线高度' },
+        [['auto', '自动'], ['tall', '高'], ['full', '满']].map(([key, text]) =>
+          h('button', {
+            key, type: 'button', 'data-active': value === key, 'aria-pressed': value === key,
+            onClick: () => onChange(key),
+          }, text),
+        ),
+      )
+    }
+
+    /**
+     * Divider between the trading column and a rail. The rail is the grid's
+     * right-hand track, so leftward pointer movement widens it; the px hint is
+     * previewed per animation frame and only committed on release. CSS owns the
+     * real clamps — this component never decides the final track width.
+     * Keyboard follows the host's separators: arrows move 16px, Home/End jump
+     * to the limits, Escape and double-click restore the default width.
+     */
+    function RailSplitHandle({ mode, label, onPreview, onCommit, onReset }) {
+      const ref = useRef(null)
+      const drag = useRef(null)
+      const frame = useRef(0)
+      const [dragging, setDragging] = useState(false)
+      const limits = RAIL_LIMITS[mode] ?? RAIL_LIMITS.stock
+
+      /** Current rail width in px; the DOM is the source because CSS clamps it. */
+      const railWidth = () => {
+        const rail = ref.current === null ? null : ref.current.closest('aside')
+        return rail === null ? 0 : Math.round(rail.getBoundingClientRect().width)
+      }
+      /** Keep the trading column its reserve; CSS repeats this clamp for safety. */
+      const clampToWorkspace = value => {
+        const workspace = ref.current === null ? null : ref.current.closest('.pt-workspace')
+        const available = (workspace?.clientWidth ?? 0) - RAIL_MAIN_RESERVE
+        const max = Math.min(limits.max, Math.max(limits.min, available))
+        return Math.min(max, Math.max(limits.min, Math.round(value)))
+      }
+      /** End a gesture: a moved width is committed, a plain click is not. */
+      const stop = commit => {
+        const active = drag.current
+        if (active === null) return
+        drag.current = null
+        if (frame.current !== 0) { window.cancelAnimationFrame(frame.current); frame.current = 0 }
+        if (active.handle.hasPointerCapture(active.pointerId)) active.handle.releasePointerCapture(active.pointerId)
+        ref.current?.closest('.pt-root')?.classList.remove('pt-resizing')
+        setDragging(false)
+        if (commit && active.moved) onCommit(clampToWorkspace(active.latest))
+      }
+      useEffect(() => () => {
+        if (frame.current !== 0) window.cancelAnimationFrame(frame.current)
+        ref.current?.closest('.pt-root')?.classList.remove('pt-resizing')
+      }, [])
+      const preview = width => {
+        if (drag.current === null) return
+        drag.current.latest = width
+        frame.current = window.requestAnimationFrame(() => {
+          frame.current = 0
+          if (drag.current !== null) onPreview(drag.current.latest)
+        })
+      }
+      const keyStep = step => {
+        const next = clampToWorkspace(step(railWidth()))
+        onPreview(next)
+        onCommit(next)
+      }
+      return h('div', {
+        ref,
+        className: 'pt-rail-handle',
+        role: 'separator',
+        'aria-orientation': 'vertical',
+        'aria-label': label,
+        'data-dragging': dragging ? 'true' : undefined,
+        tabIndex: 0,
+        title: '拖动调整宽度，双击恢复默认',
+        onPointerDown: event => {
+          if (event.button !== 0 || drag.current !== null) return
+          event.preventDefault()
+          event.currentTarget.setPointerCapture(event.pointerId)
+          drag.current = {
+            handle: event.currentTarget,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startWidth: railWidth(),
+            latest: railWidth(),
+            moved: false,
+          }
+          ref.current?.closest('.pt-root')?.classList.add('pt-resizing')
+          setDragging(true)
+        },
+        onPointerMove: event => {
+          const active = drag.current
+          if (active === null || active.pointerId !== event.pointerId) return
+          // The rail grows when the divider moves left, hence the inverted delta.
+          const delta = active.startX - event.clientX
+          // A click is not a drag: without this, touching the divider would pin
+          // the responsive percentage width as the current px value.
+          if (!active.moved) {
+            if (Math.abs(delta) < 3) return
+            active.moved = true
+          }
+          preview(clampToWorkspace(active.startWidth + delta))
+        },
+        onPointerUp: event => {
+          if (drag.current?.pointerId !== event.pointerId) return
+          stop(true)
+        },
+        onPointerCancel: event => {
+          if (drag.current?.pointerId === event.pointerId) stop(false)
+        },
+        onLostPointerCapture: () => stop(true),
+        onDoubleClick: onReset,
+        onKeyDown: event => {
+          if (event.key === 'ArrowLeft') keyStep(width => width + 16)
+          else if (event.key === 'ArrowRight') keyStep(width => width - 16)
+          else if (event.key === 'Home') keyStep(() => limits.min)
+          else if (event.key === 'End') keyStep(() => limits.max)
+          else if (event.key === 'Escape') { onReset(); event.preventDefault(); return }
+          else return
+          event.preventDefault()
+        },
+      })
+    }
+
     /**
      * Always-visible K-line rail; dsh_kline fills the slot when installed.
      * The slot owns its own interval switch, so the built-in day/minute
      * buttons only exist for the fallback SVG (no dead controls).
      */
-    function KlinePane({ renderSlot, symbol, quote, bars, error, interval, onInterval, onRefresh, onIdentity }) {
+    function KlinePane({
+      renderSlot, symbol, quote, bars, error, interval, onInterval, onRefresh, onIdentity,
+      collapsed, onCollapse, onExpand, onRail, onRailCommit, onRailReset, height, onHeight,
+    }) {
       const slot = typeof renderSlot === 'function'
         ? renderSlot('paperTrading.kline', { symbol, onIdentity })
         : null
@@ -954,7 +1231,9 @@ window.__ModuleLoader__.load({
       const [slotNonce, setSlotNonce] = useState(0)
       const slotRef = useRef(null)
       useEffect(() => {
-        if (!hasSlot) return undefined
+        // A collapsed rail unmounts the slot: polling it then would mark a live
+        // chart as broken and greet the next expand with the fallback.
+        if (!hasSlot || collapsed) return undefined
         setSlotFailed(false)
         setSlotChecking(true)
         const deadline = Date.now() + SLOT_PAINT_TIMEOUT
@@ -963,23 +1242,32 @@ window.__ModuleLoader__.load({
           else if (Date.now() >= deadline) { setSlotFailed(true); setSlotChecking(false); clearInterval(timer) }
         }, 300)
         return () => clearInterval(timer)
-      }, [hasSlot, symbol, slotNonce])
+      }, [hasSlot, symbol, slotNonce, collapsed])
       const showFallback = !hasSlot || slotFailed
+      if (collapsed) return h(CollapsedRail, { label: 'K 线栏', className: 'pt-kline-rail', onExpand })
       return h('aside', { className: 'pt-kline-rail', 'aria-label': 'K线' },
+        h(RailSplitHandle, {
+          mode: 'stock', label: '调整 K 线栏宽度',
+          onPreview: onRail, onCommit: onRailCommit, onReset: onRailReset,
+        }),
         h('div', { className: 'pt-card pt-kline-card' },
           h('div', { className: 'pt-kline-head' },
             h('div', { className: 'pt-kline-title' },
               h('div', { className: 'pt-card-title', style: { margin: 0 } }, `${symbol || '—'} K线`),
               h('div', { className: 'pt-note' }, quote ? `${symbolText(quote)} · ${quote.source === 'daily-bar' ? '收盘' : '现价'} ${money(quote.last)}` : '等待行情'),
             ),
-            showFallback ? h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
-              h('div', { className: 'pt-seg' },
-                [['day', '日K'], ['minute', '分时']].map(([key, label]) =>
-                  h('button', { key, 'data-active': interval === key, onClick: () => onInterval(key) }, label),
+            h('div', { className: 'pt-rail-actions' },
+              showFallback ? h('div', { className: 'pt-row', style: { flexWrap: 'nowrap', alignItems: 'center' } },
+                h('div', { className: 'pt-seg' },
+                  [['day', '日K'], ['minute', '分时']].map(([key, label]) =>
+                    h('button', { key, 'data-active': interval === key, onClick: () => onInterval(key) }, label),
+                  ),
                 ),
-              ),
-              h('button', { className: 'pt-btn', onClick: onRefresh }, '刷新'),
-            ) : null,
+                h('button', { className: 'pt-btn', onClick: onRefresh }, '刷新'),
+              ) : null,
+              h(HeightPreset, { value: height, onChange: onHeight }),
+              h(RailToggle, { label: 'K 线栏', onClick: onCollapse }),
+            ),
           ),
           h('div', { className: 'pt-kline-body' },
             showFallback
@@ -1687,6 +1975,12 @@ window.__ModuleLoader__.load({
       const [form, setForm] = useState({
         side: 'long', offset: 'open', type: 'market', qty: '1', limitPrice: '', price: '', note: '',
       })
+      const [layout, setLayout] = useState(() => readLayout().futures)
+      /** Update a rail preference; a drag previews without writing local storage. */
+      const applyLayout = useCallback((patch, persist = true) => {
+        setLayout(prev => ({ ...prev, ...patch }))
+        if (persist) writeLayout('futures', patch)
+      }, [])
 
       const alive = useRef(true)
       useEffect(() => {
@@ -2159,13 +2453,24 @@ window.__ModuleLoader__.load({
         error ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text) : null,
         notice ? h('div', { className: 'pt-note' }, notice) : null,
         tab === 'trade'
-          ? h('div', { className: 'pt-workspace pt-workspace-futures' },
-            h('div', { className: 'pt-main' }, tabBar, h('div', { className: 'pt-tab-body' }, tabBody)),
-            h(FuturesContractRail, {
-              contract,
-              quote: displayQuote,
-              limit: preview !== null ? preview.limit ?? null : null,
-            }),
+          ? h('div', {
+            className: 'pt-workspace pt-workspace-futures',
+            'data-rail-width': layout.rail === null ? undefined : String(layout.rail),
+            'data-rail-collapsed': layout.collapsed ? 'true' : undefined,
+            style: layout.rail === null ? undefined : { '--pt-rail-width': `${layout.rail}px` },
+          },
+          h('div', { className: 'pt-main' }, tabBar, h('div', { className: 'pt-tab-body' }, tabBody)),
+          h(FuturesContractRail, {
+            contract,
+            quote: displayQuote,
+            limit: preview !== null ? preview.limit ?? null : null,
+            collapsed: layout.collapsed,
+            onCollapse: () => applyLayout({ collapsed: true }),
+            onExpand: () => applyLayout({ collapsed: false }),
+            onRail: value => applyLayout({ rail: value }, false),
+            onRailCommit: value => applyLayout({ rail: value }),
+            onRailReset: () => applyLayout({ rail: null }),
+          }),
           )
           : h('div', { className: 'pt-main' }, tabBar, h('div', { className: 'pt-tab-body' }, tabBody)),
       )
@@ -2483,10 +2788,20 @@ window.__ModuleLoader__.load({
     }
 
     /** Right rail for the futures ticket: static terms plus the marked quote. */
-    function FuturesContractRail({ contract, quote, limit }) {
+    function FuturesContractRail({
+      contract, quote, limit, collapsed, onCollapse, onExpand, onRail, onRailCommit, onRailReset,
+    }) {
+      if (collapsed) return h(CollapsedRail, { label: '合约要素栏', className: 'pt-futures-rail', onExpand })
       return h('aside', { className: 'pt-futures-rail', 'aria-label': '合约要素' },
+        h(RailSplitHandle, {
+          mode: 'futures', label: '调整合约要素栏宽度',
+          onPreview: onRail, onCommit: onRailCommit, onReset: onRailReset,
+        }),
         h('div', { className: 'pt-card' },
-          h('div', { className: 'pt-card-title' }, '合约要素'),
+          h('div', { className: 'pt-card-head' },
+            h('div', { className: 'pt-card-title', style: { margin: 0 } }, '合约要素'),
+            h(RailToggle, { label: '合约要素栏', onClick: onCollapse }),
+          ),
           contract === null
             ? h('div', { className: 'pt-empty' }, '搜索并选择合约')
             : h('div', { className: 'pt-preview' },
@@ -2539,6 +2854,12 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
+      const [layout, setLayout] = useState(() => readLayout().stock)
+      /** Update a rail preference; a drag previews without writing local storage. */
+      const applyLayout = useCallback((patch, persist = true) => {
+        setLayout(prev => ({ ...prev, ...patch }))
+        if (persist) writeLayout('stock', patch)
+      }, [])
       const [resetNonce, setResetNonce] = useState(0)
       // Inline cash panel (注资/提款), hidden until the header button is pressed.
       const [cashOpen, setCashOpen] = useState(false)
@@ -3176,7 +3497,13 @@ window.__ModuleLoader__.load({
           ),
           error ? h('div', { className: 'pt-error', title: error.detail || undefined }, error.text) : null,
           notice ? h('div', { className: 'pt-note' }, notice) : null,
-          h('div', { className: 'pt-workspace' },
+          h('div', {
+            className: 'pt-workspace',
+            'data-rail-width': layout.rail === null ? undefined : String(layout.rail),
+            'data-rail-collapsed': layout.collapsed ? 'true' : undefined,
+            'data-kline-height': layout.klineHeight === 'auto' ? undefined : layout.klineHeight,
+            style: layout.rail === null ? undefined : { '--pt-rail-width': `${layout.rail}px` },
+          },
             h('div', { className: 'pt-main' },
               h('div', { className: 'pt-tabs' },
                 [['trade', '交易'], ['basket', '批量'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
@@ -3224,6 +3551,14 @@ window.__ModuleLoader__.load({
               onInterval: setBarInterval,
               onRefresh: () => loadBars(),
               onIdentity: klineIdentity,
+              collapsed: layout.collapsed,
+              onCollapse: () => applyLayout({ collapsed: true }),
+              onExpand: () => applyLayout({ collapsed: false }),
+              onRail: value => applyLayout({ rail: value }, false),
+              onRailCommit: value => applyLayout({ rail: value }),
+              onRailReset: () => applyLayout({ rail: null }),
+              height: layout.klineHeight,
+              onHeight: value => { if (KLINE_HEIGHTS.includes(value)) applyLayout({ klineHeight: value }) },
             }),
           ),
       )
