@@ -7,11 +7,9 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const source = readFileSync(join(here, '..', 'lib', 'client.js'), 'utf8')
 
-/** Execute the browser bundle with a captured ModuleLoader call and a minimal React. */
-function loadClient() {
-  let captured
-  const fakeWindow = { __ModuleLoader__: { load: spec => { captured = spec } } }
-  const React = {
+/** Minimal React surface the browser bundle requires. */
+function fakeReact() {
+  return {
     createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
     useState: value => [typeof value === 'function' ? value() : value, () => {}],
     useEffect: () => {},
@@ -19,36 +17,24 @@ function loadClient() {
     useMemo: fn => fn(),
     useRef: value => ({ current: value }),
   }
+}
+
+/** Execute the browser bundle with a captured ModuleLoader call and a minimal React. */
+function loadClient() {
+  let captured
+  const fakeWindow = { __ModuleLoader__: { load: spec => { captured = spec } } }
   new Function('window', 'require', source)(fakeWindow, id => {
-    if (id === 'react') return React
+    if (id === 'react') return fakeReact()
     throw new Error(`unexpected require: ${id}`)
   })
   assert.ok(captured, 'module loader was not called')
   return captured
 }
 
-test('browser bundle: factory loads and registers the sidebar panel', () => {
-  const spec = loadClient()
-  assert.equal(spec.id, '@dsh-ft/dsh-fft-paper-trading')
-
-  const React = {
-    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
-    useState: value => [value, () => {}],
-    useEffect: () => {},
-    useCallback: fn => fn,
-    useMemo: fn => fn(),
-    useRef: value => ({ current: value }),
-  }
-  const exportsObject = spec.factory(id => {
-    if (id === 'react') return React
-    throw new Error(`unexpected require: ${id}`)
-  })
-  assert.equal(typeof exportsObject.apply, 'function')
-
+/** A renderer ctx: required slots plus whatever optional host services the case names. */
+function fakeContext(hostServices = {}) {
   const registrations = []
-  const mountedSeats = []
-  /** A renderer ctx: required slots plus whatever optional host services it names. */
-  const context = (hostServices = {}) => ({
+  const ctx = {
     slots: {
       inject: (_name, callback) => { callback(); return () => {} },
       register: (options, component) => {
@@ -60,8 +46,24 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
       callback({ get: name => hostServices[name] })
       return () => {}
     },
+  }
+  return { ctx, registrations }
+}
+
+test('browser bundle: factory loads and registers the sidebar panel', () => {
+  const spec = loadClient()
+  assert.equal(spec.id, '@dsh-ft/dsh-fft-paper-trading')
+
+  const exportsObject = spec.factory(id => {
+    if (id === 'react') return fakeReact()
+    throw new Error(`unexpected require: ${id}`)
   })
-  const ctx = context({ klinePanels: { mount: seat => { mountedSeats.push(seat); return () => {} } } })
+  assert.equal(typeof exportsObject.apply, 'function')
+
+  const mountedSeats = []
+  const { ctx, registrations } = fakeContext({
+    klinePanels: { mount: seat => { mountedSeats.push(seat); return () => {} } },
+  })
   exportsObject.apply(ctx)
 
   const panellist = registrations.find(item => item.options.name === 'sidebar.panellist')
@@ -76,7 +78,7 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   // The slot is filled through the chart's optional host contract; a host
   // without the chart (or an older one) keeps the built-in fallback instead.
   assert.deepEqual(mountedSeats, ['paperTrading.kline'])
-  assert.doesNotThrow(() => exportsObject.apply(context()))
+  assert.doesNotThrow(() => exportsObject.apply(fakeContext().ctx))
   assert.match(source, /market\/status/)
   assert.match(source, /review\/daily/)
   assert.match(source, /paperTrading\.kline/)
@@ -126,6 +128,29 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.match(source, /成交后现金/)
   const glyph = panellist.component({ size: 16 })
   assert.ok(glyph, 'glyph did not render')
+})
+
+test('browser bundle: the sidebar row follows the host interface language', () => {
+  const spec = loadClient()
+  const exportsObject = spec.factory(id => {
+    if (id === 'react') return fakeReact()
+    throw new Error(`unexpected require: ${id}`)
+  })
+  // The package meta carries the same two product names into the plugin list;
+  // the sidebar row must not drift from it.
+  const meta = locale => JSON.parse(readFileSync(join(here, '..', 'locale', `${locale}.json`), 'utf8')).meta.title
+  const rowLabel = active => {
+    const { ctx, registrations } = fakeContext({ locale: { getLocale: () => ({ active }) } })
+    exportsObject.apply(ctx)
+    const panellist = registrations.find(item => item.options.name === 'sidebar.panellist')
+    assert.equal(typeof panellist.options.label, 'function', 'a plain string would freeze the row language')
+    return panellist.options.label()
+  }
+  assert.equal(rowLabel('zh'), meta('zh'))
+  assert.equal(rowLabel('zh-CN'), meta('zh'))
+  assert.equal(rowLabel('en'), meta('en'))
+  // An unshipped language falls back to English, as the host's own chains do.
+  assert.equal(rowLabel('ja'), meta('en'))
 })
 
 test('browser bundle: the page surface fills the column, only the content is capped', () => {
