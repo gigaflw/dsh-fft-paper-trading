@@ -1,0 +1,28 @@
+{
+  "entries": [
+    {
+      "id": "ft.paper-trading",
+      "kind": "plugin",
+      "category": "tool",
+      "title": { "zh": "模拟交易", "en": "Paper trading" },
+      "summary": {
+        "zh": "A 股与商品期货模拟下单、持仓与复盘。",
+        "en": "Paper orders, positions and review for A-shares and commodity futures."
+      },
+      "details": {
+        "zh": "股票与期货两个独立账本，本地记录成交与持仓；内置 FTShare 行情与 K 线，支持按权重批量建仓、复盘，以及对话里直接下单。安装后从左侧栏「模拟交易」打开。",
+        "en": "Two local ledgers for stocks and futures, with FTShare quotes and K-line built in: bulk weight-based buying, review, and the same account the agent trades. Open it from the sidebar's paper-trading entry."
+      },
+      "cover": "./assets/screenshots/trade.jpg",
+      "screenshots": [
+        { "src": "./assets/screenshots/trade.jpg", "alt": { "zh": "下单与持仓", "en": "Orders and positions" } },
+        { "src": "./assets/screenshots/futures.jpg", "alt": { "zh": "商品期货", "en": "Commodity futures" } },
+        { "src": "./assets/screenshots/review.jpg", "alt": { "zh": "交易复盘", "en": "Trade review" } }
+      ],
+      "spec": { "type": "npm", "name": "@dsh-ft/dsh-fft-paper-trading", "version": "0.7.3" },
+      "open": { "panel": "ft-paper-trading" },
+      "homepage": "https://github.com/gigaflw/dsh-fft-paper-trading#readme",
+      "engines": { "dsh": ">=0.2.0-rc.2" }
+    }
+  ]
+}
