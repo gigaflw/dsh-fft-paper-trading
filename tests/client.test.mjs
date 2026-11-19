@@ -216,6 +216,13 @@ test('browser bundle: the page surface fills the column, only the content is cap
   // solid orange on a page is the submit button.
   assert.match(css, /\.pt-seg button\[data-active="true"\] \{[^}]*background:var\(--pt-accent-soft\)/)
   assert.ok(!/\.pt-seg button\[data-active="true"\] \{[^}]*background:var\(--pt-accent\)/.test(css), 'a segment must not fill with the solid accent')
+  // The tint spells its own values with light-dark(): the brand soft is
+  // resolved from the theme's declared scheme, while light-dark() follows the
+  // palette the panel is actually painted with (a custom theme can declare a
+  // light scheme while painting dark surfaces, which put light text on a pale
+  // tint). Its two values stay identical to the brand token.
+  assert.match(css, /--pt-accent-soft:light-dark\(#fbeee8, #2b1d16\)/)
+  assert.ok(!css.includes('--ft-accent-warm-soft'), 'the soft tint must follow the painted palette, not the declared one')
   // Direction reads before quantity and shares one half-width row with it.
   assert.match(css, /\.pt-field-pair \{[^}]*grid-template-columns:repeat\(2, minmax\(0, 1fr\)\)/)
   assert.match(source, /className: 'pt-span-2 pt-field-pair'[\s\S]{0,200}label: '方向'[\s\S]{0,400}数量（100 股整数倍）/)

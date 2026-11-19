@@ -6,6 +6,11 @@
  * service), so each read must carry the canonical value itself. The bundle
  * repository guards every consumer against `brand.ts`; this repository owns its
  * own copy of the four trading tokens and fails on drift here.
+ *
+ * `--ft-accent-warm-soft` is published but deliberately not read: the host
+ * resolves a brand token from the theme's declared scheme, while a custom theme
+ * can paint the opposite palette. The client spells the tint with `light-dark()`
+ * instead, so it follows the `color-scheme` actually painted.
  */
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
@@ -24,6 +29,9 @@ const FT_BRAND_TOKENS = {
   '--ft-accent-warm-soft': { light: '#fbeee8', dark: '#2b1d16' },
 }
 
+/** Tokens every build must read; `-soft` is excluded on purpose (see file header). */
+const REQUIRED_READS = ['--ft-accent-warm', '--ft-accent-warm-hover', '--ft-accent-warm-ink']
+
 /** `var(--token, light-dark(#light, #dark))` reads, one entry per occurrence. */
 const READ = /var\((--ft-[\w-]+),\s*light-dark\(\s*(#[0-9a-f]{6})\s*,\s*(#[0-9a-f]{6})\s*\)\)/giu
 
@@ -40,7 +48,7 @@ describe('brand fallbacks', () => {
     }
     // A scan that finds nothing must fail: the panel uses the trading accent for
     // every primary control, so a missing read means the guard went blind.
-    for (const name of Object.keys(FT_BRAND_TOKENS)) {
+    for (const name of REQUIRED_READS) {
       assert.ok(seen.has(name), `${name} is no longer read by the client; update the guard if intended`)
     }
   })

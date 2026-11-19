@@ -509,11 +509,16 @@ window.__ModuleLoader__.load({
     const CSS = `
       /* Accent comes from the shared FT brand layer; the local aliases keep the
          fallback in one place, so the panel still matches when fft-settings is
-         absent. The brand layer publishes a value per palette. */
+         absent. The accent trio follows the brand palette. The soft tint spells
+         both values here instead of reading the brand token: the brand layer is
+         resolved from the theme's declared colorScheme, while light-dark()
+         follows the color-scheme the panel is actually painted with, so a
+         custom theme that declares light but paints dark still gets the dark
+         tint under its light label text. */
       .pt-root { --pt-accent:var(--ft-accent-warm,light-dark(#cf5623, #ff8352));
         --pt-accent-hover:var(--ft-accent-warm-hover,light-dark(#b8481b, #ff9a72));
         --pt-accent-ink:var(--ft-accent-warm-ink,light-dark(#ffffff, #1a120e));
-        --pt-accent-soft:var(--ft-accent-warm-soft,light-dark(#fbeee8, #2b1d16));
+        --pt-accent-soft:light-dark(#fbeee8, #2b1d16);
         /* The page surface and its content use the whole centre column; the
            K-line rail takes a fixed share on wide screens instead of a
            centred reader column. */
