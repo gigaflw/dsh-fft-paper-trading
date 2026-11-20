@@ -790,3 +790,41 @@ test('service: a reused requestId must describe the same order', async () => {
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('service: a locked account stops new orders but keeps matching resting ones', async () => {
+  const home = makeHome('lock-tick')
+  const data = makeData()
+  let now = DAY1
+  let locked = false
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({
+    repo, data, calendar: new WeekdayTradingCalendar(), now: () => now,
+    isLocked: () => locked,
+  })
+  try {
+    await service.account()
+    setQuote(data, 100, DAY1_ISO)
+    const resting = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 90 }, 'rest-1')
+    assert.equal(resting.status, 'pending')
+    const keep = await service.place({ symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 80 }, 'rest-2')
+    assert.equal(keep.status, 'pending')
+
+    locked = true
+    // New state changes are refused with the human-freeze code.
+    await assert.rejects(
+      service.place({ symbol: '600519.SH', side: 'buy', type: 'market', qty: 100, price: 100 }, 'new-1'),
+      error => error.code === 'ACCOUNT_LOCKED',
+    )
+    await assert.rejects(service.reset(true), error => error.code === 'ACCOUNT_LOCKED')
+    // Orders already in the book are still the market's to fill, and cancelling
+    // them stays possible — that is the documented meaning of the lock.
+    now = new Date('2026-10-19T02:05:00.000Z')
+    setQuote(data, 89, '2026-10-19T02:05:00.000Z')
+    const tick = await service.tick()
+    assert.equal(tick.filled.length, 1)
+    assert.equal(tick.filled[0].id, resting.id)
+    assert.equal((await service.cancel(keep.id)).status, 'canceled')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

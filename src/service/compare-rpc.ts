@@ -3,8 +3,10 @@
  *
  * Every visible account is read through its own service — `account()` for the
  * snapshot and `review('all')` for the drawdown and the daily equity curve.
- * Neither needs quotes outside the day boundaries, so polling this endpoint
- * does not spend market-data quota.
+ * Both are read paths: they only fetch quotes when a day boundary is due (the
+ * first read after 15:00 or after the next open), so ordinary polling spends no
+ * market-data quota but the first read of a new trading day may take one
+ * boundary snapshot per account.
  * @module @dsh-ft/dsh-fft-paper-trading/service/compare-rpc
  */
 
