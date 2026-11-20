@@ -415,6 +415,18 @@ test('host: one route serves every account by id or name', async () => {
       await call('accounts/unlock', { id })
       const retried = await call('order/place', { draft: { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100, price: 10 } }, id)
       assert.notEqual(retried.error?.code, 'ACCOUNT_LOCKED')
+      // The registry lock covers the futures plane too (the futures route
+      // bypasses the paper guard, so the service itself must refuse).
+      assert.equal((await call('accounts/lock', { id: 'futures' })).ok, true)
+      const lockedFutures = await call('futures/order', {
+        draft: { symbol: 'RB2611.SHFE', side: 'long', offset: 'open', type: 'market', qty: 1 },
+        requestId: 'futures-locked-1',
+      })
+      assert.equal(lockedFutures.ok, false)
+      assert.equal(lockedFutures.error.code, 'ACCOUNT_LOCKED')
+      assert.equal((await call('futures/account/deposit', { amount: 1000 })).error.code, 'ACCOUNT_LOCKED')
+      assert.equal((await call('futures/account/get')).ok, true)
+      assert.equal((await call('accounts/unlock', { id: 'futures' })).ok, true)
       // Duplicate names are allowed; name resolution then demands the id.
       await call('accounts/create', { name: '价值小组' })
       const ambiguous = await call('account/get', {}, '价值小组')

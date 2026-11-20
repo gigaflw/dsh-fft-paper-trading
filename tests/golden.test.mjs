@@ -178,6 +178,15 @@ test('golden: futures account over one settlement day', async () => {
     await call('review all', 'futures/review', { period: 'all' })
     await call('cash flow', 'futures/cash/flow')
     await call('ledger snapshots', 'futures/ledger/list')
+    // The registry lock now covers the futures plane too.
+    await call('lock the futures account', 'accounts/lock', { id: 'futures' })
+    await call('a locked futures account refuses a new order', 'futures/order', {
+      draft: { symbol: 'RB2611.SHFE', side: 'long', offset: 'open', type: 'market', qty: 1 },
+      requestId: 'fut-locked',
+    })
+    await call('and refuses cash moves', 'futures/account/deposit', { amount: 1000 })
+    await call('but still answers reads', 'futures/account/get')
+    await call('unlock the futures account', 'accounts/unlock', { id: 'futures' })
 
     if (opened.value.status !== 'filled') throw new Error('expected a filled open')
 

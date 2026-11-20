@@ -114,6 +114,7 @@ export type FuturesServiceErrorCode =
   | 'LIMIT_UNAVAILABLE'
   | 'MARGIN_UNAVAILABLE'
   | 'ACCOUNT_BLOCKED'
+  | 'ACCOUNT_LOCKED'
   | 'INVALID_ARGUMENT'
   | 'ORDER_NOT_FOUND'
   | 'ORDER_NOT_PENDING'
@@ -140,6 +141,12 @@ export interface FuturesServiceOptions {
   accountId?: string
   now?: () => Date
   logger?: { warn(message: string): void }
+  /**
+   * Human freeze from the account registry, read live so `accounts/lock`
+   * applies immediately. Resting orders keep matching (they are already in the
+   * book and can be cancelled); only new state changes are refused.
+   */
+  isLocked?: () => boolean
 }
 
 interface ContractCache {
@@ -245,6 +252,17 @@ export class FuturesService {
 
   private viewOf(state: FuturesAccountState): ReturnType<typeof toAccountView> {
     return toAccountView(state, this.options.repo.ledgerPath)
+  }
+
+  /**
+   * Refuse a state change from a registry-locked account. Mirrors the stock
+   * service: the RPC guard is not enough because tools resolve services
+   * directly and the futures route bypasses the paper guard.
+   */
+  private assertUnlocked(): void {
+    if (this.options.isLocked?.() === true) {
+      throw new FuturesError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`, 409)
+    }
   }
 
   private blocked(state: FuturesAccountState): FuturesError {
@@ -701,6 +719,7 @@ export class FuturesService {
 
   /** Replace the live futures ledger with one snapshot; allowed while blocked. */
   async restoreLedger(name: string, confirm: boolean): Promise<ReturnType<typeof toAccountView>> {
+    this.assertUnlocked()
     if (confirm !== true) throw new FuturesError('INVALID_ARGUMENT', '恢复账本需要 confirm=true', 400)
     try {
       return this.viewOf(await this.options.repo.restore(name))
@@ -744,6 +763,7 @@ export class FuturesService {
   }
 
   async place(input: FuturesDraft, requestId: string = randomUUID()): Promise<FuturesOrderView> {
+    this.assertUnlocked()
     const state = await this.sync()
     if (state.blocked) throw this.blocked(state)
     // Reject a bad lot before it reaches the ledger: a rejected order with
@@ -868,6 +888,7 @@ export class FuturesService {
 
   /** Wipe the account by replacing the ledger with one genesis event. */
   async reset(confirm: boolean): Promise<ReturnType<typeof toAccountView>> {
+    this.assertUnlocked()
     if (confirm !== true) throw new FuturesError('INVALID_ARGUMENT', '重置需要 confirm=true', 400)
     const ts = this.ts()
     await this.options.repo.backup(ts)
@@ -899,11 +920,13 @@ export class FuturesService {
 
   /** Add free cash; the amount is yuan from the UI, stored as integer cents. */
   async deposit(amount: number): Promise<ReturnType<typeof toAccountView>> {
+    this.assertUnlocked()
     return this.moveCash('deposit', amount)
   }
 
   /** Take free cash out; margin already reserved by positions cannot leave. */
   async withdraw(amount: number): Promise<ReturnType<typeof toAccountView>> {
+    this.assertUnlocked()
     return this.moveCash('withdraw', amount)
   }
 

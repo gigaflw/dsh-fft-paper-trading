@@ -50,6 +50,7 @@ import { ShortlistStore } from './store/shortlist.js'
 import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS, type AccountMeta, type DataSourceStatus } from './contract.js'
 import { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js'
 import type { FuturesMarketDataPort } from './data/futures-market-data-port.js'
+import { FUTURES_ACCOUNT_ID } from './futures-contract.js'
 
 export * from './contract.js'
 export { PaperService } from './service/paper-service.js'
@@ -191,6 +192,7 @@ export function apply(ctx: Context, options: ApplyOptions = {}): void {
     calendar: calendarPort,
     logger,
     ...(options.now === undefined ? {} : { now: options.now }),
+    isLocked: () => registry.lockedSync(FUTURES_ACCOUNT_ID),
   })
   const futuresHandler = createFuturesRpcHandler(futuresService)
   // The panel header reads one status: credential state plus the latest market

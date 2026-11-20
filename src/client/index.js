@@ -459,7 +459,8 @@ window.__ModuleLoader__.load({
     const directionText = (side, offset) => FUTURES_DIRECTION_TEXT[`${side}_${offset}`] ?? '—'
     const orderTypeText = type => type === 'limit' ? '限价' : '市价'
     const ERROR_TEXT = {
-      ACCOUNT_BLOCKED: '账户已锁定：可让 AI 助手从备份恢复，或重置/导出账本',
+      ACCOUNT_BLOCKED: '账本校验失败，账户已冻结：可让 AI 助手从备份恢复，或重置/导出账本',
+      ACCOUNT_LOCKED: '账户已被人工锁定：在账户菜单里解锁后才能下单',
       INVALID_ARGUMENT: '参数不合法',
       INVALID_SYMBOL: '证券代码不合法',
       INVALID_QTY: '数量不合法',

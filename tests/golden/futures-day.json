@@ -449,6 +449,102 @@
           "snapshots": []
         }
       }
+    },
+    {
+      "step": "lock the futures account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "futures",
+          "kind": "futures",
+          "name": "期货账户",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": true
+        }
+      }
+    },
+    {
+      "step": "a locked futures account refuses a new order",
+      "result": {
+        "ok": false,
+        "error": {
+          "code": "ACCOUNT_LOCKED",
+          "message": "账户「futures」已锁定，不能交易"
+        }
+      }
+    },
+    {
+      "step": "and refuses cash moves",
+      "result": {
+        "ok": false,
+        "error": {
+          "code": "ACCOUNT_LOCKED",
+          "message": "账户「futures」已锁定，不能交易"
+        }
+      }
+    },
+    {
+      "step": "but still answers reads",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "futures",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 996785,
+          "margin": 3200,
+          "equity": 999985,
+          "pnl": -15,
+          "pnlPct": -0.000015,
+          "todayPnl": 0,
+          "netCashFlow": 0,
+          "riskRatio": 0.003200048000720011,
+          "tradeDate": "2026-11-17",
+          "blocked": false,
+          "positions": [
+            {
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "side": "long",
+              "qty": 1,
+              "todayQty": 0,
+              "avgPrice": 3200,
+              "lastPrice": 3200,
+              "multiplier": 10,
+              "marginCents": 320000,
+              "marginRate": 0.1,
+              "unrealizedPnlCents": 0,
+              "unrealizedPnlPct": 0,
+              "deListDate": "2027-01-15"
+            }
+          ],
+          "settings": {
+            "initialCashCents": 100000000,
+            "marginUplift": 0,
+            "feeMultiplier": 1,
+            "warnRiskRatio": 0.8,
+            "liquidateRiskRatio": 1,
+            "closeBeforeDeListDays": 3,
+            "defaultFeePerLotCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/futures/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "unlock the futures account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "futures",
+          "kind": "futures",
+          "name": "期货账户",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": false
+        }
+      }
     }
   ],
   "store": {
