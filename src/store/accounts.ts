@@ -192,10 +192,14 @@ export class AccountRegistry {
     })
   }
 
-  /** `includeHidden` keeps the picker clean but lets tooling see everything. */
-  async view(options: { includeHidden?: boolean } = {}): Promise<AccountsView> {
+  /**
+   * `includeHidden` keeps the picker clean but lets tooling see everything;
+   * `kind` lets the stock panel ask for its plane without filtering client-side.
+   */
+  async view(options: { includeHidden?: boolean; kind?: AccountKind } = {}): Promise<AccountsView> {
     const state = await this.ready()
-    const accounts = options.includeHidden === true ? state.accounts : state.accounts.filter(item => item.hidden !== true)
+    let accounts = options.includeHidden === true ? state.accounts : state.accounts.filter(item => item.hidden !== true)
+    if (options.kind !== undefined) accounts = accounts.filter(item => item.kind === options.kind)
     return {
       accounts: accounts.map(meta => ({ ...meta })),
       defaultIds: { stock: DEFAULT_ACCOUNT_ID, futures: FUTURES_ACCOUNT_ID },

@@ -165,7 +165,7 @@
       /** The registry is metadata only: a failure leaves the panel on default. */
       const loadAccounts = useCallback(async () => {
         try {
-          const view = await rpc('accounts/list')
+          const view = await rpc('accounts/list', { kind: 'stock' })
           if (!alive.current) return
           setAccounts(view.accounts)
           setCurrentAccountId(previous => {

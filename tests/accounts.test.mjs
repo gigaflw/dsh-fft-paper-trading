@@ -353,6 +353,9 @@ test('host: one route serves every account by id or name', async () => {
       const listed = await call('accounts/list')
       assert.equal(listed.ok, true)
       assert.deepEqual(listed.value.accounts.map(item => item.id).sort(), ['default', 'futures'])
+      // The stock panel asks for its own plane instead of filtering client-side.
+      const stockOnly = await call('accounts/list', { kind: 'stock' })
+      assert.deepEqual(stockOnly.value.accounts.map(item => item.id), ['default'])
       assert.equal(listed.value.defaultIds.stock, 'default')
       // v1 only creates stock accounts: a futures entry would be a dead end.
       const futures = await call('accounts/create', { name: '第二期货', kind: 'futures' })

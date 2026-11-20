@@ -42,8 +42,13 @@ export function createAccountsRpcHandler(registry: AccountRegistry): PaperRpcHan
     try {
       const input = record(payload ?? {})
       switch (endpoint) {
-        case 'accounts/list':
-          return ok(await registry.view({ includeHidden: input.includeHidden === true }))
+        case 'accounts/list': {
+          const kind = kindOf(input.kind)
+          return ok(await registry.view({
+            includeHidden: input.includeHidden === true,
+            ...(kind === undefined ? {} : { kind }),
+          }))
+        }
         case 'accounts/create':
           if (kindOf(input.kind) === 'futures') {
             // Futures is still one ledger with its own panel; a second futures
