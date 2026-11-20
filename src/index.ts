@@ -340,11 +340,18 @@ export function apply(ctx: Context, options: ApplyOptions = {}): void {
     registerPaperTools(tools, resolveToolService)
     registerAccountTools(tools, { registry })
     registerFuturesTools(tools, futuresService)
-    // Resolve the default account on demand: an eagerly-created service would
-    // capture the pre-registry lock flag and ignore later `accounts/lock`.
+    // Resolve on demand: an eagerly-created service would capture the
+    // pre-registry lock flag and ignore later `accounts/lock`. The reference
+    // accepts the same forms as every other tool plus the legacy family words.
     registerLedgerTools(tools, {
-      stock: async () => (await resolveStock(undefined)).service,
-      futures: futuresService,
+      resolve: async reference => {
+        if (reference === 'futures') {
+          return { kind: 'futures', service: futuresService, accountId: FUTURES_ACCOUNT_ID }
+        }
+        const resolved = await resolveStock(reference === undefined || reference === '' || reference === 'stock' ? undefined : reference)
+        if (resolved.meta === undefined) throw new PaperError('INTERNAL', '账户解析缺少元数据')
+        return { kind: 'stock', service: resolved.service, accountId: resolved.meta.id }
+      },
     })
   })
 }

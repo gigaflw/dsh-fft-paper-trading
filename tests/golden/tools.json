@@ -316,7 +316,27 @@
         "summary": "账本 <home>/paper-trading/default/events.jsonl（股票）\n账户正常\n当前版本 v4 · 快照 0 份（可恢复 0 份）\n没有可恢复的快照：只能导出账本或重置账户",
         "data": {
           "account": "stock",
+          "accountId": "default",
           "path": "<home>/paper-trading/default/events.jsonl",
+          "blocked": false,
+          "ledgerVersion": 4,
+          "snapshots": []
+        }
+      }
+    },
+    {
+      "step": "ledger tool for a named account",
+      "tool": "paper_ledger",
+      "args": {
+        "action": "list",
+        "account": "工具账户"
+      },
+      "result": {
+        "summary": "账本 <home>/paper-trading/<id1>/events.jsonl（<id1>）\n账户正常\n当前版本 v4 · 快照 0 份（可恢复 0 份）\n没有可恢复的快照：只能导出账本或重置账户",
+        "data": {
+          "account": "stock",
+          "accountId": "<id1>",
+          "path": "<home>/paper-trading/<id1>/events.jsonl",
           "blocked": false,
           "ledgerVersion": 4,
           "snapshots": []

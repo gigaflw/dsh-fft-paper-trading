@@ -59,10 +59,24 @@ function snapshotLine(snapshot: Record<string, unknown>): string {
   return `- ${String(snapshot.name)} · ${stamp} · v${String(snapshot.ledgerVersion)} · seq ${String(snapshot.lastSeq)} · 交易日 ${String(snapshot.tradeDate)} · 现金 ${number(snapshot.cash).toFixed(2)} · ${state}${migrate}`
 }
 
-/** Register `paper_ledger`, the recovery entry point shared by both accounts. */
+/**
+ * One ledger, whichever plane or stock account it belongs to.
+ *
+ * `account` is the same reference other tools use (display name or id); the
+ * legacy family keywords `stock` / `futures` still work, and an omitted value
+ * means the default stock account.
+ */
+export interface LedgerTarget {
+  kind: 'stock' | 'futures'
+  service: PaperService | FuturesService
+  /** Registry id of the resolved ledger, for the tool's structured output. */
+  accountId: string
+}
+
+/** Register `paper_ledger`, the recovery entry point for every ledger. */
 export function registerLedgerTools(
   tools: ToolsLike,
-  services: { stock: () => Promise<PaperService>; futures: FuturesService },
+  services: { resolve: (reference?: string) => Promise<LedgerTarget> },
 ): void {
   const base = {
     parameters,
@@ -75,32 +89,34 @@ export function registerLedgerTools(
   tools.register(defineTool({
     ...base,
     name: 'paper_ledger',
-    description: '查看账本状态与可恢复快照并恢复（股票/期货，进程内生效，无需重启）；恢复前需账户未锁定。',
+    description: '查看账本状态与可恢复快照并恢复（默认股票账户，可指定账户名/id 或 stock/futures，进程内生效，无需重启）；恢复前需账户未锁定。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
-      const futures = input.account === 'futures'
-      const account = futures ? services.futures : await services.stock()
       try {
+        const reference = typeof input.account === 'string' ? input.account.trim() : undefined
+        const target = await services.resolve(reference)
+        const account = target.service
+        const futures = target.kind === 'futures'
         const action = input.action === 'restore' || input.action === 'backup' ? input.action : 'list'
         if (action === 'restore') {
           const name = typeof input.name === 'string' ? input.name.trim() : ''
           if (name === '') return { summary: '失败：restore 需要 name（先用 action=list 查看快照）', data: { error: 'missing name' } }
           if (input.confirm !== true) return { summary: '失败：restore 需要 confirm=true', data: { error: 'missing confirm' } }
           const view = await account.restoreLedger(name, true) as unknown as Record<string, unknown>
-          const data = { account: futures ? 'futures' : 'stock', name, view }
+          const data = { account: target.kind, accountId: target.accountId, name, view }
           return { summary: `已恢复 ${name}\n${accountSummary(view)}`, data }
         }
         if (action === 'backup') {
           const backedUp = await account.backupLedger()
           return {
             summary: backedUp ? '已备份当前账本到 backups/' : '账本尚未创建，无需备份',
-            data: { account: futures ? 'futures' : 'stock', backedUp },
+            data: { account: target.kind, accountId: target.accountId, backedUp },
           }
         }
         const view = await account.ledgerSnapshots()
         const restorable = view.snapshots.filter(snapshot => snapshot.valid).length
         const header = [
-          `账本 ${view.path}${futures ? '（期货）' : '（股票）'}`,
+          `账本 ${view.path}${futures ? '（期货）' : `（${target.accountId === 'default' ? '股票' : target.accountId}）`}`,
           view.blocked
             ? `已锁定 · 原因：${view.blockedReason ?? '未记录'}`
             : '账户正常',
@@ -112,7 +128,7 @@ export function registerLedgerTools(
         else lines.push('没有可恢复的快照：只能导出账本或重置账户')
         return {
           summary: lines.join('\n'),
-          data: { account: futures ? 'futures' : 'stock', ...view },
+          data: { account: target.kind, accountId: target.accountId, ...view },
         }
       } catch (error) {
         return fail(error)

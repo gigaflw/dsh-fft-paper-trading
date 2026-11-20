@@ -217,6 +217,7 @@ test('golden: agent tool surface', async () => {
     await record.tool('account admin tool', 'paper_account', { action: 'list' })
     await record.tool('account create tool', 'paper_account', { action: 'create', name: '工具账户', initialCash: 200000 })
     await record.tool('ledger tool', 'paper_ledger', { action: 'list' })
+    await record.tool('ledger tool for a named account', 'paper_ledger', { action: 'list', account: '工具账户' })
     await record.tool('futures contracts tool', 'paper_futures_contracts', {})
     await record.tool('futures quote tool', 'paper_futures_quote', { symbols: ['RB2611.SHFE'] })
     await record.tool('futures preview tool', 'paper_futures_preview', {
