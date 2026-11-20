@@ -277,6 +277,11 @@ export class AccountRegistry {
   /** Change the display name only; the directory id never moves. */
   async rename(reference: string, name: string): Promise<AccountMeta> {
     const target = await this.resolve(reference)
+    if (target.id === FUTURES_ACCOUNT_ID) {
+      // The futures plane has a fixed panel and never reads the registry name,
+      // so renaming it would only create misleading metadata.
+      throw new PaperError('INVALID_ARGUMENT', '期货账户名称固定，不可改名', 400)
+    }
     const next = validateName(name)
     await this.mutate(state => {
       const meta = state.accounts.find(item => item.id === target.id) as AccountMeta

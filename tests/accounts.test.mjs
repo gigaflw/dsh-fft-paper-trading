@@ -136,6 +136,9 @@ test('registry: create, rename, and duplicate names are allowed', async () => {
     await assert.rejects(() => registry.hide('default'), /默认账户不能隐藏/)
     // An explicit empty reference is a mistake, not "the default account".
     await assert.rejects(() => registry.resolve('  '), /账户名不能为空/)
+    // The futures pseudo-account is fixed: renaming it would not change any
+    // panel, and hiding it is already refused.
+    await assert.rejects(() => registry.rename('futures', '第二期货'), /期货账户名称固定/)
   })
 })
 
