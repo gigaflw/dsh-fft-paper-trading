@@ -37,7 +37,7 @@
      * after the panel switched belongs to the old account and must not retarget
      * later flushes.
      */
-    function useAccountNotes(accountId, tab) {
+    function useAccountNotes(request, accountId, tab) {
       const [text, setText] = useState('')
       const [meta, setMeta] = useState(null)
       const [status, setStatus] = useState('idle')
@@ -55,7 +55,7 @@
         if (id === null || id === undefined) return
         setStatus('saving')
         try {
-          const view = await rpc('note/set', { text: value }, id)
+          const view = await request('note/set', { text: value }, id)
           if (!alive.current || ref.current.accountId !== id) return
           ref.current = { accountId: id, saved: value }
           setMeta(view)
@@ -96,7 +96,7 @@
         setStatus('idle')
         setError('')
         try {
-          const view = await rpc('note/get', {}, id)
+          const view = await request('note/get', {}, id)
           if (!alive.current || ref.current.accountId !== id) return
           ref.current = { accountId: id, saved: view.text }
           textRef.current = view.text
@@ -145,14 +145,14 @@
     /**
      * The stock account registry and the selected account.
      *
-     * One place applies the selection: the module-level `activeAccount` stamps
+     * One place applies the selection: the dashboard's scope ref stamps
      * account-scoped requests, so it is set before the reload; per-account view
      * state is cleared so nothing from the previous ledger (a preview, a
      * receipt) survives the switch. The futures ledger is filtered out: this
      * panel only manages stock accounts, and picking futures would fail every
      * request.
      */
-    function useAccountRegistry({ tab, loadAll, loadReviewDetail, loadCompare, clearView, setBusy, setError, setNotice, onNotes }) {
+    function useAccountRegistry({ scope, request, tab, loadAll, loadReviewDetail, loadCompare, clearView, setBusy, setError, setNotice, onNotes }) {
       const [accounts, setAccounts] = useState(null)
       const [currentAccountId, setCurrentAccountId] = useState(null)
       const [accountEditor, setAccountEditor] = useState(null)
@@ -165,7 +165,7 @@
       /** The registry is metadata only: a failure leaves the panel on default. */
       const loadAccounts = useCallback(async () => {
         try {
-          const view = await rpc('accounts/list', { kind: 'stock' })
+          const view = await request('accounts/list', { kind: 'stock' })
           if (!alive.current) return
           setAccounts(view.accounts)
           setCurrentAccountId(previous => {
@@ -189,7 +189,7 @@
 
       useEffect(() => {
         if (currentAccountId === null) return
-        activeAccount = currentAccountId
+        scope.current = currentAccountId
         writeCurrentAccount(currentAccountId)
         clearView()
         void loadAll()
@@ -202,7 +202,7 @@
 
       useEffect(() => {
         void loadAccounts()
-        return () => { activeAccount = null }
+        return () => { scope.current = null }
       }, [loadAccounts])
 
       /** Create/rename go through the registry, then re-read it. */
@@ -212,16 +212,16 @@
         setBusy(true)
         try {
           if (mode === 'create') {
-            const created = await rpc('accounts/create', {
+            const created = await request('accounts/create', {
               name: values.name.trim(),
               ...(values.cash.trim() === '' ? {} : { initialCash: Number(values.cash) }),
             })
             await loadAccounts()
             setNotice(`已创建账户「${created.name}」`)
-            activeAccount = created.id
+            scope.current = created.id
             setCurrentAccountId(created.id)
           } else {
-            await rpc('accounts/rename', { id: currentAccountId, name: values.name.trim() })
+            await request('accounts/rename', { id: currentAccountId, name: values.name.trim() })
             await loadAccounts()
             setNotice('账户已改名')
           }
@@ -247,7 +247,7 @@
         setBusy(true)
         try {
           if (action === 'hide') {
-            await rpc('accounts/hide', { id: currentAccount.id })
+            await request('accounts/hide', { id: currentAccount.id })
             setNotice(`已隐藏「${currentAccount.name}」`)
           } else {
             await rpc(currentAccount.locked ? 'accounts/unlock' : 'accounts/lock', { id: currentAccount.id })
@@ -277,7 +277,7 @@
      * still being typed must show what the stock costs. A nonce forces a
      * re-preview after a fill or a reset without touching the form.
      */
-    function useTicketPreview(form) {
+    function useTicketPreview(request, form) {
       const [preview, setPreview] = useState(null)
       const [previewState, setPreviewState] = useState('idle')
       const [previewError, setPreviewError] = useState('')
@@ -337,7 +337,7 @@
           }
           if (quoteSymbol.current === current.symbol) return
           const timer = setTimeout(() => {
-            rpc('market/quote', { symbols: [current.symbol] })
+            request('market/quote', { symbols: [current.symbol] })
               .then(result => {
                 if (!alive.current || seq !== previewSeq.current) return
                 const found = result.quotes[0] ?? null
@@ -368,7 +368,7 @@
         }
         setPreviewState('loading')
         const timer = setTimeout(() => {
-          rpc('order/preview', current)
+          request('order/preview', current)
             .then(result => {
               if (!alive.current || seq !== previewSeq.current) return
               setPreview(result)

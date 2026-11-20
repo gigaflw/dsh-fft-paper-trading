@@ -76,7 +76,12 @@
         note: '',
       })
 
-      const ticket = useTicketPreview(form)
+      const accountScope = useRef(null)
+      /** This mount's account-scoped request; an explicit account wins (notes). */
+      const request = useCallback((endpoint, payload, account) =>
+        rpc(endpoint, payload, account === undefined ? accountScope.current : account), [])
+
+      const ticket = useTicketPreview(request, form)
       const {
         preview, previewState, previewError, symbolQuote, quote, quoteError, quoteNotice,
         previewDraft, draft, maybeRefreshQuote, forceQuoteRefresh, invalidate: invalidateTicket, bump: bumpTicket,
@@ -98,12 +103,12 @@
         const requestedPeriod = reviewPeriod
         try {
           const [nextAccount, nextOrders, nextTrades, nextReview, nextSession, nextDataSource] = await Promise.all([
-            rpc('account/get'),
-            rpc('list/orders'),
-            rpc('list/trades'),
-            rpc('review/get', { period: reviewPeriod }),
-            rpc('market/status'),
-            rpc('market/data-source'),
+            request('account/get'),
+            request('list/orders'),
+            request('list/trades'),
+            request('review/get', { period: reviewPeriod }),
+            request('market/status'),
+            request('market/data-source'),
           ])
           if (!alive.current) return null
           // A poll started before a period switch carries the old review;
@@ -129,9 +134,9 @@
         const seq = ++detailSeq.current
         try {
           const [nextDaily, nextCash, nextTrips] = await Promise.all([
-            rpc('review/daily'),
-            rpc('cash/flow'),
-            rpc('review/roundtrips'),
+            request('review/daily'),
+            request('cash/flow'),
+            request('review/roundtrips'),
           ])
           if (!alive.current || seq !== detailSeq.current) return
           setDaily(nextDaily)
@@ -144,7 +149,7 @@
 
       const loadCompare = useCallback(async () => {
         try {
-          const view = await rpc('compare/get')
+          const view = await request('compare/get')
           if (!alive.current) return
           setCompareData(view)
           setCompareError('')
@@ -175,6 +180,7 @@
       }, [ticket.clear])
 
       const registry = useAccountRegistry({
+        scope: accountScope, request,
         tab,
         loadAll,
         loadReviewDetail,
@@ -190,11 +196,11 @@
         accountEditor, setAccountEditor, submitAccountEditor, runAccountAction,
       } = registry
 
-      const notes = useAccountNotes(currentAccountId, tab)
+      const notes = useAccountNotes(request, currentAccountId, tab)
 
       const tick = useCallback(async () => {
         try {
-          const result = await rpc('tick')
+          const result = await request('tick')
           if (!alive.current) return
           if (result.filled.length > 0) setNotice(`成交 ${result.filled.length} 笔`)
           if (result.notices.length > 0) setNotice(result.notices.join('；'))
@@ -221,7 +227,7 @@
           return
         }
         try {
-          const result = await rpc('market/bars', { symbol: symbol.trim(), interval: barInterval, limit: 80 })
+          const result = await request('market/bars', { symbol: symbol.trim(), interval: barInterval, limit: 80 })
           if (!alive.current || seq !== barsSeq.current) return
           if (result.state === 'ok') {
             setBars(result.bars ?? [])
@@ -243,7 +249,7 @@
         setSearchAttempted(true)
         const seq = ++searchSeq.current
         try {
-          const hits = await rpc('market/search', { query: searchQuery.trim(), limit: 12 })
+          const hits = await request('market/search', { query: searchQuery.trim(), limit: 12 })
           if (alive.current && seq === searchSeq.current) setSearchHits(hits)
         } catch (cause) {
           if (alive.current && seq === searchSeq.current) setError(errorOf(cause))
@@ -253,7 +259,7 @@
       const loadMarket = useCallback(async (page = 1) => {
         const seq = ++marketSeq.current
         try {
-          const next = await rpc('market/list', { board: marketBoard, page, pageSize: 50 })
+          const next = await request('market/list', { board: marketBoard, page, pageSize: 50 })
           if (alive.current && seq === marketSeq.current) setMarketList(next)
         } catch (cause) {
           if (alive.current && seq === marketSeq.current) setError(errorOf(cause))
@@ -284,7 +290,7 @@
       useEffect(() => {
         if (tab === 'market') {
           void loadMarket(1)
-          rpc('shortlist/get').then(result => { if (alive.current) setShortlist(result.symbols ?? []) }).catch(() => {})
+          request('shortlist/get').then(result => { if (alive.current) setShortlist(result.symbols ?? []) }).catch(() => {})
         }
       }, [tab, marketBoard, loadMarket])
 
@@ -302,7 +308,7 @@
         setShortlist(next)
         const seq = ++shortlistSeq.current
         try {
-          const result = await rpc('shortlist/set', { symbols: next })
+          const result = await request('shortlist/set', { symbols: next })
           if (!alive.current || seq !== shortlistSeq.current) return
           shortlistRef.current = result.symbols ?? next
           setShortlist(result.symbols ?? next)
@@ -311,7 +317,7 @@
           setError(errorOf(cause))
           // The server is the source of truth after a failed write.
           try {
-            const fresh = await rpc('shortlist/get')
+            const fresh = await request('shortlist/get')
             if (alive.current && seq === shortlistSeq.current) {
               shortlistRef.current = fresh.symbols ?? []
               setShortlist(fresh.symbols ?? [])
@@ -341,7 +347,7 @@
               id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             }
           }
-          const order = await rpc('order/place', { draft: current, requestId: placeKey.current.id })
+          const order = await request('order/place', { draft: current, requestId: placeKey.current.id })
           const snapshot = await loadAll(true)
           const fill = snapshot === null ? undefined : snapshot.trades.find(item => item.orderId === order.id)
           setReceipt({ order, fill, cash: snapshot === null ? undefined : snapshot.account.cash })
@@ -359,7 +365,7 @@
       const cancel = useCallback(async orderId => {
         setBusy(true)
         try {
-          await rpc('order/cancel', { orderId })
+          await request('order/cancel', { orderId })
           await loadAll(true)
         } catch (cause) {
           // A lost response can make the retry see an already-finished order;
@@ -386,7 +392,7 @@
 
       const exportLedger = useCallback(async () => {
         try {
-          const result = await rpc('account/export')
+          const result = await request('account/export')
           if (!result.exists || !result.content) {
             setNotice(result.notice ?? '账本文件尚未创建')
             return
@@ -414,7 +420,7 @@
         if (cents === null) return
         setBusy(true)
         try {
-          setAccount(await rpc('account/reset', { confirm: true, initialCash: cents / 100 }))
+          setAccount(await request('account/reset', { confirm: true, initialCash: cents / 100 }))
           invalidateTicket()
           setReceipt(null)
           await loadAll(true)
@@ -439,7 +445,7 @@
         const depositing = cashSide === 'deposit'
         setBusy(true)
         try {
-          setAccount(await rpc(depositing ? 'account/deposit' : 'account/withdraw', { amount }))
+          setAccount(await request(depositing ? 'account/deposit' : 'account/withdraw', { amount }))
           await loadAll(true)
           await loadReviewDetail()
           bumpTicket()

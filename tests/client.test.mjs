@@ -112,7 +112,7 @@ test('browser bundle: factory loads and registers the sidebar panel', () => {
   assert.ok(!source.includes('查行情'), 'the quote button must be gone')
   // An unfinished draft (limit with no price) still shows the price: the
   // ticket falls back to a quote-only request instead of a 0.00 preview.
-  assert.ok(source.includes("rpc('market/quote'"), 'an unfinished draft asks for the price alone')
+  assert.ok(source.includes("request('market/quote'"), 'an unfinished draft asks for the price alone')
   assert.match(source, /previewBlockReason/)
   assert.match(source, /searchHits, searchAttempted/)
   assert.ok(!source.includes("'状态', ''"), 'tables must label the action column')
@@ -343,7 +343,7 @@ test('browser bundle: header badge carries the four data-source states', () => {
   assert.match(source, /\.pt-source\[data-state="configured"\] \.pt-source-dot/)
   assert.match(source, /\.pt-source\[data-state="invalid"\] \.pt-source-dot/)
   // Both dashboards refresh the badge inside the account bundle they already poll.
-  assert.equal(source.match(/rpc\('market\/data-source'\)/g).length, 2)
+  assert.equal(source.match(/(?:rpc|request)\('market\/data-source'\)/g).length, 2)
 })
 
 

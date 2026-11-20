@@ -501,19 +501,16 @@
     })
 
     /**
-     * Account the stock panel is showing. The host has no "current account":
-     * every account-scoped call names its target, so the panel keeps the
-     * selection in one module variable and `rpc` stamps it on the envelope.
+     * Send one RPC. `account` names the stock ledger for account-scoped
+     * endpoints; the caller decides it (the stock dashboard keeps the selection
+     * in a ref owned by its mount), so nothing here depends on module state.
+     * Futures ledgers and the account registry have no account dimension of
+     * their own and never receive the field.
      */
-    let activeAccount = null
-
     async function rpc(endpoint, payload, account) {
       const requestBody = { endpoint, payload: payload ?? {} }
-      // Futures ledgers and the account registry have no account dimension of
-      // their own; everything else is answered by the selected stock account.
-      const target = account === undefined ? activeAccount : account
-      if (target !== null && target !== undefined && !endpoint.startsWith('futures/') && !endpoint.startsWith('accounts/')) {
-        requestBody.account = target
+      if (account !== null && account !== undefined && !endpoint.startsWith('futures/') && !endpoint.startsWith('accounts/')) {
+        requestBody.account = account
       }
       const response = await fetch(ROUTE, {
         method: 'POST',
