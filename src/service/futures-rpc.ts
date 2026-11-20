@@ -120,7 +120,7 @@ export function createFuturesRpcHandler(service: FuturesService): FuturesRpcHand
         case 'futures/tick':
           return ok(await service.tick())
         default:
-          throw new FuturesError('INVALID_ARGUMENT', `未知 endpoint: ${endpoint}`, 404)
+          throw new FuturesError('INVALID_ARGUMENT', `未知 endpoint: ${endpoint}`)
       }
     } catch (error) {
       return failure(error, item => item instanceof FuturesError)

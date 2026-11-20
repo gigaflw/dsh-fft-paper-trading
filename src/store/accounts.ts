@@ -223,21 +223,21 @@ export class AccountRegistry {
   async resolve(reference: string | undefined, kind: AccountKind = 'stock'): Promise<AccountMeta> {
     const state = await this.ready()
     if (reference === undefined) return this.requireDefault(state, kind)
-    if (reference.trim() === '') throw new PaperError('INVALID_ARGUMENT', '账户名不能为空', 400)
+    if (reference.trim() === '') throw new PaperError('INVALID_ARGUMENT', '账户名不能为空')
     const byId = state.accounts.find(item => item.id === reference)
     if (byId !== undefined) return byId
     const byName = state.accounts.filter(item => item.kind === kind && item.name === reference)
     if (byName.length === 1) return byName[0] as AccountMeta
     if (byName.length > 1) {
-      throw new PaperError('INVALID_ARGUMENT', `账户名「${reference}」不唯一，请改用账户 id：${byName.map(item => item.id).join('、')}`, 409)
+      throw new PaperError('INVALID_ARGUMENT', `账户名「${reference}」不唯一，请改用账户 id：${byName.map(item => item.id).join('、')}`)
     }
-    throw new PaperError('ACCOUNT_NOT_FOUND', `没有名为「${reference}」的账户`, 404)
+    throw new PaperError('ACCOUNT_NOT_FOUND', `没有名为「${reference}」的账户`)
   }
 
   private requireDefault(state: AccountsFile, kind: AccountKind): AccountMeta {
     const id = kind === 'futures' ? FUTURES_ACCOUNT_ID : DEFAULT_ACCOUNT_ID
     const meta = state.accounts.find(item => item.id === id)
-    if (meta === undefined) throw new PaperError('ACCOUNT_NOT_FOUND', `默认账户 ${id} 不存在`, 404)
+    if (meta === undefined) throw new PaperError('ACCOUNT_NOT_FOUND', `默认账户 ${id} 不存在`)
     return meta
   }
 
@@ -248,7 +248,7 @@ export class AccountRegistry {
     await this.mutate(state => {
       const live = state.accounts.filter(item => item.kind === kind)
       const limit = this.options.limits?.maxPerKind ?? MAX_ACCOUNTS_PER_KIND
-      if (live.length >= limit) throw new PaperError('ACCOUNT_LIMIT', `账户数量已达上限 ${limit}`, 409)
+      if (live.length >= limit) throw new PaperError('ACCOUNT_LIMIT', `账户数量已达上限 ${limit}`)
       created = {
         id: this.nextId(state),
         kind,
@@ -280,7 +280,7 @@ export class AccountRegistry {
     if (target.id === FUTURES_ACCOUNT_ID) {
       // The futures plane has a fixed panel and never reads the registry name,
       // so renaming it would only create misleading metadata.
-      throw new PaperError('INVALID_ARGUMENT', '期货账户名称固定，不可改名', 400)
+      throw new PaperError('INVALID_ARGUMENT', '期货账户名称固定，不可改名')
     }
     const next = validateName(name)
     await this.mutate(state => {
@@ -296,7 +296,7 @@ export class AccountRegistry {
     if (patch.hidden === true && (target.id === DEFAULT_ACCOUNT_ID || target.id === FUTURES_ACCOUNT_ID)) {
       // Hiding the default would leave the panel without a picker and no way
       // back from the UI; the default account stays visible.
-      throw new PaperError('INVALID_ARGUMENT', `默认账户不能隐藏（${target.name}）`, 400)
+      throw new PaperError('INVALID_ARGUMENT', `默认账户不能隐藏（${target.name}）`)
     }
     await this.mutate(state => {
       const meta = state.accounts.find(item => item.id === target.id) as AccountMeta
@@ -324,10 +324,10 @@ export class AccountRegistry {
 
 /** Trim and reject empty or over-long display names. Duplicates are allowed. */
 function validateName(value: unknown): string {
-  if (typeof value !== 'string') throw new PaperError('INVALID_ARGUMENT', '账户名必须是字符串', 400)
+  if (typeof value !== 'string') throw new PaperError('INVALID_ARGUMENT', '账户名必须是字符串')
   const name = value.trim()
-  if (name === '') throw new PaperError('INVALID_ARGUMENT', '账户名不能为空', 400)
-  if ([...name].length > ACCOUNT_NAME_MAX) throw new PaperError('INVALID_ARGUMENT', `账户名不能超过 ${ACCOUNT_NAME_MAX} 个字符`, 400)
+  if (name === '') throw new PaperError('INVALID_ARGUMENT', '账户名不能为空')
+  if ([...name].length > ACCOUNT_NAME_MAX) throw new PaperError('INVALID_ARGUMENT', `账户名不能超过 ${ACCOUNT_NAME_MAX} 个字符`)
   return name
 }
 

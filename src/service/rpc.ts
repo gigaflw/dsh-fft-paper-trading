@@ -37,7 +37,7 @@ const MUTATING_ENDPOINTS: ReadonlySet<string> = new Set([
 /** Refuse a state change on a locked account before the service sees it. */
 function guardAccount(meta: AccountMeta | undefined, endpoint: string): void {
   if (meta === undefined || !MUTATING_ENDPOINTS.has(endpoint)) return
-  if (meta.locked === true) throw new PaperError('ACCOUNT_LOCKED', `账户「${meta.name}」已锁定，不能交易`, 409)
+  if (meta.locked === true) throw new PaperError('ACCOUNT_LOCKED', `账户「${meta.name}」已锁定，不能交易`)
 }
 
 const guard = argumentGuards(message => new PaperError('INVALID_ARGUMENT', message))
@@ -136,7 +136,7 @@ export function createPaperRpcHandler(source: PaperService | PaperRpcResolver, o
   const resolve: PaperRpcResolver = typeof source === 'function' ? source : async () => ({ service: source })
   return async (endpoint, payload, signal, account) => {
     try {
-      if (signal.aborted) throw new PaperError('INVALID_ARGUMENT', '请求已取消', 499)
+      if (signal.aborted) throw new PaperError('INVALID_ARGUMENT', '请求已取消')
       const { service, meta } = await resolve(account)
       guardAccount(meta, endpoint)
       switch (endpoint) {
@@ -166,11 +166,11 @@ export function createPaperRpcHandler(source: PaperService | PaperRpcResolver, o
         case 'ledger/backup':
           return ok({ backedUp: await service.backupLedger() })
         case 'note/get': {
-          if (options.notes === undefined || meta === undefined) throw new PaperError('INTERNAL', '笔记存储不可用', 500)
+          if (options.notes === undefined || meta === undefined) throw new PaperError('INTERNAL', '笔记存储不可用')
           return ok(await options.notes.read(meta.id))
         }
         case 'note/set': {
-          if (options.notes === undefined || meta === undefined) throw new PaperError('INTERNAL', '笔记存储不可用', 500)
+          if (options.notes === undefined || meta === undefined) throw new PaperError('INTERNAL', '笔记存储不可用')
           const input = record(payload ?? {})
           return ok(await options.notes.write(meta.id, input.text))
         }
@@ -253,7 +253,7 @@ export function createPaperRpcHandler(source: PaperService | PaperRpcResolver, o
           return ok(await service.review(period(input.period)))
         }
         default:
-          throw new PaperError('INVALID_ARGUMENT', `未知 endpoint: ${endpoint}`, 404)
+          throw new PaperError('INVALID_ARGUMENT', `未知 endpoint: ${endpoint}`)
       }
     } catch (error) {
       return failure(error, item => item instanceof PaperError)

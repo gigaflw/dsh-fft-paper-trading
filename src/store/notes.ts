@@ -44,7 +44,7 @@ export class AccountNotes {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return { text: '', bytes: 0, maxBytes: this.maxBytes }
       }
-      throw new PaperError('INTERNAL', `读取笔记失败：${error instanceof Error ? error.message : String(error)}`, 500)
+      throw new PaperError('INTERNAL', `读取笔记失败：${error instanceof Error ? error.message : String(error)}`)
     }
     let updatedAt: string | undefined
     try {
@@ -62,17 +62,17 @@ export class AccountNotes {
 
   /** Replace the whole note atomically; an empty string clears it. */
   async write(accountId: string, text: unknown): Promise<NoteView> {
-    if (typeof text !== 'string') throw new PaperError('INVALID_ARGUMENT', '笔记内容必须是文本', 400)
+    if (typeof text !== 'string') throw new PaperError('INVALID_ARGUMENT', '笔记内容必须是文本')
     const bytes = byteLength(text)
     if (bytes > this.maxBytes) {
-      throw new PaperError('INVALID_ARGUMENT', `笔记不能超过 ${Math.round(this.maxBytes / 1000)} KB（当前 ${Math.round(bytes / 1000)} KB）`, 413)
+      throw new PaperError('INVALID_ARGUMENT', `笔记不能超过 ${Math.round(this.maxBytes / 1000)} KB（当前 ${Math.round(bytes / 1000)} KB）`)
     }
     const previous = this.queues.get(accountId) ?? Promise.resolve()
     const next = previous.then(async () => {
       try {
         await writeFileAtomic(notePath(this.home, accountId), text)
       } catch (error) {
-        throw new PaperError('INTERNAL', `保存笔记失败：${error instanceof Error ? error.message : String(error)}`, 500)
+        throw new PaperError('INTERNAL', `保存笔记失败：${error instanceof Error ? error.message : String(error)}`)
       }
     })
     this.queues.set(accountId, next.catch(() => undefined))

@@ -60,7 +60,10 @@ import {
   toReview,
 } from '../core/futures/views.js'
 import { LedgerAdmin } from './ledger-admin.js'
+import { FuturesError, type FuturesServiceErrorCode } from './errors.js'
 import { QuoteRefreshGate } from './quote-gate.js'
+
+export { FuturesError, type FuturesServiceErrorCode }
 import { classifyDataProblem, friendlyDataNotice } from './data-source.js'
 import type { DataProblem, LedgerSnapshotsView } from '../contract.js'
 import type {
@@ -102,35 +105,6 @@ export function normalizeFuturesSymbol(raw: string): string {
   if (dot <= 0 || dot === text.length - 1) return text
   const suffix = SYMBOL_SUFFIX[text.slice(dot + 1)]
   return suffix === undefined ? text : `${text.slice(0, dot)}.${suffix}`
-}
-
-export type FuturesServiceErrorCode =
-  | 'INSUFFICIENT_MARGIN'
-  | 'INSUFFICIENT_CASH'
-  | 'INSUFFICIENT_POSITION'
-  | 'CONTRACT_NOT_FOUND'
-  | 'CONTRACT_EXPIRED'
-  | 'NO_VOLUME'
-  | 'LIMIT_UNAVAILABLE'
-  | 'MARGIN_UNAVAILABLE'
-  | 'ACCOUNT_BLOCKED'
-  | 'ACCOUNT_LOCKED'
-  | 'INVALID_ARGUMENT'
-  | 'ORDER_NOT_FOUND'
-  | 'ORDER_NOT_PENDING'
-  | 'SESSION_CLOSED'
-  | 'INTERNAL'
-  | 'LEDGER_RESTORE_FAILED'
-
-export class FuturesError extends Error {
-  constructor(
-    readonly code: FuturesServiceErrorCode,
-    message: string,
-    readonly status = 400,
-  ) {
-    super(message)
-    this.name = 'FuturesError'
-  }
 }
 
 export interface FuturesServiceOptions {
@@ -259,7 +233,7 @@ export class FuturesService {
         viewOf: state => this.viewOf(state),
         assertUnlocked: () => this.assertUnlocked(),
         ts: () => this.ts(),
-        makeError: (code, message, status) => new FuturesError(code as FuturesServiceErrorCode, message, status),
+        makeError: (code, message) => new FuturesError(code as FuturesServiceErrorCode, message),
         label: 'paper-trading: futures',
         ...(this.options.logger === undefined ? {} : { logger: this.options.logger }),
       })
@@ -282,13 +256,13 @@ export class FuturesService {
    */
   private assertUnlocked(): void {
     if (this.options.isLocked?.() === true) {
-      throw new FuturesError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`, 409)
+      throw new FuturesError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`)
     }
   }
 
   private blocked(state: FuturesAccountState): FuturesError {
     const reason = reasonText(state.blockedReason)
-    return new FuturesError('ACCOUNT_BLOCKED', `账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续${reason === '' ? '' : `（${reason}）`}`, 409)
+    return new FuturesError('ACCOUNT_BLOCKED', `账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续${reason === '' ? '' : `（${reason}）`}`)
   }
 
   // ---------------------------------------------------------------- account --
@@ -767,7 +741,7 @@ export class FuturesService {
 
   private assertLotQty(qty: number): void {
     if (!Number.isInteger(qty) || qty <= 0) {
-      throw new FuturesError('INVALID_ARGUMENT', '手数必须是正整数', 400)
+      throw new FuturesError('INVALID_ARGUMENT', '手数必须是正整数')
     }
   }
 
@@ -804,7 +778,7 @@ export class FuturesService {
     const nowIso = this.ts()
     const phase = phaseAt(nowIso, state.tradeDate, data.sessions)
     if (phase !== 'trading') {
-      throw new FuturesError('SESSION_CLOSED', '当前非期货日盘连续交易时段，不接受委托', 409)
+      throw new FuturesError('SESSION_CLOSED', '当前非期货日盘连续交易时段，不接受委托')
     }
     const outcome = await this.options.repo.transact<PlaceOutcome>(current => {
       const duplicate = Object.values(current.orders).find(order => order.requestId === requestId)
@@ -823,19 +797,19 @@ export class FuturesService {
     })
     if (outcome.value.duplicateId !== undefined) {
       const duplicate = outcome.state.orders[outcome.value.duplicateId]
-      if (duplicate === undefined) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在', 404)
+      if (duplicate === undefined) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在')
       const limitPrice = typeof draft.limitPrice === 'number' ? draft.limitPrice : undefined
       const price = typeof draft.price === 'number' ? draft.price : undefined
       if (duplicate.symbol !== draft.symbol || duplicate.side !== draft.side
         || duplicate.offset !== draft.offset || duplicate.type !== draft.type || duplicate.qty !== draft.qty
         || duplicate.limitPrice !== limitPrice || duplicate.price !== price) {
-        throw new FuturesError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用', 409)
+        throw new FuturesError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用')
       }
       return toOrderView(duplicate)
     }
     if (outcome.value.blocked === true || outcome.state.blocked) throw this.blocked(outcome.state)
     const order = outcome.value.orderId === undefined ? undefined : outcome.state.orders[outcome.value.orderId]
-    if (order === undefined) throw new FuturesError('INTERNAL', '订单未写入账本', 500)
+    if (order === undefined) throw new FuturesError('INTERNAL', '订单未写入账本')
     return toOrderView(order)
   }
 
@@ -850,10 +824,10 @@ export class FuturesService {
       return { events: result.events, value: {} }
     })
     if (outcome.value.blocked === true) throw this.blocked(outcome.state)
-    if (outcome.value.missing === true) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在', 404)
-    if (outcome.value.notPending === true) throw new FuturesError('ORDER_NOT_PENDING', '订单不是挂单状态', 409)
+    if (outcome.value.missing === true) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在')
+    if (outcome.value.notPending === true) throw new FuturesError('ORDER_NOT_PENDING', '订单不是挂单状态')
     const order = outcome.state.orders[orderId]
-    if (order === undefined) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在', 404)
+    if (order === undefined) throw new FuturesError('ORDER_NOT_FOUND', '订单不存在')
     return toOrderView(order)
   }
 
@@ -918,7 +892,7 @@ export class FuturesService {
   /** Wipe the account by replacing the ledger with one genesis event. */
   async reset(confirm: boolean): Promise<ReturnType<typeof toAccountView>> {
     this.assertUnlocked()
-    if (confirm !== true) throw new FuturesError('INVALID_ARGUMENT', '重置需要 confirm=true', 400)
+    if (confirm !== true) throw new FuturesError('INVALID_ARGUMENT', '重置需要 confirm=true')
     const ts = this.ts()
     await this.options.repo.backup(ts)
     const previous = await this.options.repo.current().catch(error => {
@@ -976,7 +950,7 @@ export class FuturesService {
       return { events: result.events, value: { blocked: false, insufficient: false } }
     })
     if (outcome.value.blocked === true) throw this.blocked(outcome.state)
-    if (outcome.value.insufficient === true) throw new FuturesError('INSUFFICIENT_CASH', '可提现金不足', 409)
+    if (outcome.value.insufficient === true) throw new FuturesError('INSUFFICIENT_CASH', '可提现金不足')
     return this.viewOf(outcome.state)
   }
 

@@ -48,7 +48,7 @@ export function createAccountsRpcHandler(registry: AccountRegistry): PaperRpcHan
           if (kindOf(input.kind) === 'futures') {
             // Futures is still one ledger with its own panel; a second futures
             // entry would be unreachable and fail every stock request.
-            throw new PaperError('INVALID_ARGUMENT', 'v1 只支持新建股票账户', 400)
+            throw new PaperError('INVALID_ARGUMENT', 'v1 只支持新建股票账户')
           }
           return ok(await registry.create({
             name: text(input.name, 'name'),

@@ -110,7 +110,7 @@ export class PaperService {
         viewOf: state => this.viewOf(state),
         assertUnlocked: () => this.assertUnlocked(),
         ts: () => this.ts(),
-        makeError: (code, message, status) => new PaperError(code as ConstructorParameters<typeof PaperError>[0], message, status),
+        makeError: (code, message) => new PaperError(code as ConstructorParameters<typeof PaperError>[0], message),
         label: 'paper-trading',
         ...(this.options.logger === undefined ? {} : { logger: this.options.logger }),
       })
@@ -136,14 +136,14 @@ export class PaperService {
    */
   private assertUnlocked(): void {
     if (this.options.isLocked?.() === true) {
-      throw new PaperError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`, 409)
+      throw new PaperError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`)
     }
   }
 
   /** The single place that turns a blocked state into an error carrying its reason. */
   private blocked(state: AccountState): PaperError {
     const reason = reasonText(state.blockedReason)
-    return new PaperError('ACCOUNT_BLOCKED', `账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续${reason === '' ? '' : `（${reason}）`}`, 409)
+    return new PaperError('ACCOUNT_BLOCKED', `账户已锁定，可用 paper_ledger 从备份恢复，或重置后继续${reason === '' ? '' : `（${reason}）`}`)
   }
 
   async account(): Promise<AccountView> {
@@ -176,14 +176,14 @@ export class PaperService {
   /** Parse a symbol that may be any instrument (quote, chart, search result). */
   private identify(symbol: string): ListedSymbol {
     const parsed = tryParseSymbol(symbol)
-    if (!parsed.ok) throw new PaperError(parsed.code, parsed.message, 400)
+    if (!parsed.ok) throw new PaperError(parsed.code, parsed.message)
     return parsed.symbol
   }
 
   /** Parse a symbol that must be an A-share stock; indices and funds cannot trade. */
   private identifyStock(symbol: string): ListedSymbol {
     const parsed = requireStock(symbol)
-    if (!parsed.ok) throw new PaperError(parsed.code, parsed.message, 400)
+    if (!parsed.ok) throw new PaperError(parsed.code, parsed.message)
     return parsed.symbol
   }
 
@@ -465,7 +465,7 @@ export class PaperService {
     // (A market order without any quote keeps its warning, so the tool and the
     // panel can still explain what the user must fill in.)
     if (draft.type === 'limit' && estimatePrice(draft, quote) === null) {
-      throw new PaperError('INVALID_ARGUMENT', '限价单必须给出正的限价', 400)
+      throw new PaperError('INVALID_ARGUMENT', '限价单必须给出正的限价')
     }
     return previewOrder(state, draft, quote, state.settings, await this.marketStatusAt(state, this.ts()))
   }
@@ -485,7 +485,7 @@ export class PaperService {
     // is taken as a queued order instead of a rejection. The closing auction
     // has no window left today, so it stays rejected.
     if (phase === 'auction_close') {
-      throw new PaperError('AUCTION_ONLY', '收盘竞价暂不支持模拟撮合', 409)
+      throw new PaperError('AUCTION_ONLY', '收盘竞价暂不支持模拟撮合')
     }
     const quote = await this.quoteFor(draft)
     const tradeDate = await this.orderDateFor(state, now, phase)
@@ -501,7 +501,7 @@ export class PaperService {
     })
     if (outcome.value.duplicateId !== undefined) {
       const duplicate = outcome.state.orders[outcome.value.duplicateId]
-      if (duplicate === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
+      if (duplicate === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在')
       // Same requestId must describe the same order, like the futures plane:
       // silently returning the old order for a different draft made a retry
       // look successful while the new order was never placed.
@@ -509,7 +509,7 @@ export class PaperService {
       if (duplicate.symbol !== draft.symbol || duplicate.side !== draft.side
         || duplicate.type !== draft.type || duplicate.qty !== draft.qty
         || duplicate.limitPrice !== limitPrice || (duplicate.note ?? '') !== (draft.note ?? '')) {
-        throw new PaperError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用', 409)
+        throw new PaperError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用')
       }
       return toOrderView(duplicate)
     }
@@ -528,7 +528,7 @@ export class PaperService {
    */
   async basketPreview(csv: string, budgetCents?: number): Promise<BasketPreview> {
     if (budgetCents !== undefined && (!Number.isSafeInteger(budgetCents) || budgetCents <= 0)) {
-      throw new PaperError('INVALID_ARGUMENT', '预算必须是正整数（分）', 400)
+      throw new PaperError('INVALID_ARGUMENT', '预算必须是正整数（分）')
     }
     const state = await this.sync()
     const parsed = parseBasketCsv(csv)
@@ -584,7 +584,7 @@ export class PaperService {
     // Outside continuous trading the batch is queued like a single market
     // order; only the closing auction is rejected because no window follows.
     if (phase === 'auction_close') {
-      throw new PaperError('AUCTION_ONLY', '收盘竞价暂不支持模拟撮合', 409)
+      throw new PaperError('AUCTION_ONLY', '收盘竞价暂不支持模拟撮合')
     }
     const matchable = canMatch(phase)
 
@@ -605,7 +605,7 @@ export class PaperService {
         continue
       }
       if (existing.qty !== row.qty) {
-        throw new PaperError('INVALID_ARGUMENT', `${row.symbol} 与同批次已提交的数量不一致（原 ${existing.qty} 股）`, 400)
+        throw new PaperError('INVALID_ARGUMENT', `${row.symbol} 与同批次已提交的数量不一致（原 ${existing.qty} 股）`)
       }
       reused.set(row.symbol, existing)
     }
@@ -645,7 +645,6 @@ export class PaperService {
       throw new PaperError(
         'INSUFFICIENT_CASH',
         `整批需要 ${(totalCostCents / 100).toFixed(2)} 元，可用现金 ${(state.cashCents / 100).toFixed(2)} 元`,
-        409,
       )
     }
 
@@ -659,7 +658,7 @@ export class PaperService {
         const duplicate = Object.values(working.orders).find(order => order.requestId === requestId)
         if (duplicate !== undefined) {
           if (duplicate.qty !== row.qty) {
-            throw new PaperError('INVALID_ARGUMENT', `${row.symbol} 与同批次已提交的数量不一致（原 ${duplicate.qty} 股）`, 400)
+            throw new PaperError('INVALID_ARGUMENT', `${row.symbol} 与同批次已提交的数量不一致（原 ${duplicate.qty} 股）`)
           }
           results.push(this.basketResultRow(row.symbol, duplicate))
           continue
@@ -667,7 +666,7 @@ export class PaperService {
         const quote = quotes.get(row.symbol)
         // Pending rows passed the quote pre-check; a gap here is a logic error,
         // so refuse instead of submitting half a batch.
-        if (quote === undefined) throw new PaperError('QUOTE_UNAVAILABLE', `${row.symbol} 没有可用行情`, 409)
+        if (quote === undefined) throw new PaperError('QUOTE_UNAVAILABLE', `${row.symbol} 没有可用行情`)
         const result = submit(
           working,
           { symbol: row.symbol, side: 'buy', type: 'market', qty: row.qty, name: quote.name, tradeDate },
@@ -689,20 +688,20 @@ export class PaperService {
   /** Shape-level basket checks that must run before any pre-check touches IO. */
   private basketRows(rows: readonly BasketOrderInput[]): BasketOrderInput[] {
     if (!Array.isArray(rows) || rows.length < 1 || rows.length > 20) {
-      throw new PaperError('INVALID_ARGUMENT', 'rows 需要 1 到 20 行', 400)
+      throw new PaperError('INVALID_ARGUMENT', 'rows 需要 1 到 20 行')
     }
     const seen = new Set<string>()
     const checked: BasketOrderInput[] = []
     for (const row of rows) {
       const raw = typeof row.symbol === 'string' ? row.symbol.trim() : ''
-      if (raw === '') throw new PaperError('INVALID_ARGUMENT', '证券代码不能为空', 400)
+      if (raw === '') throw new PaperError('INVALID_ARGUMENT', '证券代码不能为空')
       const symbol = this.identifyStock(raw).id
-      if (seen.has(symbol)) throw new PaperError('INVALID_ARGUMENT', `证券代码重复：${symbol}`, 400)
+      if (seen.has(symbol)) throw new PaperError('INVALID_ARGUMENT', `证券代码重复：${symbol}`)
       seen.add(symbol)
       if (!Number.isInteger(row.qty) || row.qty <= 0) {
-        throw new PaperError('INVALID_ARGUMENT', `${symbol} 数量必须是正整数`, 400)
+        throw new PaperError('INVALID_ARGUMENT', `${symbol} 数量必须是正整数`)
       }
-      if (row.qty % 100 !== 0) throw new PaperError('INVALID_ARGUMENT', `${symbol} 数量必须是 100 股的整数倍`, 400)
+      if (row.qty % 100 !== 0) throw new PaperError('INVALID_ARGUMENT', `${symbol} 数量必须是 100 股的整数倍`)
       checked.push({ symbol, qty: row.qty })
     }
     return checked
@@ -719,8 +718,7 @@ export class PaperService {
 
   /** A row failed pre-check: the batch is refused with that row's code. */
   private basketRejection(symbol: string, code: ErrorCode, message: string): PaperError {
-    const status = code.startsWith('INVALID') ? 400 : 409
-    return new PaperError(code, `${symbol}: ${message}`, status)
+    return new PaperError(code, `${symbol}: ${message}`)
   }
 
   async cancel(orderId: string): Promise<OrderView> {
@@ -734,10 +732,10 @@ export class PaperService {
       return { events: result.events, value: {} }
     })
     if (outcome.value.blocked === true) throw this.blocked(outcome.state)
-    if (outcome.value.missing === true) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
-    if (outcome.value.notPending === true) throw new PaperError('ORDER_NOT_PENDING', '订单不是挂单状态', 409)
+    if (outcome.value.missing === true) throw new PaperError('ORDER_NOT_FOUND', '订单不存在')
+    if (outcome.value.notPending === true) throw new PaperError('ORDER_NOT_PENDING', '订单不是挂单状态')
     const order = outcome.state.orders[orderId]
-    if (order === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
+    if (order === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在')
     return toOrderView(order)
   }
 
@@ -883,7 +881,7 @@ export class PaperService {
   }
 
   async setShortlist(symbols: string[]): Promise<string[]> {
-    if (this.options.shortlist === undefined) throw new PaperError('INVALID_ARGUMENT', '备选存储不可用', 503)
+    if (this.options.shortlist === undefined) throw new PaperError('INVALID_ARGUMENT', '备选存储不可用')
     const ids: string[] = []
     for (const symbol of symbols) {
       const id = this.identify(symbol).id
@@ -1061,9 +1059,9 @@ export class PaperService {
    */
   async reset(confirm: boolean, initialCashCents?: number): Promise<AccountView> {
     this.assertUnlocked()
-    if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '重置需要 confirm=true', 400)
+    if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '重置需要 confirm=true')
     if (initialCashCents !== undefined && (!Number.isSafeInteger(initialCashCents) || initialCashCents <= 0)) {
-      throw new PaperError('INVALID_ARGUMENT', '初始资金必须是正整数（分）', 400)
+      throw new PaperError('INVALID_ARGUMENT', '初始资金必须是正整数（分）')
     }
     const ts = this.ts()
     await this.options.repo.backup(ts)
@@ -1114,7 +1112,7 @@ export class PaperService {
       return { events: result.events, value: { blocked: false, insufficient: false } }
     })
     if (outcome.value.blocked === true) throw this.blocked(outcome.state)
-    if (outcome.value.insufficient === true) throw new PaperError('INSUFFICIENT_CASH', '可提现金不足', 409)
+    if (outcome.value.insufficient === true) throw new PaperError('INSUFFICIENT_CASH', '可提现金不足')
     return this.viewOf(outcome.state)
   }
 

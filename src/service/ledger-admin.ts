@@ -39,7 +39,7 @@ export interface LedgerAdminDeps<S, V> {
   assertUnlocked: () => void
   ts: () => string
   /** Domain error factory: `PaperError` or `FuturesError`. */
-  makeError: (code: string, message: string, status?: number) => Error
+  makeError: (code: string, message: string) => Error
   /** Log prefix for the one warning this helper emits. */
   label: string
   logger?: { warn(message: string): void }
@@ -112,11 +112,11 @@ export class LedgerAdmin<S, V> {
    */
   async restoreLedger(name: string, confirm: boolean): Promise<V> {
     this.deps.assertUnlocked()
-    if (confirm !== true) throw this.deps.makeError('INVALID_ARGUMENT', '恢复账本需要 confirm=true', 400)
+    if (confirm !== true) throw this.deps.makeError('INVALID_ARGUMENT', '恢复账本需要 confirm=true')
     try {
       return this.deps.viewOf(await this.deps.repo.restore(name))
     } catch (error) {
-      throw this.deps.makeError('LEDGER_RESTORE_FAILED', error instanceof Error ? error.message : String(error), 409)
+      throw this.deps.makeError('LEDGER_RESTORE_FAILED', error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -129,11 +129,11 @@ export class LedgerAdmin<S, V> {
   /** Yuan from the UI → integer cents, rejecting non-positive or unsafe amounts. */
   cashAmountCents(amount: number): number {
     if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
-      throw this.deps.makeError('INVALID_ARGUMENT', '金额必须是正数', 400)
+      throw this.deps.makeError('INVALID_ARGUMENT', '金额必须是正数')
     }
     const cents = Math.round(amount * 100)
     if (!Number.isSafeInteger(cents) || cents <= 0) {
-      throw this.deps.makeError('INVALID_ARGUMENT', '金额至少 0.01 元', 400)
+      throw this.deps.makeError('INVALID_ARGUMENT', '金额至少 0.01 元')
     }
     return cents
   }
