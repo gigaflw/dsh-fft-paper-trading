@@ -19,7 +19,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
-const CLIENT = join(ROOT, 'src', 'client', 'index.js')
+// The browser half is assembled into `lib/client.js` by the build from
+// `src/client/parts/`; the built file is what the host actually loads.
+const CLIENT = join(ROOT, 'lib', 'client.js')
 
 /** Must equal `FT_BRAND_TOKENS` in the settings package of dsh-fft-bundle. */
 const FT_BRAND_TOKENS = {
