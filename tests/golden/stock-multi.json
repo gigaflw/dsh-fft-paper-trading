@@ -1,0 +1,695 @@
+{
+  "steps": [
+    {
+      "step": "registry lists the two seeded accounts",
+      "result": {
+        "ok": true,
+        "value": {
+          "accounts": [
+            {
+              "id": "default",
+              "kind": "stock",
+              "name": "默认账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            },
+            {
+              "id": "futures",
+              "kind": "futures",
+              "name": "期货账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            }
+          ],
+          "defaultIds": {
+            "stock": "default",
+            "futures": "futures"
+          },
+          "tickMs": 5000
+        }
+      }
+    },
+    {
+      "step": "create a stock account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "<id1>",
+          "kind": "stock",
+          "name": "价值组",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": false,
+          "initialCashCents": 50000000
+        }
+      }
+    },
+    {
+      "step": "create a second stock account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "<id2>",
+          "kind": "stock",
+          "name": "动量组",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": false
+        }
+      }
+    },
+    {
+      "step": "read by display name",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "<id1>",
+          "currency": "CNY",
+          "initialCash": 500000,
+          "cash": 500000,
+          "marketValue": 0,
+          "equity": 500000,
+          "pnl": 0,
+          "pnlPct": 0,
+          "todayPnl": 0,
+          "netCashFlow": 0,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [],
+          "settings": {
+            "initialCashCents": 50000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/<id1>/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "trade the second account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-3",
+          "requestId": "value-1",
+          "symbol": "000001.SZ",
+          "name": "平安银行",
+          "side": "buy",
+          "type": "market",
+          "qty": 200,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 11.3,
+          "filledQty": 200,
+          "remainingQty": 0,
+          "avgFillPrice": 11.3,
+          "amountCents": 226000,
+          "feesCents": 502
+        }
+      }
+    },
+    {
+      "step": "the default account is untouched",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "default",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 1000000,
+          "marketValue": 0,
+          "equity": 1000000,
+          "pnl": 0,
+          "pnlPct": 0,
+          "todayPnl": 0,
+          "netCashFlow": 0,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [],
+          "settings": {
+            "initialCashCents": 100000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/default/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "rename the account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "<id1>",
+          "kind": "stock",
+          "name": "价值小组",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": false,
+          "initialCashCents": 50000000
+        }
+      }
+    },
+    {
+      "step": "the old display name no longer resolves",
+      "result": {
+        "ok": false,
+        "error": {
+          "code": "ACCOUNT_NOT_FOUND",
+          "message": "没有名为「价值组」的账户"
+        }
+      }
+    },
+    {
+      "step": "hide the third account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "<id2>",
+          "kind": "stock",
+          "name": "动量组",
+          "createdAt": "<mtime>",
+          "hidden": true,
+          "locked": false
+        }
+      }
+    },
+    {
+      "step": "hidden accounts leave the list",
+      "result": {
+        "ok": true,
+        "value": {
+          "accounts": [
+            {
+              "id": "default",
+              "kind": "stock",
+              "name": "默认账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            },
+            {
+              "id": "futures",
+              "kind": "futures",
+              "name": "期货账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            },
+            {
+              "id": "<id1>",
+              "kind": "stock",
+              "name": "价值小组",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false,
+              "initialCashCents": 50000000
+            }
+          ],
+          "defaultIds": {
+            "stock": "default",
+            "futures": "futures"
+          },
+          "tickMs": 5000
+        }
+      }
+    },
+    {
+      "step": "a hidden account still answers by id",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "<id2>",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 1000000,
+          "marketValue": 0,
+          "equity": 1000000,
+          "pnl": 0,
+          "pnlPct": 0,
+          "todayPnl": 0,
+          "netCashFlow": 0,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [],
+          "settings": {
+            "initialCashCents": 100000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/<id2>/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "lock the traded account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "<id1>",
+          "kind": "stock",
+          "name": "价值小组",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": true,
+          "initialCashCents": 50000000
+        }
+      }
+    },
+    {
+      "step": "a locked account refuses orders",
+      "result": {
+        "ok": false,
+        "error": {
+          "code": "ACCOUNT_LOCKED",
+          "message": "账户「价值小组」已锁定，不能交易"
+        }
+      }
+    },
+    {
+      "step": "a locked account still previews",
+      "result": {
+        "ok": true,
+        "value": {
+          "symbol": "000001.SZ",
+          "side": "buy",
+          "type": "market",
+          "qty": 100,
+          "price": 11.3,
+          "amountCents": 113000,
+          "commissionCents": 500,
+          "stampCents": 0,
+          "transferCents": 1,
+          "totalFeesCents": 501,
+          "cashAfterCents": 49659997,
+          "availableQty": 0,
+          "maxBuyQty": 44000,
+          "quote": {
+            "symbol": "000001.SZ",
+            "name": "平安银行",
+            "last": 11.3,
+            "prevClose": 11.2,
+            "marketTs": "<ts>",
+            "fetchedAt": "<ts>",
+            "source": "fake"
+          },
+          "priceLimit": {
+            "upper": 12.32,
+            "lower": 10.08,
+            "ratio": 0.1,
+            "source": "prev-close"
+          },
+          "session": {
+            "phase": "continuous_am",
+            "tradeDate": "2026-11-16",
+            "canSubmit": true,
+            "canMatch": true,
+            "nextBoundary": "<ts>",
+            "calendar": {
+              "source": "fallback",
+              "reason": "未安装 FTShare 数据服务，按工作日估算"
+            }
+          },
+          "warnings": []
+        }
+      }
+    },
+    {
+      "step": "unlock",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "<id1>",
+          "kind": "stock",
+          "name": "价值小组",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": false,
+          "initialCashCents": 50000000
+        }
+      }
+    },
+    {
+      "step": "read the note",
+      "result": {
+        "ok": true,
+        "value": {
+          "text": "",
+          "bytes": 0,
+          "maxBytes": 100000
+        }
+      }
+    },
+    {
+      "step": "write the note",
+      "result": {
+        "ok": true,
+        "value": {
+          "text": "长期持有 600519，回撤 10% 减半。",
+          "bytes": 42,
+          "maxBytes": 100000,
+          "updatedAt": "<mtime>"
+        }
+      }
+    },
+    {
+      "step": "read it back",
+      "result": {
+        "ok": true,
+        "value": {
+          "text": "长期持有 600519，回撤 10% 减半。",
+          "bytes": 42,
+          "maxBytes": 100000,
+          "updatedAt": "<mtime>"
+        }
+      }
+    },
+    {
+      "step": "comparison rows",
+      "result": {
+        "ok": true,
+        "value": {
+          "accounts": [
+            {
+              "id": "default",
+              "name": "默认账户",
+              "locked": false,
+              "initialCash": 1000000,
+              "equity": 1000000,
+              "pnl": 0,
+              "pnlPct": 0,
+              "todayPnl": 0,
+              "maxDrawdownPct": 0,
+              "tradeCount": 0,
+              "points": [
+                {
+                  "date": "2026-11-16",
+                  "equity": 1000000,
+                  "cash": 1000000
+                }
+              ]
+            },
+            {
+              "id": "<id1>",
+              "name": "价值小组",
+              "locked": false,
+              "initialCash": 500000,
+              "equity": 499994.98,
+              "pnl": -5.02,
+              "pnlPct": -0.00001004,
+              "todayPnl": -5.02,
+              "maxDrawdownPct": 0,
+              "tradeCount": 1,
+              "points": [
+                {
+                  "date": "2026-11-16",
+                  "equity": 499994.98,
+                  "cash": 497734.98
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "registry including hidden",
+      "result": {
+        "ok": true,
+        "value": {
+          "accounts": [
+            {
+              "id": "default",
+              "kind": "stock",
+              "name": "默认账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            },
+            {
+              "id": "futures",
+              "kind": "futures",
+              "name": "期货账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            },
+            {
+              "id": "<id1>",
+              "kind": "stock",
+              "name": "价值小组",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false,
+              "initialCashCents": 50000000
+            },
+            {
+              "id": "<id2>",
+              "kind": "stock",
+              "name": "动量组",
+              "createdAt": "<mtime>",
+              "hidden": true,
+              "locked": false
+            }
+          ],
+          "defaultIds": {
+            "stock": "default",
+            "futures": "futures"
+          },
+          "tickMs": 5000
+        }
+      }
+    }
+  ],
+  "store": {
+    "tree": {
+      "<id2>": [
+        "events.jsonl"
+      ],
+      "<id1>": [
+        "events.jsonl",
+        "note.md"
+      ],
+      "accounts.json": [
+        "accounts.json"
+      ],
+      "default": [
+        "events.jsonl"
+      ]
+    },
+    "ledgers": {
+      "<id2>": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "<id2>",
+            "settings": {
+              "initialCashCents": 100000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 4
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "prevClose": {},
+            "gaps": {},
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        }
+      ],
+      "<id1>": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "<id1>",
+            "settings": {
+              "initialCashCents": 50000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "initialCashCents": 50000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 4
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "prevClose": {},
+            "gaps": {},
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        },
+        {
+          "seq": 3,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-3",
+              "requestId": "value-1",
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "side": "buy",
+              "type": "market",
+              "qty": 200,
+              "status": "pending",
+              "phase": "continuous_am",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "filledQty": 0,
+              "remainingQty": 200,
+              "tradeDate": "2026-11-16"
+            },
+            "quote": {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "last": 11.3,
+              "prevClose": 11.2,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            "phase": "continuous_am"
+          }
+        },
+        {
+          "seq": 4,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-3",
+            "fill": {
+              "id": "fill-ord-2026-11-16-3-1",
+              "orderId": "ord-2026-11-16-3",
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "side": "buy",
+              "price": 11.3,
+              "qty": 200,
+              "amountCents": 226000,
+              "fees": {
+                "commissionCents": 500,
+                "stampCents": 0,
+                "transferCents": 2,
+                "totalCents": 502
+              },
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        }
+      ],
+      "accounts.json": {
+        "version": 3,
+        "updatedAt": "<mtime>",
+        "tickMs": 5000,
+        "accounts": [
+          {
+            "id": "default",
+            "kind": "stock",
+            "name": "默认账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          },
+          {
+            "id": "futures",
+            "kind": "futures",
+            "name": "期货账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          },
+          {
+            "id": "<id1>",
+            "kind": "stock",
+            "name": "价值小组",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false,
+            "initialCashCents": 50000000
+          },
+          {
+            "id": "<id2>",
+            "kind": "stock",
+            "name": "动量组",
+            "createdAt": "<mtime>",
+            "hidden": true,
+            "locked": false
+          }
+        ]
+      },
+      "default": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "default",
+            "settings": {
+              "initialCashCents": 100000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 4
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "prevClose": {},
+            "gaps": {},
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        }
+      ]
+    }
+  }
+}

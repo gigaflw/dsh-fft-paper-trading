@@ -1,0 +1,1029 @@
+{
+  "steps": [
+    {
+      "step": "account opened on first read",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "default",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 1000000,
+          "marketValue": 0,
+          "equity": 1000000,
+          "pnl": 0,
+          "pnlPct": 0,
+          "todayPnl": 0,
+          "netCashFlow": 0,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [],
+          "settings": {
+            "initialCashCents": 100000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/default/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "market status",
+      "result": {
+        "ok": true,
+        "value": {
+          "phase": "continuous_am",
+          "tradeDate": "2026-11-16",
+          "canSubmit": true,
+          "canMatch": true,
+          "nextBoundary": "<ts>",
+          "calendar": {
+            "source": "fallback",
+            "reason": "未安装 FTShare 数据服务，按工作日估算"
+          }
+        }
+      }
+    },
+    {
+      "step": "preview a market buy",
+      "result": {
+        "ok": true,
+        "value": {
+          "symbol": "600519.SH",
+          "side": "buy",
+          "type": "market",
+          "qty": 100,
+          "price": 1450.5,
+          "amountCents": 14505000,
+          "commissionCents": 3626,
+          "stampCents": 0,
+          "transferCents": 145,
+          "totalFeesCents": 3771,
+          "cashAfterCents": 85491229,
+          "availableQty": 0,
+          "maxBuyQty": 600,
+          "quote": {
+            "symbol": "600519.SH",
+            "name": "贵州茅台",
+            "last": 1450.5,
+            "prevClose": 1440,
+            "marketTs": "<ts>",
+            "fetchedAt": "<ts>",
+            "source": "fake"
+          },
+          "priceLimit": {
+            "upper": 1584,
+            "lower": 1296,
+            "ratio": 0.1,
+            "source": "prev-close"
+          },
+          "session": {
+            "phase": "continuous_am",
+            "tradeDate": "2026-11-16",
+            "canSubmit": true,
+            "canMatch": true,
+            "nextBoundary": "<ts>",
+            "calendar": {
+              "source": "fallback",
+              "reason": "未安装 FTShare 数据服务，按工作日估算"
+            }
+          },
+          "warnings": []
+        }
+      }
+    },
+    {
+      "step": "place the market buy",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-3",
+          "requestId": "buy-1",
+          "symbol": "600519.SH",
+          "name": "贵州茅台",
+          "side": "buy",
+          "type": "market",
+          "qty": 100,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 1450.5,
+          "filledQty": 100,
+          "remainingQty": 0,
+          "avgFillPrice": 1450.5,
+          "amountCents": 14505000,
+          "feesCents": 3771
+        }
+      }
+    },
+    {
+      "step": "preview a resting limit buy",
+      "result": {
+        "ok": true,
+        "value": {
+          "symbol": "000001.SZ",
+          "side": "buy",
+          "type": "limit",
+          "qty": 5000,
+          "price": 11,
+          "amountCents": 5500000,
+          "commissionCents": 1375,
+          "stampCents": 0,
+          "transferCents": 55,
+          "totalFeesCents": 1430,
+          "cashAfterCents": 79989799,
+          "availableQty": 0,
+          "maxBuyQty": 77600,
+          "quote": {
+            "symbol": "000001.SZ",
+            "name": "平安银行",
+            "last": 11.3,
+            "prevClose": 11.2,
+            "marketTs": "<ts>",
+            "fetchedAt": "<ts>",
+            "source": "fake"
+          },
+          "priceLimit": {
+            "upper": 12.32,
+            "lower": 10.08,
+            "ratio": 0.1,
+            "source": "prev-close"
+          },
+          "session": {
+            "phase": "continuous_am",
+            "tradeDate": "2026-11-16",
+            "canSubmit": true,
+            "canMatch": true,
+            "nextBoundary": "<ts>",
+            "calendar": {
+              "source": "fallback",
+              "reason": "未安装 FTShare 数据服务，按工作日估算"
+            }
+          },
+          "warnings": [
+            "现价 11.30 未到限价 11.00，委托将挂单等待，金额按限价计"
+          ]
+        }
+      }
+    },
+    {
+      "step": "place the resting limit buy",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-5",
+          "requestId": "rest-1",
+          "symbol": "000001.SZ",
+          "name": "平安银行",
+          "side": "buy",
+          "type": "limit",
+          "qty": 5000,
+          "limitPrice": 11,
+          "status": "pending",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledQty": 0,
+          "remainingQty": 5000
+        }
+      }
+    },
+    {
+      "step": "tick while the limit is not crossed",
+      "result": {
+        "ok": true,
+        "value": {
+          "tradeDate": "2026-11-16",
+          "filled": [],
+          "expired": [],
+          "quotes": [
+            {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "last": 11.3,
+              "prevClose": 11.2,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "last": 1450.5,
+              "prevClose": 1440,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            }
+          ],
+          "notices": []
+        }
+      }
+    },
+    {
+      "step": "tick after the market crosses the limit",
+      "result": {
+        "ok": true,
+        "value": {
+          "tradeDate": "2026-11-16",
+          "filled": [
+            {
+              "id": "ord-2026-11-16-5",
+              "requestId": "rest-1",
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "side": "buy",
+              "type": "limit",
+              "qty": 5000,
+              "limitPrice": 11,
+              "status": "filled",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "filledAt": "<ts>",
+              "fillPrice": 10.95,
+              "filledQty": 5000,
+              "remainingQty": 0,
+              "avgFillPrice": 10.95,
+              "amountCents": 5475000,
+              "feesCents": 1424
+            }
+          ],
+          "expired": [],
+          "quotes": [
+            {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "last": 10.95,
+              "prevClose": 11.2,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "last": 1450.5,
+              "prevClose": 1440,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            }
+          ],
+          "notices": []
+        }
+      }
+    },
+    {
+      "step": "place a far limit to cancel",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-7",
+          "requestId": "cancel-1",
+          "symbol": "600519.SH",
+          "name": "贵州茅台",
+          "side": "buy",
+          "type": "limit",
+          "qty": 100,
+          "limitPrice": 1400,
+          "status": "pending",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledQty": 0,
+          "remainingQty": 100
+        }
+      }
+    },
+    {
+      "step": "cancel the far limit",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-7",
+          "requestId": "cancel-1",
+          "symbol": "600519.SH",
+          "name": "贵州茅台",
+          "side": "buy",
+          "type": "limit",
+          "qty": 100,
+          "limitPrice": 1400,
+          "status": "canceled",
+          "reason": "user",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledQty": 0,
+          "remainingQty": 100
+        }
+      }
+    },
+    {
+      "step": "deposit cash",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "default",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 810148.05,
+          "marketValue": 199800,
+          "equity": 1009948.05,
+          "pnl": -51.95,
+          "pnlPct": -0.00005143564356435643,
+          "todayPnl": -51.95,
+          "netCashFlow": 10000,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [
+            {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "qty": 5000,
+              "available": 0,
+              "avgCost": 10.95,
+              "lastPrice": 10.95,
+              "marketValueCents": 5475000,
+              "unrealizedPnlCents": -1424,
+              "unrealizedPnlPct": -0.0002600236942939407
+            },
+            {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "qty": 100,
+              "available": 0,
+              "avgCost": 1450.88,
+              "lastPrice": 1450.5,
+              "marketValueCents": 14505000,
+              "unrealizedPnlCents": -3771,
+              "unrealizedPnlPct": -0.0002599117457984553
+            }
+          ],
+          "settings": {
+            "initialCashCents": 100000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/default/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "withdraw cash",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "default",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 805148.05,
+          "marketValue": 199800,
+          "equity": 1004948.05,
+          "pnl": -51.95,
+          "pnlPct": -0.000051691542288557216,
+          "todayPnl": -51.95,
+          "netCashFlow": 5000,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [
+            {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "qty": 5000,
+              "available": 0,
+              "avgCost": 10.95,
+              "lastPrice": 10.95,
+              "marketValueCents": 5475000,
+              "unrealizedPnlCents": -1424,
+              "unrealizedPnlPct": -0.0002600236942939407
+            },
+            {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "qty": 100,
+              "available": 0,
+              "avgCost": 1450.88,
+              "lastPrice": 1450.5,
+              "marketValueCents": 14505000,
+              "unrealizedPnlCents": -3771,
+              "unrealizedPnlPct": -0.0002599117457984553
+            }
+          ],
+          "settings": {
+            "initialCashCents": 100000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/default/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "close the day on the next read",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "default",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 805148.05,
+          "marketValue": 199800,
+          "equity": 1004948.05,
+          "pnl": -51.95,
+          "pnlPct": -0.000051691542288557216,
+          "todayPnl": -51.95,
+          "netCashFlow": 5000,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [
+            {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "qty": 5000,
+              "available": 0,
+              "avgCost": 10.95,
+              "lastPrice": 10.95,
+              "marketValueCents": 5475000,
+              "unrealizedPnlCents": -1424,
+              "unrealizedPnlPct": -0.0002600236942939407
+            },
+            {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "qty": 100,
+              "available": 0,
+              "avgCost": 1450.88,
+              "lastPrice": 1450.5,
+              "marketValueCents": 14505000,
+              "unrealizedPnlCents": -3771,
+              "unrealizedPnlPct": -0.0002599117457984553
+            }
+          ],
+          "settings": {
+            "initialCashCents": 100000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/default/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "review the day",
+      "result": {
+        "ok": true,
+        "value": {
+          "equityCurve": [
+            {
+              "date": "2026-11-16",
+              "equity": 1007448.05,
+              "cash": 805148.05
+            }
+          ],
+          "maxDrawdownPct": 0,
+          "tradeCount": 2,
+          "buyCount": 2,
+          "sellCount": 0,
+          "totalFees": 51.95,
+          "realizedPnl": 0,
+          "days": 1
+        }
+      }
+    },
+    {
+      "step": "daily report",
+      "result": {
+        "ok": true,
+        "value": [
+          {
+            "date": "2026-11-16",
+            "equity": 1007448.05,
+            "cash": 805148.05,
+            "dayPnl": 2448.05,
+            "fees": 51.95,
+            "available": 0,
+            "positions": [
+              {
+                "symbol": "600519.SH",
+                "name": "贵州茅台",
+                "qty": 100,
+                "available": 0,
+                "avgCost": 1450.8771,
+                "lastPrice": 1450.5
+              },
+              {
+                "symbol": "000001.SZ",
+                "name": "平安银行",
+                "qty": 5000,
+                "available": 0,
+                "avgCost": 10.952848,
+                "lastPrice": 10.95
+              }
+            ],
+            "gaps": {},
+            "closeSource": "daily"
+          }
+        ]
+      }
+    },
+    {
+      "step": "cash flow",
+      "result": {
+        "ok": true,
+        "value": [
+          {
+            "ts": "<ts>",
+            "type": "open",
+            "amount": 1000000,
+            "balance": 1000000
+          },
+          {
+            "ts": "<ts>",
+            "type": "buy",
+            "amount": -145087.71,
+            "balance": 854912.29,
+            "ref": "ord-2026-11-16-3"
+          },
+          {
+            "ts": "<ts>",
+            "type": "deposit",
+            "amount": 10000,
+            "balance": 864912.29
+          },
+          {
+            "ts": "<ts>",
+            "type": "withdraw",
+            "amount": -5000,
+            "balance": 859912.29
+          },
+          {
+            "ts": "<ts>",
+            "type": "buy",
+            "amount": -54764.24,
+            "balance": 805148.05,
+            "ref": "ord-2026-11-16-5"
+          }
+        ]
+      }
+    },
+    {
+      "step": "pre-open and open the next day",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "default",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 805148.05,
+          "marketValue": 199800,
+          "equity": 1004948.05,
+          "pnl": -51.95,
+          "pnlPct": -0.000051691542288557216,
+          "todayPnl": -2500,
+          "netCashFlow": 5000,
+          "tradeDate": "2026-11-17",
+          "blocked": false,
+          "positions": [
+            {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "qty": 5000,
+              "available": 5000,
+              "avgCost": 10.95,
+              "lastPrice": 10.95,
+              "marketValueCents": 5475000,
+              "unrealizedPnlCents": -1424,
+              "unrealizedPnlPct": -0.0002600236942939407
+            },
+            {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "qty": 100,
+              "available": 100,
+              "avgCost": 1450.88,
+              "lastPrice": 1450.5,
+              "marketValueCents": 14505000,
+              "unrealizedPnlCents": -3771,
+              "unrealizedPnlPct": -0.0002599117457984553
+            }
+          ],
+          "settings": {
+            "initialCashCents": 100000000,
+            "commissionRate": 0.00025,
+            "minCommissionCents": 500,
+            "stampDutyRate": 0.0005,
+            "transferFeeRate": 0.00001,
+            "enableT1": true,
+            "maxOrderNotionalCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/default/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "orders after the roll",
+      "result": {
+        "ok": true,
+        "value": [
+          {
+            "id": "ord-2026-11-16-7",
+            "requestId": "cancel-1",
+            "symbol": "600519.SH",
+            "name": "贵州茅台",
+            "side": "buy",
+            "type": "limit",
+            "qty": 100,
+            "limitPrice": 1400,
+            "status": "canceled",
+            "reason": "user",
+            "createdAt": "<mtime>",
+            "updatedAt": "<mtime>",
+            "filledQty": 0,
+            "remainingQty": 100
+          },
+          {
+            "id": "ord-2026-11-16-3",
+            "requestId": "buy-1",
+            "symbol": "600519.SH",
+            "name": "贵州茅台",
+            "side": "buy",
+            "type": "market",
+            "qty": 100,
+            "status": "filled",
+            "createdAt": "<mtime>",
+            "updatedAt": "<mtime>",
+            "filledAt": "<ts>",
+            "fillPrice": 1450.5,
+            "filledQty": 100,
+            "remainingQty": 0,
+            "avgFillPrice": 1450.5,
+            "amountCents": 14505000,
+            "feesCents": 3771
+          },
+          {
+            "id": "ord-2026-11-16-5",
+            "requestId": "rest-1",
+            "symbol": "000001.SZ",
+            "name": "平安银行",
+            "side": "buy",
+            "type": "limit",
+            "qty": 5000,
+            "limitPrice": 11,
+            "status": "filled",
+            "createdAt": "<mtime>",
+            "updatedAt": "<mtime>",
+            "filledAt": "<ts>",
+            "fillPrice": 10.95,
+            "filledQty": 5000,
+            "remainingQty": 0,
+            "avgFillPrice": 10.95,
+            "amountCents": 5475000,
+            "feesCents": 1424
+          }
+        ]
+      }
+    },
+    {
+      "step": "review seven days",
+      "result": {
+        "ok": true,
+        "value": {
+          "equityCurve": [
+            {
+              "date": "2026-11-16",
+              "equity": 1007448.05,
+              "cash": 805148.05
+            }
+          ],
+          "maxDrawdownPct": 0,
+          "tradeCount": 2,
+          "buyCount": 2,
+          "sellCount": 0,
+          "totalFees": 51.95,
+          "realizedPnl": 0,
+          "days": 1
+        }
+      }
+    }
+  ],
+  "store": {
+    "tree": {
+      "accounts.json": [
+        "accounts.json"
+      ],
+      "default": [
+        "events.jsonl"
+      ]
+    },
+    "ledgers": {
+      "accounts.json": {
+        "version": 3,
+        "updatedAt": "<mtime>",
+        "tickMs": 5000,
+        "accounts": [
+          {
+            "id": "default",
+            "kind": "stock",
+            "name": "默认账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          },
+          {
+            "id": "futures",
+            "kind": "futures",
+            "name": "期货账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          }
+        ]
+      },
+      "default": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "default",
+            "settings": {
+              "initialCashCents": 100000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 4
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "prevClose": {},
+            "gaps": {},
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        },
+        {
+          "seq": 3,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-3",
+              "requestId": "buy-1",
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "side": "buy",
+              "type": "market",
+              "qty": 100,
+              "status": "pending",
+              "phase": "continuous_am",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "filledQty": 0,
+              "remainingQty": 100,
+              "tradeDate": "2026-11-16"
+            },
+            "quote": {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "last": 1450.5,
+              "prevClose": 1440,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            "phase": "continuous_am"
+          }
+        },
+        {
+          "seq": 4,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-3",
+            "fill": {
+              "id": "fill-ord-2026-11-16-3-1",
+              "orderId": "ord-2026-11-16-3",
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "side": "buy",
+              "price": 1450.5,
+              "qty": 100,
+              "amountCents": 14505000,
+              "fees": {
+                "commissionCents": 3626,
+                "stampCents": 0,
+                "transferCents": 145,
+                "totalCents": 3771
+              },
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        },
+        {
+          "seq": 5,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-5",
+              "requestId": "rest-1",
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "side": "buy",
+              "type": "limit",
+              "qty": 5000,
+              "limitPrice": 11,
+              "status": "pending",
+              "phase": "continuous_am",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "filledQty": 0,
+              "remainingQty": 5000,
+              "tradeDate": "2026-11-16"
+            },
+            "quote": {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "last": 11.3,
+              "prevClose": 11.2,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            "phase": "continuous_am"
+          }
+        },
+        {
+          "seq": 6,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-5",
+            "fill": {
+              "id": "fill-ord-2026-11-16-5-1",
+              "orderId": "ord-2026-11-16-5",
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "side": "buy",
+              "price": 10.95,
+              "qty": 5000,
+              "amountCents": 5475000,
+              "fees": {
+                "commissionCents": 1369,
+                "stampCents": 0,
+                "transferCents": 55,
+                "totalCents": 1424
+              },
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        },
+        {
+          "seq": 7,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-7",
+              "requestId": "cancel-1",
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "side": "buy",
+              "type": "limit",
+              "qty": 100,
+              "limitPrice": 1400,
+              "status": "pending",
+              "phase": "continuous_am",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "filledQty": 0,
+              "remainingQty": 100,
+              "tradeDate": "2026-11-16"
+            },
+            "quote": {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "last": 1450.5,
+              "prevClose": 1440,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            "phase": "continuous_am"
+          }
+        },
+        {
+          "seq": 8,
+          "type": "order.canceled",
+          "payload": {
+            "orderId": "ord-2026-11-16-7",
+            "reason": "user",
+            "at": "<ts>"
+          }
+        },
+        {
+          "seq": 9,
+          "type": "cash.deposit",
+          "payload": {
+            "amountCents": 1000000,
+            "tradeDate": "2026-11-16"
+          }
+        },
+        {
+          "seq": 10,
+          "type": "cash.withdraw",
+          "payload": {
+            "amountCents": 500000,
+            "tradeDate": "2026-11-16"
+          }
+        },
+        {
+          "seq": 11,
+          "type": "day.closed",
+          "payload": {
+            "date": "2026-11-16",
+            "equityCents": 100744805,
+            "cashCents": 80514805,
+            "nextDate": "2026-11-17",
+            "feesCents": 5195,
+            "closePrices": {
+              "600519.SH": 1455.5,
+              "000001.SZ": 11.35
+            },
+            "positions": [
+              {
+                "symbol": "600519.SH",
+                "name": "贵州茅台",
+                "qty": 100,
+                "available": 0,
+                "costCents": 14508771,
+                "lastPrice": 1450.5
+              },
+              {
+                "symbol": "000001.SZ",
+                "name": "平安银行",
+                "qty": 5000,
+                "available": 0,
+                "costCents": 5476424,
+                "lastPrice": 10.95
+              }
+            ],
+            "gaps": {},
+            "closeSource": "daily",
+            "recordedAt": "<ts>"
+          }
+        },
+        {
+          "seq": 12,
+          "type": "day.pre_opened",
+          "payload": {
+            "date": "2026-11-17",
+            "at": "<ts>"
+          }
+        },
+        {
+          "seq": 13,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-17",
+            "openPrices": {
+              "600519.SH": 1450.5,
+              "000001.SZ": 10.95
+            },
+            "prevClose": {
+              "600519.SH": 1440,
+              "000001.SZ": 11.2
+            },
+            "gaps": {
+              "600519.SH": 0.007291666666666667,
+              "000001.SZ": -0.022321428571428572
+            },
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -79,14 +79,29 @@ export { UnavailableFuturesMarketData } from './data/unavailable-futures-market-
 export const name = '@dsh-ft/dsh-fft-paper-trading'
 
 /**
+ * Test seams. Production omits all of them: the real clock and the FTShare
+ * adapters are used. The golden suite injects a frozen clock and deterministic
+ * data ports to pin end-to-end behavior across refactors.
+ */
+export interface ApplyOptions {
+  now?: () => Date
+  marketData?: MarketDataPort
+  futuresMarketData?: FuturesMarketDataPort
+}
+
+/**
  * Services are attached lazily: the browser scan needs this row's fiber, so the
  * plugin must not gate activation on optional services.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, options: ApplyOptions = {}): void {
   const logger = ctx.logger('ft-paper-trading')
   const home = resolveDshHome()
   const shortlist = new ShortlistStore(home)
-  const registry = new AccountRegistry({ home, logger })
+  const registry = new AccountRegistry({
+    home,
+    logger,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  })
   // Notes live beside each ledger, not in the registry: a long note must not
   // bloat accounts.json, and the model has no tool for them.
   const notes = new AccountNotes({ home })
@@ -96,7 +111,7 @@ export function apply(ctx: Context): void {
   // One mutable slot behind a stable port: the services hold the ports, the
   // FTShare adapter can appear (or disappear) later without rebuilding the
   // services, the route or the tools.
-  let market: MarketDataPort = new UnavailableMarketData()
+  let market: MarketDataPort = options.marketData ?? new UnavailableMarketData()
   let calendar: TradingCalendarPort = new WeekdayTradingCalendar('未安装 FTShare 数据服务，按工作日估算')
   const data: MarketDataPort = {
     quotes: symbols => market.quotes(symbols),
@@ -107,7 +122,11 @@ export function apply(ctx: Context): void {
   }
   // Every account shares one cache: N accounts holding the same symbol must not
   // cost N upstream calls, and inside one tick they must all see one price.
-  const cached = new CachedMarketData(data, { ttlMs: () => tickMs })
+  const clockNow = options.now
+  const cached = new CachedMarketData(data, {
+    ttlMs: () => tickMs,
+    ...(clockNow === undefined ? {} : { now: () => clockNow().getTime() }),
+  })
   // Same trick for the calendar: both services take this port once, and the
   // slot behind it is swapped when the FTShare adapter arrives. Handing the
   // slot itself to the stocks service left it on the weekday fallback for the
@@ -146,6 +165,7 @@ export function apply(ctx: Context): void {
       settings: accountSettings,
       accountId: meta.id,
       logger,
+      ...(options.now === undefined ? {} : { now: options.now }),
       // Read the registry, not this meta: `accounts/lock` mutates the live
       // entry, and the service map is shared with the scheduler's copies.
       isLocked: () => registry.lockedSync(meta.id),
@@ -157,7 +177,7 @@ export function apply(ctx: Context): void {
   // Futures: separate ledger, separate service, same route. The market-data
   // port stays on the degraded stand-in until the FTShare futures adapter is
   // wired in; the ledger and the tools must work without it.
-  let futuresMarket: FuturesMarketDataPort = new UnavailableFuturesMarketData()
+  let futuresMarket: FuturesMarketDataPort = options.futuresMarketData ?? new UnavailableFuturesMarketData()
   const futuresRepo = new FuturesRepo({ home, logger })
   const futuresService = new FuturesService({
     repo: futuresRepo,
@@ -170,6 +190,7 @@ export function apply(ctx: Context): void {
     },
     calendar: calendarPort,
     logger,
+    ...(options.now === undefined ? {} : { now: options.now }),
   })
   const futuresHandler = createFuturesRpcHandler(futuresService)
   // The panel header reads one status: credential state plus the latest market
@@ -261,6 +282,7 @@ export function apply(ctx: Context): void {
   )
 
   ctx.inject(['ftshareData'], scope => {
+    if (options.marketData !== undefined || options.futuresMarketData !== undefined) return
     const service = scope.get('ftshareData') as unknown as FtshareDataLike
     const adapter = new FtshareMarketData(service)
     const calendarAdapter = new FtshareTradingCalendar(service)

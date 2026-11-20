@@ -1,0 +1,770 @@
+{
+  "steps": [
+    {
+      "step": "stock account tool",
+      "tool": "paper_stock_account",
+      "args": {},
+      "result": {
+        "summary": "账户 default · 2026-11-16\n总资产 1000000.00 · 现金 1000000.00 · 盈亏 +0.00 (0.00%)\n无持仓\n\n无挂单\n\n无成交",
+        "data": {
+          "account": {
+            "accountId": "default",
+            "currency": "CNY",
+            "initialCash": 1000000,
+            "cash": 1000000,
+            "marketValue": 0,
+            "equity": 1000000,
+            "pnl": 0,
+            "pnlPct": 0,
+            "todayPnl": 0,
+            "netCashFlow": 0,
+            "tradeDate": "2026-11-16",
+            "blocked": false,
+            "positions": [],
+            "settings": {
+              "initialCashCents": 100000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "ledgerPath": "<home>/paper-trading/default/events.jsonl"
+          },
+          "orders": [],
+          "trades": []
+        }
+      }
+    },
+    {
+      "step": "market tool",
+      "tool": "paper_stock_market",
+      "args": {
+        "action": "search",
+        "query": "600519.SH"
+      },
+      "result": {
+        "summary": "600519.SH 贵州茅台",
+        "data": [
+          {
+            "symbol": "600519.SH",
+            "name": "贵州茅台"
+          }
+        ]
+      }
+    },
+    {
+      "step": "quote tool",
+      "tool": "paper_stock_quote",
+      "args": {
+        "symbols": [
+          "600519.SH"
+        ]
+      },
+      "result": {
+        "summary": "600519.SH 贵州茅台 现价 1450.50",
+        "data": {
+          "state": "ok",
+          "quotes": [
+            {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "last": 1450.5,
+              "prevClose": 1440,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "preview tool",
+      "tool": "paper_stock_preview",
+      "args": {
+        "symbol": "600519.SH",
+        "side": "buy",
+        "type": "market",
+        "qty": 100
+      },
+      "result": {
+        "summary": "预览：买入 600519.SH 贵州茅台 100 股 @ 1450.50\n金额 145050.00 · 费用 37.71（佣金 36.26，印花税 0.00，过户费 1.45）\n成交后现金 854912.29",
+        "data": {
+          "symbol": "600519.SH",
+          "side": "buy",
+          "type": "market",
+          "qty": 100,
+          "price": 1450.5,
+          "amountCents": 14505000,
+          "commissionCents": 3626,
+          "stampCents": 0,
+          "transferCents": 145,
+          "totalFeesCents": 3771,
+          "cashAfterCents": 85491229,
+          "availableQty": 0,
+          "maxBuyQty": 600,
+          "quote": {
+            "symbol": "600519.SH",
+            "name": "贵州茅台",
+            "last": 1450.5,
+            "prevClose": 1440,
+            "marketTs": "<ts>",
+            "fetchedAt": "<ts>",
+            "source": "fake"
+          },
+          "priceLimit": {
+            "upper": 1584,
+            "lower": 1296,
+            "ratio": 0.1,
+            "source": "prev-close"
+          },
+          "session": {
+            "phase": "continuous_am",
+            "tradeDate": "2026-11-16",
+            "canSubmit": true,
+            "canMatch": true,
+            "nextBoundary": "<ts>",
+            "calendar": {
+              "source": "fallback",
+              "reason": "未安装 FTShare 数据服务，按工作日估算"
+            }
+          },
+          "warnings": []
+        }
+      }
+    },
+    {
+      "step": "order tool",
+      "tool": "paper_stock_order",
+      "args": {
+        "symbol": "600519.SH",
+        "side": "buy",
+        "type": "market",
+        "qty": 100,
+        "requestId": "tool-1"
+      },
+      "result": {
+        "summary": "已成交：买入 600519.SH 贵州茅台 100 股 · 成交价 1450.50",
+        "data": {
+          "id": "ord-2026-11-16-3",
+          "requestId": "tool-1",
+          "symbol": "600519.SH",
+          "name": "贵州茅台",
+          "side": "buy",
+          "type": "market",
+          "qty": 100,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 1450.5,
+          "filledQty": 100,
+          "remainingQty": 0,
+          "avgFillPrice": 1450.5,
+          "amountCents": 14505000,
+          "feesCents": 3771
+        }
+      }
+    },
+    {
+      "step": "resting order tool",
+      "tool": "paper_stock_order",
+      "args": {
+        "symbol": "000001.SZ",
+        "side": "buy",
+        "type": "limit",
+        "qty": 1000,
+        "limitPrice": 11,
+        "requestId": "tool-2"
+      },
+      "result": {
+        "summary": "挂单中：买入 000001.SZ 平安银行 1000 股 · 限价 11.00",
+        "data": {
+          "id": "ord-2026-11-16-5",
+          "requestId": "tool-2",
+          "symbol": "000001.SZ",
+          "name": "平安银行",
+          "side": "buy",
+          "type": "limit",
+          "qty": 1000,
+          "limitPrice": 11,
+          "status": "pending",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledQty": 0,
+          "remainingQty": 1000
+        }
+      }
+    },
+    {
+      "step": "cancel tool",
+      "tool": "paper_stock_cancel",
+      "args": {
+        "orderId": "ord-2026-11-16-5"
+      },
+      "result": {
+        "summary": "已撤单：买入 000001.SZ 平安银行 1000 股 · 限价 11.00 · 原因 user",
+        "data": {
+          "id": "ord-2026-11-16-5",
+          "requestId": "tool-2",
+          "symbol": "000001.SZ",
+          "name": "平安银行",
+          "side": "buy",
+          "type": "limit",
+          "qty": 1000,
+          "limitPrice": 11,
+          "status": "canceled",
+          "reason": "user",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledQty": 0,
+          "remainingQty": 1000
+        }
+      }
+    },
+    {
+      "step": "review tool",
+      "tool": "paper_stock_review",
+      "args": {
+        "period": "all"
+      },
+      "result": {
+        "summary": "复盘 1 天 · 成交 1 笔（买 1 / 卖 0）\n已实现盈亏 0.00 · 费用合计 37.71 · 最大回撤 0.00%",
+        "data": {
+          "equityCurve": [
+            {
+              "date": "2026-11-16",
+              "equity": 999962.29,
+              "cash": 854912.29
+            }
+          ],
+          "maxDrawdownPct": 0,
+          "tradeCount": 1,
+          "buyCount": 1,
+          "sellCount": 0,
+          "totalFees": 37.71,
+          "realizedPnl": 0,
+          "days": 1
+        }
+      }
+    },
+    {
+      "step": "account admin tool",
+      "tool": "paper_account",
+      "args": {
+        "action": "list"
+      },
+      "result": {
+        "summary": "账户 2 个：\n- 默认账户（default）· 股票 · 正常 · 默认\n- 期货账户（futures）· 期货 · 正常 · 默认",
+        "data": {
+          "accounts": [
+            {
+              "id": "default",
+              "kind": "stock",
+              "name": "默认账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            },
+            {
+              "id": "futures",
+              "kind": "futures",
+              "name": "期货账户",
+              "createdAt": "<mtime>",
+              "hidden": false,
+              "locked": false
+            }
+          ],
+          "defaultIds": {
+            "stock": "default",
+            "futures": "futures"
+          },
+          "tickMs": 5000
+        }
+      }
+    },
+    {
+      "step": "account create tool",
+      "tool": "paper_account",
+      "args": {
+        "action": "create",
+        "name": "工具账户",
+        "initialCash": 200000
+      },
+      "result": {
+        "summary": "已创建账户「工具账户」（<id1>），初始资金 200000 元。交易时把 account 设成这个账户名或 id。",
+        "data": {
+          "id": "<id1>",
+          "kind": "stock",
+          "name": "工具账户",
+          "createdAt": "<mtime>",
+          "hidden": false,
+          "locked": false,
+          "initialCashCents": 20000000
+        }
+      }
+    },
+    {
+      "step": "ledger tool",
+      "tool": "paper_ledger",
+      "args": {
+        "action": "list"
+      },
+      "result": {
+        "summary": "账本 <home>/paper-trading/default/events.jsonl（股票）\n账户正常\n当前版本 v4 · 快照 0 份（可恢复 0 份）\n没有可恢复的快照：只能导出账本或重置账户",
+        "data": {
+          "account": "stock",
+          "path": "<home>/paper-trading/default/events.jsonl",
+          "blocked": false,
+          "ledgerVersion": 4,
+          "snapshots": []
+        }
+      }
+    },
+    {
+      "step": "futures contracts tool",
+      "tool": "paper_futures_contracts",
+      "args": {},
+      "result": {
+        "summary": "RB2611.SHFE 螺纹钢2611 乘数 10 tick 1 保证金率 10.00% 到期 2027-01-15",
+        "data": {
+          "state": "ok",
+          "contracts": [
+            {
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "exchange": "SHFE",
+              "multiplier": 10,
+              "tickSize": 1,
+              "marginRate": 0.1,
+              "tradeHours": "上午9:00-11:30,下午13:30-15:00,下午21:00-23:00(夜盘)",
+              "deListDate": "2027-01-15"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "futures quote tool",
+      "tool": "paper_futures_quote",
+      "args": {
+        "symbols": [
+          "RB2611.SHFE"
+        ]
+      },
+      "result": {
+        "summary": "RB2611.SHFE 螺纹钢2611 最新 3200 昨结 3150 成交量 1000 持仓量 5000",
+        "data": {
+          "state": "ok",
+          "quotes": [
+            {
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "last": 3200,
+              "preSettlement": 3150,
+              "openInterest": 5000,
+              "volume": 1000,
+              "marketTs": "<ts>",
+              "source": "ftshare"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "futures preview tool",
+      "tool": "paper_futures_preview",
+      "args": {
+        "symbol": "RB2611.SHFE",
+        "side": "long",
+        "offset": "open",
+        "type": "market",
+        "qty": 1
+      },
+      "result": {
+        "summary": "预览：多开 RB2611.SHFE 1 手 @ 3200\n名义金额 32000.00 · 保证金 3200.00 · 手续费 5.00 · 占用后可用 996795.00\n最大可开 312 手 · 可平 0 手 · 风险度 0.32%\n涨跌停 2900–3400\n时段 trading · 可成交",
+        "data": {
+          "symbol": "RB2611.SHFE",
+          "side": "long",
+          "offset": "open",
+          "type": "market",
+          "qty": 1,
+          "price": 3200,
+          "multiplier": 10,
+          "amountCents": 3200000,
+          "marginCents": 320000,
+          "feesCents": 500,
+          "cashAfterCents": 99679500,
+          "equityAfter": 99999500,
+          "riskRatioAfter": 0.00320001600008,
+          "maxOpenQty": 312,
+          "availableCloseQty": 0,
+          "limit": {
+            "symbol": "RB2611.SHFE",
+            "upper": 3400,
+            "lower": 2900,
+            "source": "limit"
+          },
+          "quote": {
+            "symbol": "RB2611.SHFE",
+            "name": "螺纹钢2611",
+            "last": 3200,
+            "preSettlement": 3150,
+            "openInterest": 5000,
+            "volume": 1000,
+            "marketTs": "<ts>",
+            "source": "ftshare"
+          },
+          "session": {
+            "phase": "trading",
+            "tradeDate": "2026-11-16",
+            "canSubmit": true,
+            "canMatch": true,
+            "nextBoundary": "<ts>"
+          },
+          "warnings": []
+        }
+      }
+    },
+    {
+      "step": "futures order tool",
+      "tool": "paper_futures_order",
+      "args": {
+        "symbol": "RB2611.SHFE",
+        "side": "long",
+        "offset": "open",
+        "type": "market",
+        "qty": 1,
+        "requestId": "tool-fut-1"
+      },
+      "result": {
+        "summary": "已成交：多开 RB2611.SHFE 1 手 · 成交价 3200 · 手续费 5.00",
+        "data": {
+          "id": "ord-2026-11-16-3",
+          "requestId": "tool-fut-1",
+          "symbol": "RB2611.SHFE",
+          "name": "螺纹钢2611",
+          "side": "long",
+          "offset": "open",
+          "type": "market",
+          "qty": 1,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 3200,
+          "marginCents": 320000,
+          "feesCents": 500
+        }
+      }
+    },
+    {
+      "step": "futures review tool",
+      "tool": "paper_futures_review",
+      "args": {
+        "period": "all"
+      },
+      "result": {
+        "summary": "期货复盘 · 成交 1 笔（开 1 / 平 0，盈 0 / 亏 0）\n已实现盈亏 0.00 · 手续费合计 5.00 · 最大回撤 0.00%\n分品种：rb 1 笔 0.00",
+        "data": {
+          "equityCurve": [
+            {
+              "date": "2026-11-16",
+              "equity": 999995,
+              "cash": 996795,
+              "margin": 3200
+            }
+          ],
+          "maxDrawdownPct": 0,
+          "tradeCount": 1,
+          "openCount": 1,
+          "closeCount": 0,
+          "winCount": 0,
+          "lossCount": 0,
+          "totalFees": 5,
+          "realizedPnl": 0,
+          "byProduct": [
+            {
+              "product": "rb",
+              "tradeCount": 1,
+              "realizedPnl": 0
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "store": {
+    "tree": {
+      "<id1>": [],
+      "accounts.json": [
+        "accounts.json"
+      ],
+      "default": [
+        "events.jsonl"
+      ],
+      "futures": [
+        "events.jsonl"
+      ]
+    },
+    "ledgers": {
+      "accounts.json": {
+        "version": 3,
+        "updatedAt": "<mtime>",
+        "tickMs": 5000,
+        "accounts": [
+          {
+            "id": "default",
+            "kind": "stock",
+            "name": "默认账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          },
+          {
+            "id": "futures",
+            "kind": "futures",
+            "name": "期货账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          },
+          {
+            "id": "<id1>",
+            "kind": "stock",
+            "name": "工具账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false,
+            "initialCashCents": 20000000
+          }
+        ]
+      },
+      "default": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "default",
+            "settings": {
+              "initialCashCents": 100000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 4
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "prevClose": {},
+            "gaps": {},
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        },
+        {
+          "seq": 3,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-3",
+              "requestId": "tool-1",
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "side": "buy",
+              "type": "market",
+              "qty": 100,
+              "status": "pending",
+              "phase": "continuous_am",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "filledQty": 0,
+              "remainingQty": 100,
+              "tradeDate": "2026-11-16"
+            },
+            "quote": {
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "last": 1450.5,
+              "prevClose": 1440,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            "phase": "continuous_am"
+          }
+        },
+        {
+          "seq": 4,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-3",
+            "fill": {
+              "id": "fill-ord-2026-11-16-3-1",
+              "orderId": "ord-2026-11-16-3",
+              "symbol": "600519.SH",
+              "name": "贵州茅台",
+              "side": "buy",
+              "price": 1450.5,
+              "qty": 100,
+              "amountCents": 14505000,
+              "fees": {
+                "commissionCents": 3626,
+                "stampCents": 0,
+                "transferCents": 145,
+                "totalCents": 3771
+              },
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        },
+        {
+          "seq": 5,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-5",
+              "requestId": "tool-2",
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "side": "buy",
+              "type": "limit",
+              "qty": 1000,
+              "limitPrice": 11,
+              "status": "pending",
+              "phase": "continuous_am",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "filledQty": 0,
+              "remainingQty": 1000,
+              "tradeDate": "2026-11-16"
+            },
+            "quote": {
+              "symbol": "000001.SZ",
+              "name": "平安银行",
+              "last": 11.3,
+              "prevClose": 11.2,
+              "marketTs": "<ts>",
+              "fetchedAt": "<ts>",
+              "source": "fake"
+            },
+            "phase": "continuous_am"
+          }
+        },
+        {
+          "seq": 6,
+          "type": "order.canceled",
+          "payload": {
+            "orderId": "ord-2026-11-16-5",
+            "reason": "user",
+            "at": "<ts>"
+          }
+        }
+      ],
+      "futures": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "futures",
+            "settings": {
+              "initialCashCents": 100000000,
+              "marginUplift": 0,
+              "feeMultiplier": 1,
+              "warnRiskRatio": 0.8,
+              "liquidateRiskRatio": 1,
+              "closeBeforeDeListDays": 3,
+              "defaultFeePerLotCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 1
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "recordedAt": "<ts>"
+          }
+        },
+        {
+          "seq": 3,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-3",
+              "requestId": "tool-fut-1",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "open",
+              "type": "market",
+              "qty": 1,
+              "status": "pending",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "tradeDate": "2026-11-16",
+              "multiplier": 10,
+              "tickSize": 1,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "feeSource": "exchange"
+            }
+          }
+        },
+        {
+          "seq": 4,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-3",
+            "fill": {
+              "id": "fill-ord-2026-11-16-3-1",
+              "orderId": "ord-2026-11-16-3",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "open",
+              "price": 3200,
+              "qty": 1,
+              "multiplier": 10,
+              "tickSize": 1,
+              "amountCents": 3200000,
+              "feesCents": 500,
+              "marginCents": 320000,
+              "realizedPnlCents": 0,
+              "closedTodayQty": 0,
+              "feeSource": "exchange",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

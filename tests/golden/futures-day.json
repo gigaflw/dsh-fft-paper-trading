@@ -1,0 +1,734 @@
+{
+  "steps": [
+    {
+      "step": "futures account opened on first read",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "futures",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 1000000,
+          "margin": 0,
+          "equity": 1000000,
+          "pnl": 0,
+          "pnlPct": 0,
+          "todayPnl": 0,
+          "netCashFlow": 0,
+          "riskRatio": 0,
+          "tradeDate": "2026-11-16",
+          "blocked": false,
+          "positions": [],
+          "settings": {
+            "initialCashCents": 100000000,
+            "marginUplift": 0,
+            "feeMultiplier": 1,
+            "warnRiskRatio": 0.8,
+            "liquidateRiskRatio": 1,
+            "closeBeforeDeListDays": 3,
+            "defaultFeePerLotCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/futures/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "contract index",
+      "result": {
+        "ok": true,
+        "value": {
+          "state": "ok",
+          "contracts": [
+            {
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "exchange": "SHFE",
+              "multiplier": 10,
+              "tickSize": 1,
+              "marginRate": 0.1,
+              "tradeHours": "上午9:00-11:30,下午13:30-15:00,下午21:00-23:00(夜盘)",
+              "deListDate": "2027-01-15"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "quote the contract",
+      "result": {
+        "ok": true,
+        "value": {
+          "state": "ok",
+          "quotes": [
+            {
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "last": 3200,
+              "preSettlement": 3150,
+              "openInterest": 5000,
+              "volume": 1000,
+              "marketTs": "<ts>",
+              "source": "ftshare"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "session status",
+      "result": {
+        "ok": true,
+        "value": {
+          "phase": "trading",
+          "tradeDate": "2026-11-16",
+          "canSubmit": true,
+          "canMatch": true,
+          "nextBoundary": "<ts>",
+          "calendar": {
+            "source": "fallback",
+            "reason": "未安装 FTShare 数据服务，按工作日估算"
+          }
+        }
+      }
+    },
+    {
+      "step": "preview an open",
+      "result": {
+        "ok": true,
+        "value": {
+          "symbol": "RB2611.SHFE",
+          "side": "long",
+          "offset": "open",
+          "type": "market",
+          "qty": 1,
+          "price": 3200,
+          "multiplier": 10,
+          "amountCents": 3200000,
+          "marginCents": 320000,
+          "feesCents": 500,
+          "cashAfterCents": 99679500,
+          "equityAfter": 99999500,
+          "riskRatioAfter": 0.00320001600008,
+          "maxOpenQty": 312,
+          "availableCloseQty": 0,
+          "limit": {
+            "symbol": "RB2611.SHFE",
+            "upper": 3400,
+            "lower": 2900,
+            "source": "limit"
+          },
+          "quote": {
+            "symbol": "RB2611.SHFE",
+            "name": "螺纹钢2611",
+            "last": 3200,
+            "preSettlement": 3150,
+            "openInterest": 5000,
+            "volume": 1000,
+            "marketTs": "<ts>",
+            "source": "ftshare"
+          },
+          "session": {
+            "phase": "trading",
+            "tradeDate": "2026-11-16",
+            "canSubmit": true,
+            "canMatch": true,
+            "nextBoundary": "<ts>"
+          },
+          "warnings": []
+        }
+      }
+    },
+    {
+      "step": "open a long",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-3",
+          "requestId": "fut-open",
+          "symbol": "RB2611.SHFE",
+          "name": "螺纹钢2611",
+          "side": "long",
+          "offset": "open",
+          "type": "market",
+          "qty": 1,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 3200,
+          "marginCents": 320000,
+          "feesCents": 500
+        }
+      }
+    },
+    {
+      "step": "positions after the open",
+      "result": {
+        "ok": true,
+        "value": [
+          {
+            "symbol": "RB2611.SHFE",
+            "name": "螺纹钢2611",
+            "side": "long",
+            "qty": 1,
+            "todayQty": 1,
+            "avgPrice": 3200,
+            "lastPrice": 3200,
+            "multiplier": 10,
+            "marginCents": 320000,
+            "marginRate": 0.1,
+            "unrealizedPnlCents": 0,
+            "unrealizedPnlPct": 0,
+            "deListDate": "2027-01-15"
+          }
+        ]
+      }
+    },
+    {
+      "step": "tick marks the position",
+      "result": {
+        "ok": true,
+        "value": {
+          "tradeDate": "2026-11-16",
+          "filled": [],
+          "expired": [],
+          "notices": []
+        }
+      }
+    },
+    {
+      "step": "preview a close",
+      "result": {
+        "ok": true,
+        "value": {
+          "symbol": "RB2611.SHFE",
+          "side": "long",
+          "offset": "close",
+          "type": "market",
+          "qty": 1,
+          "price": 3200,
+          "multiplier": 10,
+          "amountCents": 3200000,
+          "marginCents": 320000,
+          "feesCents": 500,
+          "cashAfterCents": 99999000,
+          "equityAfter": 99999000,
+          "riskRatioAfter": 0,
+          "maxOpenQty": 0,
+          "availableCloseQty": 1,
+          "limit": {
+            "symbol": "RB2611.SHFE",
+            "upper": 3400,
+            "lower": 2900,
+            "source": "limit"
+          },
+          "quote": {
+            "symbol": "RB2611.SHFE",
+            "name": "螺纹钢2611",
+            "last": 3200,
+            "preSettlement": 3150,
+            "openInterest": 5000,
+            "volume": 1000,
+            "marketTs": "<ts>",
+            "source": "ftshare"
+          },
+          "session": {
+            "phase": "trading",
+            "tradeDate": "2026-11-16",
+            "canSubmit": true,
+            "canMatch": true,
+            "nextBoundary": "<ts>"
+          },
+          "warnings": []
+        }
+      }
+    },
+    {
+      "step": "close the long",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-5",
+          "requestId": "fut-close",
+          "symbol": "RB2611.SHFE",
+          "name": "螺纹钢2611",
+          "side": "long",
+          "offset": "close",
+          "type": "market",
+          "qty": 1,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 3200,
+          "feesCents": 500
+        }
+      }
+    },
+    {
+      "step": "open again and hold into settlement",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-7",
+          "requestId": "fut-hold",
+          "symbol": "RB2611.SHFE",
+          "name": "螺纹钢2611",
+          "side": "long",
+          "offset": "open",
+          "type": "market",
+          "qty": 1,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 3200,
+          "marginCents": 320000,
+          "feesCents": 500
+        }
+      }
+    },
+    {
+      "step": "tick settles the day",
+      "result": {
+        "ok": true,
+        "value": {
+          "tradeDate": "2026-11-17",
+          "filled": [],
+          "expired": [],
+          "notices": []
+        }
+      }
+    },
+    {
+      "step": "account after settlement",
+      "result": {
+        "ok": true,
+        "value": {
+          "accountId": "futures",
+          "currency": "CNY",
+          "initialCash": 1000000,
+          "cash": 996785,
+          "margin": 3200,
+          "equity": 999985,
+          "pnl": -15,
+          "pnlPct": -0.000015,
+          "todayPnl": 0,
+          "netCashFlow": 0,
+          "riskRatio": 0.003200048000720011,
+          "tradeDate": "2026-11-17",
+          "blocked": false,
+          "positions": [
+            {
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "side": "long",
+              "qty": 1,
+              "todayQty": 0,
+              "avgPrice": 3200,
+              "lastPrice": 3200,
+              "multiplier": 10,
+              "marginCents": 320000,
+              "marginRate": 0.1,
+              "unrealizedPnlCents": 0,
+              "unrealizedPnlPct": 0,
+              "deListDate": "2027-01-15"
+            }
+          ],
+          "settings": {
+            "initialCashCents": 100000000,
+            "marginUplift": 0,
+            "feeMultiplier": 1,
+            "warnRiskRatio": 0.8,
+            "liquidateRiskRatio": 1,
+            "closeBeforeDeListDays": 3,
+            "defaultFeePerLotCents": 0
+          },
+          "ledgerPath": "<home>/paper-trading/futures/events.jsonl"
+        }
+      }
+    },
+    {
+      "step": "positions after settlement",
+      "result": {
+        "ok": true,
+        "value": [
+          {
+            "symbol": "RB2611.SHFE",
+            "name": "螺纹钢2611",
+            "side": "long",
+            "qty": 1,
+            "todayQty": 0,
+            "avgPrice": 3200,
+            "lastPrice": 3200,
+            "multiplier": 10,
+            "marginCents": 320000,
+            "marginRate": 0.1,
+            "unrealizedPnlCents": 0,
+            "unrealizedPnlPct": 0,
+            "deListDate": "2027-01-15"
+          }
+        ]
+      }
+    },
+    {
+      "step": "review all",
+      "result": {
+        "ok": true,
+        "value": {
+          "equityCurve": [
+            {
+              "date": "2026-11-16",
+              "equity": 999985,
+              "cash": 996785,
+              "margin": 3200
+            }
+          ],
+          "maxDrawdownPct": 0,
+          "tradeCount": 3,
+          "openCount": 2,
+          "closeCount": 1,
+          "winCount": 0,
+          "lossCount": 1,
+          "totalFees": 15,
+          "realizedPnl": 0,
+          "byProduct": [
+            {
+              "product": "rb",
+              "tradeCount": 3,
+              "realizedPnl": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "cash flow",
+      "result": {
+        "ok": true,
+        "value": [
+          {
+            "ts": "<ts>",
+            "type": "open",
+            "amount": 1000000,
+            "balance": 1000000
+          },
+          {
+            "ts": "<ts>",
+            "type": "open_position",
+            "amount": -3205,
+            "balance": 996795,
+            "ref": "ord-2026-11-16-3"
+          },
+          {
+            "ts": "<ts>",
+            "type": "close_position",
+            "amount": 3195,
+            "balance": 999990,
+            "ref": "ord-2026-11-16-5"
+          },
+          {
+            "ts": "<ts>",
+            "type": "open_position",
+            "amount": -3205,
+            "balance": 996785,
+            "ref": "ord-2026-11-16-7"
+          }
+        ]
+      }
+    },
+    {
+      "step": "ledger snapshots",
+      "result": {
+        "ok": true,
+        "value": {
+          "path": "<home>/paper-trading/futures/events.jsonl",
+          "blocked": false,
+          "ledgerVersion": 1,
+          "snapshots": []
+        }
+      }
+    }
+  ],
+  "store": {
+    "tree": {
+      "accounts.json": [
+        "accounts.json"
+      ],
+      "futures": [
+        "events.jsonl"
+      ]
+    },
+    "ledgers": {
+      "accounts.json": {
+        "version": 3,
+        "updatedAt": "<mtime>",
+        "tickMs": 5000,
+        "accounts": [
+          {
+            "id": "default",
+            "kind": "stock",
+            "name": "默认账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          },
+          {
+            "id": "futures",
+            "kind": "futures",
+            "name": "期货账户",
+            "createdAt": "<mtime>",
+            "hidden": false,
+            "locked": false
+          }
+        ]
+      },
+      "futures": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "futures",
+            "settings": {
+              "initialCashCents": 100000000,
+              "marginUplift": 0,
+              "feeMultiplier": 1,
+              "warnRiskRatio": 0.8,
+              "liquidateRiskRatio": 1,
+              "closeBeforeDeListDays": 3,
+              "defaultFeePerLotCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 1
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "recordedAt": "<ts>"
+          }
+        },
+        {
+          "seq": 3,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-3",
+              "requestId": "fut-open",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "open",
+              "type": "market",
+              "qty": 1,
+              "status": "pending",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "tradeDate": "2026-11-16",
+              "multiplier": 10,
+              "tickSize": 1,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "feeSource": "exchange"
+            }
+          }
+        },
+        {
+          "seq": 4,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-3",
+            "fill": {
+              "id": "fill-ord-2026-11-16-3-1",
+              "orderId": "ord-2026-11-16-3",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "open",
+              "price": 3200,
+              "qty": 1,
+              "multiplier": 10,
+              "tickSize": 1,
+              "amountCents": 3200000,
+              "feesCents": 500,
+              "marginCents": 320000,
+              "realizedPnlCents": 0,
+              "closedTodayQty": 0,
+              "feeSource": "exchange",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        },
+        {
+          "seq": 5,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-5",
+              "requestId": "fut-close",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "close",
+              "type": "market",
+              "qty": 1,
+              "status": "pending",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "tradeDate": "2026-11-16",
+              "multiplier": 10,
+              "tickSize": 1,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "feeSource": "exchange"
+            }
+          }
+        },
+        {
+          "seq": 6,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-5",
+            "fill": {
+              "id": "fill-ord-2026-11-16-5-1",
+              "orderId": "ord-2026-11-16-5",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "close",
+              "price": 3200,
+              "qty": 1,
+              "multiplier": 10,
+              "tickSize": 1,
+              "amountCents": 3200000,
+              "feesCents": 500,
+              "marginCents": 320000,
+              "realizedPnlCents": 0,
+              "closedTodayQty": 1,
+              "feeSource": "exchange",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        },
+        {
+          "seq": 7,
+          "type": "order.submitted",
+          "payload": {
+            "order": {
+              "id": "ord-2026-11-16-7",
+              "requestId": "fut-hold",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "open",
+              "type": "market",
+              "qty": 1,
+              "status": "pending",
+              "createdAt": "<mtime>",
+              "updatedAt": "<mtime>",
+              "tradeDate": "2026-11-16",
+              "multiplier": 10,
+              "tickSize": 1,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "feeSource": "exchange"
+            }
+          }
+        },
+        {
+          "seq": 8,
+          "type": "order.filled",
+          "payload": {
+            "orderId": "ord-2026-11-16-7",
+            "fill": {
+              "id": "fill-ord-2026-11-16-7-1",
+              "orderId": "ord-2026-11-16-7",
+              "symbol": "RB2611.SHFE",
+              "name": "螺纹钢2611",
+              "product": "rb",
+              "side": "long",
+              "offset": "open",
+              "price": 3200,
+              "qty": 1,
+              "multiplier": 10,
+              "tickSize": 1,
+              "amountCents": 3200000,
+              "feesCents": 500,
+              "marginCents": 320000,
+              "realizedPnlCents": 0,
+              "closedTodayQty": 0,
+              "feeSource": "exchange",
+              "feePerLotCents": 500,
+              "closeTodayFeePerLotCents": 500,
+              "marginRate": 0.1,
+              "deListDate": "2027-01-15",
+              "ts": "<ts>",
+              "tradeDate": "2026-11-16"
+            }
+          }
+        },
+        {
+          "seq": 9,
+          "type": "day.closed",
+          "payload": {
+            "date": "2026-11-16",
+            "nextDate": "2026-11-17",
+            "equityCents": 99998500,
+            "cashCents": 99678500,
+            "marginCents": 320000,
+            "feesCents": 1500,
+            "closePrices": {
+              "RB2611.SHFE": 3200
+            },
+            "positions": [
+              {
+                "symbol": "RB2611.SHFE",
+                "name": "螺纹钢2611",
+                "product": "rb",
+                "side": "long",
+                "qty": 1,
+                "todayQty": 1,
+                "avgPrice": 3200,
+                "lastPrice": 3200,
+                "multiplier": 10,
+                "marginCents": 320000,
+                "marginRate": 0.1,
+                "deListDate": "2027-01-15"
+              }
+            ],
+            "closeSource": "daily",
+            "liquidations": 0,
+            "warnings": [],
+            "recordedAt": "<ts>"
+          }
+        }
+      ]
+    }
+  }
+}
