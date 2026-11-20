@@ -154,6 +154,7 @@
      */
     function useAccountRegistry({ scope, request, tab, loadAll, loadReviewDetail, loadCompare, clearView, setBusy, setError, setNotice, onNotes }) {
       const [accounts, setAccounts] = useState(null)
+      const [tickMs, setTickMs] = useState(5000)
       const [currentAccountId, setCurrentAccountId] = useState(null)
       const [accountEditor, setAccountEditor] = useState(null)
       const alive = useRef(true)
@@ -168,6 +169,7 @@
           const view = await request('accounts/list', { kind: 'stock' })
           if (!alive.current) return
           setAccounts(view.accounts)
+          if (typeof view.tickMs === 'number' && view.tickMs > 0) setTickMs(view.tickMs)
           setCurrentAccountId(previous => {
             if (previous !== null && view.accounts.some(item => item.id === previous)) return previous
             const remembered = view.accounts.find(item => item.id === readCurrentAccount())
@@ -262,7 +264,7 @@
       }, [currentAccount, loadAccounts, onNotes, setBusy, setError, setNotice])
 
       return {
-        accounts, stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
+        accounts, tickMs, stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
         accountEditor, setAccountEditor, loadAccounts,
         submitAccountEditor, runAccountAction,
       }

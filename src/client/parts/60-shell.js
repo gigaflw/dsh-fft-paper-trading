@@ -192,7 +192,7 @@
         onNotes: () => setTab('notes'),
       })
       const {
-        stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
+        tickMs, stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
         accountEditor, setAccountEditor, submitAccountEditor, runAccountAction,
       } = registry
 
@@ -217,7 +217,7 @@
 
       // The host scheduler is the primary matcher; this stays as a live extra
       // trigger while the panel is visible.
-      useVisiblePolling(tick)
+      useVisiblePolling(tick, tickMs)
 
       const loadBars = useCallback(async (symbol = form.symbol) => {
         const seq = ++barsSeq.current
