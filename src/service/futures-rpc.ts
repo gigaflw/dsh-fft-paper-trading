@@ -10,6 +10,7 @@ import type { RpcResult } from '../contract.js'
 import type { FuturesDraft, FuturesExchange } from '../futures-contract.js'
 import type { FuturesService } from './futures-service.js'
 import { FuturesError } from './futures-service.js'
+import { argumentGuards, failure, ok } from './rpc-support.js'
 
 export type FuturesRpcHandler = (
   endpoint: string,
@@ -19,25 +20,10 @@ export type FuturesRpcHandler = (
 
 const EXCHANGES: readonly FuturesExchange[] = ['SHFE', 'INE', 'DCE', 'CZCE', 'GFEX']
 
-function ok(value: unknown): RpcResult<unknown> {
-  return { ok: true, value }
-}
-
-function record(value: unknown): Record<string, unknown> {
-  if (value === undefined || value === null) return {}
-  if (typeof value !== 'object') throw new FuturesError('INVALID_ARGUMENT', '请求参数必须是对象')
-  return value as Record<string, unknown>
-}
-
-function text(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new FuturesError('INVALID_ARGUMENT', `缺少 ${field}`)
-  return value.trim()
-}
-
-function num(value: unknown, field: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw new FuturesError('INVALID_ARGUMENT', `${field} 必须是数字`)
-  return value
-}
+const guard = argumentGuards(message => new FuturesError('INVALID_ARGUMENT', message))
+const record = (value: unknown) => guard.record(value, { allowEmpty: true })
+const text = guard.text
+const num = guard.num
 
 function draftOf(value: unknown): FuturesDraft {
   const input = record(value)
@@ -137,10 +123,7 @@ export function createFuturesRpcHandler(service: FuturesService): FuturesRpcHand
           throw new FuturesError('INVALID_ARGUMENT', `未知 endpoint: ${endpoint}`, 404)
       }
     } catch (error) {
-      if (error instanceof FuturesError) {
-        return { ok: false, error: { code: error.code, message: error.message } }
-      }
-      return { ok: false, error: { code: 'INTERNAL', message: error instanceof Error ? error.message : String(error) } }
+      return failure(error, item => item instanceof FuturesError)
     }
   }
 }

@@ -8,10 +8,11 @@
  * @module @dsh-ft/dsh-fft-paper-trading/service/compare-rpc
  */
 
-import type { AccountMeta, CompareRow, CompareView, RpcResult } from '../contract.js'
+import type { AccountMeta, CompareRow, CompareView } from '../contract.js'
 import { PaperError } from './errors.js'
 import type { PaperService } from './paper-service.js'
 import type { PaperRpcHandler } from './rpc.js'
+import { fail, ok } from './rpc-support.js'
 
 export interface CompareSource {
   /** Visible (not hidden) stock accounts, in registry order. */
@@ -19,13 +20,11 @@ export interface CompareSource {
   serviceOf: (meta: AccountMeta) => PaperService
 }
 
-const ok = <T>(value: T): RpcResult<T> => ({ ok: true, value })
-
 /** Routes `compare/get`; other endpoints belong to the per-account handlers. */
 export function createCompareRpcHandler(source: CompareSource): PaperRpcHandler {
   return async endpoint => {
     if (endpoint !== 'compare/get') {
-      return { ok: false, error: { code: 'INVALID_ARGUMENT', message: `未知端点 ${endpoint}` } }
+      return fail('INVALID_ARGUMENT', `未知端点 ${endpoint}`)
     }
     try {
       const accounts: CompareRow[] = []

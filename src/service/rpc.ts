@@ -1,6 +1,7 @@
 import type { AccountMeta, BasketOrderInput, DataSourceStatus, NoteView, OrderDraft, RpcResult, Side } from '../contract.js'
 import type { PaperService } from './paper-service.js'
 import { PaperError } from './errors.js'
+import { argumentGuards, fail, failure, ok } from './rpc-support.js'
 
 export type PaperRpcHandler = (
   endpoint: string,
@@ -39,20 +40,10 @@ function guardAccount(meta: AccountMeta | undefined, endpoint: string): void {
   if (meta.locked === true) throw new PaperError('ACCOUNT_LOCKED', `账户「${meta.name}」已锁定，不能交易`, 409)
 }
 
-function record(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) throw new PaperError('INVALID_ARGUMENT', '请求参数必须是对象')
-  return value as Record<string, unknown>
-}
-
-function text(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new PaperError('INVALID_ARGUMENT', `缺少 ${field}`)
-  return value.trim()
-}
-
-function num(value: unknown, field: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw new PaperError('INVALID_ARGUMENT', `${field} 必须是数字`)
-  return value
-}
+const guard = argumentGuards(message => new PaperError('INVALID_ARGUMENT', message))
+const record = guard.record
+const text = guard.text
+const num = guard.num
 
 function draft(value: unknown): OrderDraft {
   const input = record(value)
@@ -265,14 +256,7 @@ export function createPaperRpcHandler(source: PaperService | PaperRpcResolver, o
           throw new PaperError('INVALID_ARGUMENT', `未知 endpoint: ${endpoint}`, 404)
       }
     } catch (error) {
-      if (error instanceof PaperError) {
-        return { ok: false, error: { code: error.code, message: error.message } }
-      }
-      return { ok: false, error: { code: 'INTERNAL', message: error instanceof Error ? error.message : String(error) } }
+      return failure(error, item => item instanceof PaperError)
     }
   }
-}
-
-function ok(value: unknown): RpcResult<unknown> {
-  return { ok: true, value }
 }

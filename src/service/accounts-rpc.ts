@@ -11,20 +11,15 @@
  * @module @dsh-ft/dsh-fft-paper-trading/service/accounts-rpc
  */
 
-import type { AccountKind, RpcResult } from '../contract.js'
+import type { AccountKind } from '../contract.js'
 import type { AccountRegistry } from '../store/accounts.js'
 import { PaperError } from './errors.js'
 import type { PaperRpcHandler } from './rpc.js'
+import { argumentGuards, fail, failure, ok } from './rpc-support.js'
 
-function record(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) throw new PaperError('INVALID_ARGUMENT', '请求参数必须是对象')
-  return value as Record<string, unknown>
-}
-
-function text(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new PaperError('INVALID_ARGUMENT', `缺少 ${field}`)
-  return value.trim()
-}
+const guard = argumentGuards(message => new PaperError('INVALID_ARGUMENT', message))
+const record = guard.record
+const text = guard.text
 
 function kindOf(value: unknown): AccountKind | undefined {
   if (value === undefined || value === null) return undefined
@@ -40,8 +35,6 @@ function cashCents(value: unknown): number | undefined {
   }
   return Math.round(value * 100)
 }
-
-const ok = <T>(value: T): RpcResult<T> => ({ ok: true, value })
 
 /** Routes `accounts/*`; every other endpoint is somebody else's. */
 export function createAccountsRpcHandler(registry: AccountRegistry): PaperRpcHandler {
@@ -73,13 +66,10 @@ export function createAccountsRpcHandler(registry: AccountRegistry): PaperRpcHan
         case 'accounts/unlock':
           return ok(await registry.unlock(text(input.id, 'id')))
         default:
-          return { ok: false, error: { code: 'INVALID_ARGUMENT', message: `未知端点 ${endpoint}` } }
+          return fail('INVALID_ARGUMENT', `未知端点 ${endpoint}`)
       }
     } catch (error) {
-      if (error instanceof PaperError) {
-        return { ok: false, error: { code: error.code, message: error.message } }
-      }
-      return { ok: false, error: { code: 'INTERNAL', message: error instanceof Error ? error.message : String(error) } }
+      return failure(error, item => item instanceof PaperError)
     }
   }
 }
