@@ -312,50 +312,72 @@ export class PaperService {
   /**
    * Idempotent clock advance: close every due trade date and open the next one.
    *
-   * The whole advance runs as one store transaction. Concurrent readers queue
-   * behind it, so the day-boundary events are generated exactly once and the
-   * `seq` values stay contiguous. Missed sessions produce snapshots only, never
-   * fills.
+   * Two phases. The plan (calendar queries + boundary quotes) is built against a
+   * clone of the current state *outside* the store's single-writer queue, so a
+   * slow market-data call can never block reads and writes of this account.
+   * The transaction then re-checks that nobody wrote in the meantime and appends
+   * the pre-built events, so the day-boundary events still land exactly once and
+   * the `seq` values stay contiguous. A lost race only defers the advance to the
+   * next read; it never duplicates or drops a boundary. Missed sessions produce
+   * snapshots only, never fills.
    */
   private async advanceTo(): Promise<AccountState> {
-    const outcome = await this.options.repo.transact(async state => {
-      if (state.tradeDate === '' || state.blocked) return { events: [], value: undefined }
-      const now = this.now()
-      const nowIso = now.toISOString()
-      const today = todayTradeDate(now)
-      let current = state
-      const events: LedgerEvent[] = []
-      const apply = (result: EngineResult): void => {
-        events.push(...result.events)
-        current = result.state
+    const snapshot = await this.options.repo.current()
+    if (snapshot.tradeDate === '' || snapshot.blocked) return snapshot
+    const now = this.now()
+    const nowIso = now.toISOString()
+    const today = todayTradeDate(now)
+    // The clone is the planning input: a concurrent writer may mutate the live
+    // state object while boundary quotes are in flight, and the plan must see
+    // one consistent version of it.
+    const base = structuredClone(snapshot)
+    // Primitive fingerprint: the live state object is mutated in place by any
+    // concurrent write, so comparing object fields later would always match.
+    const plannedFor = { seq: base.lastSeq, tradeDate: base.tradeDate }
+    const planned = await this.planAdvance(base, nowIso, today)
+    if (planned.length === 0) return snapshot
+    const outcome = await this.options.repo.transact(current => {
+      if (current.lastSeq !== plannedFor.seq || current.tradeDate !== plannedFor.tradeDate) {
+        return { events: [], value: undefined }
       }
-      for (let guard = 0; guard < 400; guard += 1) {
-        if (current.tradeDate < today) {
-          const next = await this.options.calendar.nextTradingDay(current.tradeDate)
-          if (nowIso >= isoAtShanghai(current.tradeDate, 15 * 60)) {
-            if (!this.hasClosed(current, current.tradeDate)) apply(await this.buildClose(current, current.tradeDate, next, nowIso))
-          }
-          if (nowIso >= isoAtShanghai(next, 9 * 60 + 15)) apply(this.buildPreOpen(current, next))
-          if (nowIso < isoAtShanghai(next, 9 * 60 + 30)) break
-          apply(await this.buildOpen(current, next, nowIso))
-          continue
-        }
-        if (current.tradeDate === today) {
-          if (await this.options.calendar.isTradingDay(today)) {
-            if (nowIso >= isoAtShanghai(today, 9 * 60 + 30) && current.lastOpenedDate !== today) {
-              apply(await this.buildOpen(current, today, nowIso))
-            }
-            if (nowIso >= isoAtShanghai(today, 15 * 60) && !this.hasClosed(current, today)) {
-              const next = await this.options.calendar.nextTradingDay(today)
-              apply(await this.buildClose(current, today, next, nowIso))
-            }
-          }
-        }
-        break
-      }
-      return { events, value: undefined }
+      return { events: planned, value: undefined }
     })
     return outcome.state
+  }
+
+  /** Build the due day-boundary events; all network calls happen here, unlocked. */
+  private async planAdvance(base: AccountState, nowIso: string, today: string): Promise<LedgerEvent[]> {
+    let current = base
+    const events: LedgerEvent[] = []
+    const apply = (result: EngineResult): void => {
+      events.push(...result.events)
+      current = result.state
+    }
+    for (let guard = 0; guard < 400; guard += 1) {
+      if (current.tradeDate < today) {
+        const next = await this.options.calendar.nextTradingDay(current.tradeDate)
+        if (nowIso >= isoAtShanghai(current.tradeDate, 15 * 60)) {
+          if (!this.hasClosed(current, current.tradeDate)) apply(await this.buildClose(current, current.tradeDate, next, nowIso))
+        }
+        if (nowIso >= isoAtShanghai(next, 9 * 60 + 15)) apply(this.buildPreOpen(current, next))
+        if (nowIso < isoAtShanghai(next, 9 * 60 + 30)) break
+        apply(await this.buildOpen(current, next, nowIso))
+        continue
+      }
+      if (current.tradeDate === today) {
+        if (await this.options.calendar.isTradingDay(today)) {
+          if (nowIso >= isoAtShanghai(today, 9 * 60 + 30) && current.lastOpenedDate !== today) {
+            apply(await this.buildOpen(current, today, nowIso))
+          }
+          if (nowIso >= isoAtShanghai(today, 15 * 60) && !this.hasClosed(current, today)) {
+            const next = await this.options.calendar.nextTradingDay(today)
+            apply(await this.buildClose(current, today, next, nowIso))
+          }
+        }
+      }
+      break
+    }
+    return events
   }
 
   /**

@@ -304,66 +304,91 @@ export class FuturesService {
 
   /**
    * Idempotent clock advance: settle every due trade date at 15:30 and open the
-   * current one at 09:00. Runs inside one store transaction so concurrent reads
-   * cannot duplicate a settlement event.
+   * current one at 09:00.
+   *
+   * Two phases: the plan (calendar + close/open prices) is built against a clone
+   * of the state outside the store's write queue, then the transaction re-checks
+   * that nobody wrote meanwhile and appends the pre-built events. A slow data
+   * call therefore cannot block reads and writes, and a lost race merely defers
+   * the settlement to the next read — never duplicates it.
    */
   private async advanceTo(): Promise<AdvanceOutcome> {
-    const outcome = await this.options.repo.transact(async state => {
-      const events: FuturesLedgerEvent[] = []
-      const notices: string[] = []
-      const expired: FuturesOrder[] = []
-      if (state.tradeDate === '' || state.blocked) {
-        return { events, value: { notices, expired } }
+    const snapshot = await this.options.repo.current()
+    if (snapshot.tradeDate === '' || snapshot.blocked) {
+      return { state: snapshot, notices: [], expired: [] }
+    }
+    const now = this.now()
+    const nowIso = now.toISOString()
+    const today = todayTradeDate(now)
+    const base = structuredClone(snapshot)
+    // Primitive fingerprint: the live state is mutated in place by any
+    // concurrent write, so comparing its fields after an await is meaningless.
+    const plannedFor = { seq: base.lastSeq, tradeDate: base.tradeDate }
+    const plan = await this.planAdvance(base, nowIso, today)
+    if (plan.events.length === 0) return { state: snapshot, notices: plan.notices, expired: plan.expired }
+    const outcome = await this.options.repo.transact(current => {
+      if (current.lastSeq !== plannedFor.seq || current.tradeDate !== plannedFor.tradeDate) {
+        return { events: [], value: { applied: false } }
       }
-      const now = this.now()
-      const nowIso = now.toISOString()
-      const today = todayTradeDate(now)
-      let current = state
-      const apply = (result: {
-        events: FuturesLedgerEvent[]
-        state: FuturesAccountState
-        notices?: string[]
-        expired?: FuturesOrder[]
-      }): void => {
-        events.push(...result.events)
-        current = result.state
-        if (result.notices !== undefined) notices.push(...result.notices)
-        if (result.expired !== undefined) expired.push(...result.expired)
+      return { events: plan.events, value: { applied: true } }
+    })
+    if (outcome.value.applied !== true) return { state: outcome.state, notices: [], expired: [] }
+    return { state: outcome.state, notices: plan.notices, expired: plan.expired }
+  }
+
+  /** Build the due settlement/open events; all network calls happen here, unlocked. */
+  private async planAdvance(
+    base: FuturesAccountState,
+    nowIso: string,
+    today: string,
+  ): Promise<{ events: FuturesLedgerEvent[]; notices: string[]; expired: FuturesOrder[] }> {
+    const events: FuturesLedgerEvent[] = []
+    const notices: string[] = []
+    const expired: FuturesOrder[] = []
+    let current = base
+    const apply = (result: {
+      events: FuturesLedgerEvent[]
+      state: FuturesAccountState
+      notices?: string[]
+      expired?: FuturesOrder[]
+    }): void => {
+      events.push(...result.events)
+      current = result.state
+      if (result.notices !== undefined) notices.push(...result.notices)
+      if (result.expired !== undefined) expired.push(...result.expired)
+    }
+    for (let guard = 0; guard < 400; guard += 1) {
+      const settlementAt = isoAt(current.tradeDate, SETTLEMENT_MINUTES)
+      if (current.tradeDate < today || (current.tradeDate === today && nowIso >= settlementAt)) {
+        const closes = await this.fetchCloses(current)
+        const next = await this.options.calendar.nextTradingDay(current.tradeDate)
+        apply(closeDay(current, {
+          date: current.tradeDate,
+          nextTradeDate: next,
+          ts: settlementAt,
+          recordedAt: nowIso,
+          closes: closes.prices,
+          closeSource: closes.source,
+          warnings: closes.notice === undefined ? [] : [closes.notice],
+        }))
+        continue
       }
-      for (let guard = 0; guard < 400; guard += 1) {
-        const settlementAt = isoAt(current.tradeDate, SETTLEMENT_MINUTES)
-        if (current.tradeDate < today || (current.tradeDate === today && nowIso >= settlementAt)) {
-          const closes = await this.fetchCloses(current)
-          const next = await this.options.calendar.nextTradingDay(current.tradeDate)
-          apply(closeDay(current, {
-            date: current.tradeDate,
-            nextTradeDate: next,
-            ts: settlementAt,
+      if (current.tradeDate === today) {
+        if (nowIso >= isoAt(today, OPEN_MINUTES) && current.lastOpenedDate !== today) {
+          const opens = await this.fetchOpens(current)
+          apply(openDay(current, {
+            date: today,
+            ts: isoAt(today, OPEN_MINUTES),
             recordedAt: nowIso,
-            closes: closes.prices,
-            closeSource: closes.source,
-            warnings: closes.notice === undefined ? [] : [closes.notice],
+            opens: opens.prices,
           }))
-          continue
-        }
-        if (current.tradeDate === today) {
-          if (nowIso >= isoAt(today, OPEN_MINUTES) && current.lastOpenedDate !== today) {
-            const opens = await this.fetchOpens(current)
-            apply(openDay(current, {
-              date: today,
-              ts: isoAt(today, OPEN_MINUTES),
-              recordedAt: nowIso,
-              opens: opens.prices,
-            }))
-            if (opens.notice !== undefined) notices.push(opens.notice)
-          }
-          break
+          if (opens.notice !== undefined) notices.push(opens.notice)
         }
         break
       }
-      return { events, value: { notices, expired } }
-    })
-    return { state: outcome.state, notices: outcome.value.notices, expired: outcome.value.expired }
+      break
+    }
+    return { events, notices, expired }
   }
 
   /** Symbols whose price the account cares about: open orders and held positions. */
