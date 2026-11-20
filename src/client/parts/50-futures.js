@@ -36,6 +36,7 @@
       const [quote, setQuote] = useState(null)
       const [quoteNotice, setQuoteNotice] = useState('')
       const [dataSource, setDataSource] = useState(null)
+      const dataSourceRef = useRef(null)
       const quoteRef = useRef(null)
       const lastTicketRefresh = useRef(0)
       const quoteSeq = useRef(0)
@@ -61,7 +62,7 @@
         return () => { alive.current = false }
       }, [])
 
-      const loadAll = useCallback(async (quiet = false, reviewPeriod = period) => {
+      const loadAll = useCallback(async (quiet = false, reviewPeriod = periodRef.current) => {
         const seq = ++loadAllSeq.current
         const requestedPeriod = reviewPeriod
         try {
@@ -79,6 +80,7 @@
             setPositions(nextPositions)
             setOrders(nextOrders)
             setDataSource(nextDataSource)
+            dataSourceRef.current = nextDataSource
             if (!quiet) setError(null)
           }
           return { account: nextAccount }
@@ -104,11 +106,25 @@
         } catch (cause) {
           if (alive.current && seq === reviewSeq.current && key === periodRef.current) setError(errorOf(cause))
         }
-      }, [period])
+      }, [])
 
       useEffect(() => {
         if (tab === 'review') void loadReview()
       }, [tab, loadReview])
+
+      // A period switch reloads the review bundle (account cards included)
+      // without touching the ticket, which the old loadAll dependency did by
+      // accident. `tab` is read at switch time only.
+      const periodMounted = useRef(false)
+      useEffect(() => {
+        if (!periodMounted.current) {
+          periodMounted.current = true
+          return
+        }
+        void loadAll(false, period)
+        if (tab === 'review') void loadReview(period)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [period, loadAll, loadReview])
 
       const fetchQuote = useCallback(async symbol => {
         const seq = ++quoteSeq.current
@@ -141,7 +157,11 @@
           // until the next edit. With no quote (free tier or an outage) retry
           // slowly instead of every beat.
           if (!alive.current || contract === null) return
-          if (Date.now() - lastTicketRefresh.current >= (quoteRef.current === null ? 300_000 : 5_000)) {
+          // A free-tier quote is yesterday's close and does not move: re-price
+          // at the degraded cadence instead of spending the 5 s beat. The data
+          // source, not the quote object, tells free tier from configured.
+          const refreshInterval = dataSourceRef.current?.state === 'configured' ? 5_000 : 300_000
+          if (Date.now() - lastTicketRefresh.current >= refreshInterval) {
             lastTicketRefresh.current = Date.now()
             void fetchQuote(contract.symbol)
             setPreviewNonce(value => value + 1)
@@ -149,7 +169,7 @@
         } catch {
           // Polling failures stay silent; the manual refresh shows the error.
         }
-      }, [loadAll, contract, fetchQuote, tab, period, loadReview])
+      }, [loadAll, contract, fetchQuote, tab, loadReview])
 
       useEffect(() => {
         const timer = setInterval(() => {
@@ -276,7 +296,7 @@
 
       const submitReason = useMemo(() => {
         if (account === null) return '加载账户中'
-        if (account.blocked === true) return '账户已锁定'
+        if (account.blocked === true) return '账本异常，需恢复或重置'
         if (contract === null) return '选择合约'
         if (String(form.qty).trim() === '') return '填写手数'
         const qty = Number(form.qty)
@@ -507,7 +527,7 @@
         }) : null,
         account.blocked ? h('div', { className: 'pt-blocked' },
           h('div', { className: 'pt-blocked-text' },
-            h('div', null, '期货账本校验失败，账户已锁定。'),
+            h('div', null, '期货账本校验失败，账户已冻结。'),
             account.blockedReason ? h('div', { className: 'pt-blocked-detail', title: account.blockedReason }, `原因：${account.blockedReason}`) : null,
             account.ledgerPath ? h('div', { className: 'pt-blocked-detail', title: account.ledgerPath }, `账本：${account.ledgerPath}`) : null,
             h('div', { className: 'pt-blocked-hint' }, '可让 AI 助手用 paper_ledger 从备份恢复；重置会先备份。'),

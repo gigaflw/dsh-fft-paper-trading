@@ -108,7 +108,7 @@
       const formSymbol = useRef(form.symbol)
       useEffect(() => { formSymbol.current = form.symbol }, [form.symbol])
 
-      const loadAll = useCallback(async (quiet = false, reviewPeriod = period) => {
+      const loadAll = useCallback(async (quiet = false, reviewPeriod = periodRef.current) => {
         const seq = ++loadAllSeq.current
         const requestedPeriod = reviewPeriod
         try {
@@ -138,7 +138,7 @@
           if (alive.current && seq === loadAllSeq.current) setError(errorOf(cause))
           return null
         }
-      }, [period])
+      }, [])
 
       const loadReviewDetail = useCallback(async () => {
         const seq = ++detailSeq.current
@@ -167,6 +167,20 @@
           if (alive.current) setCompareError(errorOf(cause).text)
         }
       }, [])
+
+      // A period switch only re-queries the review bundle. It must not re-run
+      // the account-switch effect (which clears the open ticket's preview and
+      // receipt); `tab` is read but not a dependency for the same reason.
+      const periodMounted = useRef(false)
+      useEffect(() => {
+        if (!periodMounted.current) {
+          periodMounted.current = true
+          return
+        }
+        void loadAll(false)
+        if (tab === 'review') void loadReviewDetail()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [period, loadAll, loadReviewDetail])
 
       /** The registry is metadata only: a failure leaves the panel on default. */
       const loadAccounts = useCallback(async () => {
@@ -234,10 +248,15 @@
         await saveNote(noteTextRef.current, accountId)
       }, [saveNote])
 
-      const loadNote = useCallback(async accountId => {
+      const loadNote = useCallback(async (accountId, options = {}) => {
         if (accountId === null) return
-        // Switching accounts must not drop the previous account's edit.
-        await flushNote()
+        // Switching accounts must not drop the previous account's edit, but an
+        // explicit "重新加载" must: discard is what the button promises.
+        if (options.discard !== true) await flushNote()
+        else if (noteTimer.current !== null) {
+          clearTimeout(noteTimer.current)
+          noteTimer.current = null
+        }
         noteRef.current = { accountId, saved: '' }
         // Blank the editor while loading: keeping the previous account's text
         // would let a keystroke save it into the new account.
@@ -702,7 +721,8 @@
       quoteRef.current = quote
       const submitReason = useMemo(() => {
         if (account === null) return '加载账户中'
-        if (blocked) return '账户已锁定'
+        if (currentAccount !== null && currentAccount.locked) return '账户已锁定，先在账户菜单解锁'
+        if (blocked) return '账本异常，需恢复或重置'
         const symbol = form.symbol.trim()
         if (symbol.length < 6) return '输入代码'
         if (String(form.qty).trim() === '') return '填写数量'
@@ -881,7 +901,7 @@
           }),
           account.blocked ? h('div', { className: 'pt-blocked' },
             h('div', { className: 'pt-blocked-text' },
-              h('div', null, '账本校验失败，账户已锁定。'),
+              h('div', null, '账本校验失败，账户已冻结。'),
               account.blockedReason ? h('div', { className: 'pt-blocked-detail', title: account.blockedReason }, `原因：${account.blockedReason}`) : null,
               account.ledgerPath ? h('div', { className: 'pt-blocked-detail', title: account.ledgerPath }, `账本：${account.ledgerPath}`) : null,
               h('div', { className: 'pt-blocked-hint' }, '可让 AI 助手用 paper_ledger 从备份恢复；重置会先备份。'),
@@ -949,7 +969,8 @@
                   error: noteError,
                   onChange: changeNote,
                   onSave: () => { void flushNote() },
-                  onReload: () => { void loadNote(currentAccountId) },
+                  onReload: () => { void loadNote(currentAccountId, { discard: true }) },
+                  maxBytes: noteMeta === null || noteMeta.maxBytes === undefined ? 100000 : noteMeta.maxBytes,
                 }) : null,
               ),
             ),

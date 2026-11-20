@@ -342,13 +342,14 @@
      * One account's notes: a single long text the human rewrites freely.
      * No history, no timestamps, and no tool — the model cannot reach it.
      */
-    function NotesTab({ text, status, updatedAt, error, onChange, onSave, onReload }) {
+    function NotesTab({ text, status, updatedAt, maxBytes = 100000, error, onChange, onSave, onReload }) {
       const bytes = typeof text === 'string' ? new TextEncoder().encode(text).length : 0
+      const overLimit = bytes > maxBytes
       const statusText = status === 'saving' ? '保存中…' : status === 'saved' ? '已保存' : status === 'error' ? '保存失败' : '自动保存'
       return h('div', { className: 'pt-notes' },
         h('div', { className: 'pt-notes-head' },
           h('span', { className: 'pt-notes-title' }, '账户笔记'),
-          h('span', { className: 'pt-notes-meta' }, `${(bytes / 1000).toFixed(1)} / 100 KB · ${statusText}`),
+          h('span', { className: 'pt-notes-meta' }, `${(bytes / 1000).toFixed(1)} / ${(maxBytes / 1000).toFixed(0)} KB · ${statusText}${overLimit ? ' · 超出上限' : ''}`),
         ),
         h('textarea', {
           className: 'pt-notes-input',
@@ -359,7 +360,7 @@
         }),
         error === '' ? null : h('div', { className: 'pt-error' }, error),
         h('div', { className: 'pt-row' },
-          h('button', { className: 'pt-btn', onClick: onSave }, '立即保存'),
+          h('button', { className: 'pt-btn', disabled: overLimit, onClick: onSave }, '立即保存'),
           h('button', { className: 'pt-btn', onClick: onReload }, '重新加载'),
           h('span', { className: 'pt-notes-meta' }, updatedAt ? `上次保存 ${dateTime(updatedAt)}` : '还没有保存过'),
         ),
