@@ -1,8 +1,9 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { todayTradeDate, tradeDateOf } from '../core/calendar.js'
 import type { FuturesExchange } from '../futures-contract.js'
 import { resolveDshHome } from '../store/paths.js'
+import { writeFileAtomic } from '../store/atomic-file.js'
 import type { FtshareDataLike } from './ftshare-market-data.js'
 import type {
   FuturesContractMeta,
@@ -355,13 +356,13 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     const tradeDate = todayTradeDate()
     if (!refresh) {
       if (this.cache?.tradeDate === tradeDate) return { state: 'ok', value: this.cache.contracts }
-      const file = this.readCacheFile()
+      const file = await this.readCacheFile()
       if (file?.tradeDate === tradeDate) {
         this.cache = file
         return { state: 'ok', value: file.contracts }
       }
     }
-    const previous = this.cache ?? this.readCacheFile()
+    const previous = this.cache ?? await this.readCacheFile()
     const fetched = await this.fetchContracts()
     if (fetched.state !== 'ok') {
       return this.contractsFallback(fetched.state, fetched.notice ?? '合约索引不可用', previous)
@@ -374,7 +375,7 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
       return { state: 'ok', value: [], notice: '合约索引没有可交易合约' }
     }
     this.cache = { tradeDate, contracts }
-    this.writeCacheFile({ tradeDate, savedAt: new Date().toISOString(), contracts })
+    await this.writeCacheFile({ tradeDate, savedAt: new Date().toISOString(), contracts })
     return { state: 'ok', value: contracts }
   }
 
@@ -832,9 +833,9 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     }
   }
 
-  private readCacheFile(): ContractsCache | undefined {
+  private async readCacheFile(): Promise<ContractsCache | undefined> {
     try {
-      const parsed = JSON.parse(readFileSync(this.cachePath(), 'utf8')) as unknown
+      const parsed = JSON.parse(await readFile(this.cachePath(), 'utf8')) as unknown
       if (!isRecord(parsed) || typeof parsed.tradeDate !== 'string' || !Array.isArray(parsed.contracts)) {
         return undefined
       }
@@ -851,11 +852,9 @@ export class FtshareFuturesMarketData implements FuturesMarketDataPort {
     }
   }
 
-  private writeCacheFile(file: CacheFile): void {
+  private async writeCacheFile(file: CacheFile): Promise<void> {
     try {
-      const path = this.cachePath()
-      mkdirSync(join(resolveDshHome(), 'paper-trading', 'futures'), { recursive: true })
-      writeFileSync(path, JSON.stringify(file), 'utf8')
+      await writeFileAtomic(this.cachePath(), JSON.stringify(file))
     } catch {
       // The cache is best effort; failing to persist it must not fail the call.
     }

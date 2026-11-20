@@ -69,10 +69,9 @@ export function isoAtShanghai(date: string, minutes: number): string {
   return new Date(base + minutes * 60_000).toISOString()
 }
 
-/** Next session boundary after `iso`; may be a non-trading day, which the caller resolves. */
+/** Next session boundary after `iso`, used by the panel status strip. */
 export function nextBoundary(iso: string): { at: string; phase: SessionPhase } {
   const { date, minutes } = shanghaiClock(iso)
-  const phase = sessionPhaseAt(iso)
   const starts: Array<{ at: number; phase: SessionPhase }> = [
     { at: 9 * 60 + 15, phase: 'pre_open' },
     { at: 9 * 60 + 30, phase: 'continuous_am' },

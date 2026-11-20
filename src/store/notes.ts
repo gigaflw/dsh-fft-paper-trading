@@ -8,12 +8,11 @@
  * @module @dsh-ft/dsh-fft-paper-trading/store/notes
  */
 
-import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
 import type { NoteView } from '../contract.js'
 import { PaperError } from '../service/errors.js'
 import { notePath } from './paths.js'
+import { writeFileAtomic } from './atomic-file.js'
 
 /** 100 KB of UTF-8: a very long research note, still cheap to load and save. */
 export const NOTE_MAX_BYTES = 100_000
@@ -70,12 +69,8 @@ export class AccountNotes {
     }
     const previous = this.queues.get(accountId) ?? Promise.resolve()
     const next = previous.then(async () => {
-      const file = notePath(this.home, accountId)
       try {
-        await mkdir(dirname(file), { recursive: true })
-        const temp = `${file}.${randomUUID()}.tmp`
-        await writeFile(temp, text, 'utf8')
-        await rename(temp, file)
+        await writeFileAtomic(notePath(this.home, accountId), text)
       } catch (error) {
         throw new PaperError('INTERNAL', `保存笔记失败：${error instanceof Error ? error.message : String(error)}`, 500)
       }

@@ -23,9 +23,6 @@ export interface SnapshotFile {
 /** `events-<reason>-<stamp>.jsonl`; the legacy names (`events-<stamp>.jsonl`) also match. */
 const SNAPSHOT_NAME = /^events-[A-Za-z0-9._-]+\.jsonl$/
 export const AUTO_SNAPSHOT_PREFIX = 'events-auto-'
-export const PRE_MIGRATE_PREFIX = 'events-pre-migrate-'
-export const PRE_RESTORE_PREFIX = 'events-pre-restore-'
-export const MANUAL_PREFIX = 'events-manual-'
 
 /** Keep only this many automatic snapshots; reset/repair/pre-* files are never pruned. */
 const KEEP_AUTO = 10

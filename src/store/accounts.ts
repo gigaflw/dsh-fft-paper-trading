@@ -15,13 +15,14 @@
  * @module @dsh-ft/dsh-fft-paper-trading/store/accounts
  */
 
-import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AccountKind, AccountMeta, AccountsView } from '../contract.js'
 import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS } from '../contract.js'
 import { FUTURES_ACCOUNT_ID } from '../futures-contract.js'
 import { PaperError } from '../service/errors.js'
 import { paperRoot } from './paths.js'
+import { writeFileAtomic } from './atomic-file.js'
 
 const REGISTRY_FILE = 'accounts.json'
 const REGISTRY_VERSION = 3
@@ -172,10 +173,7 @@ export class AccountRegistry {
   }
 
   private async save(state: AccountsFile): Promise<void> {
-    await mkdir(this.root, { recursive: true })
-    const temp = `${this.file}.tmp`
-    await writeFile(temp, `${JSON.stringify({ ...state, version: REGISTRY_VERSION }, null, 2)}\n`, 'utf8')
-    await rename(temp, this.file)
+    await writeFileAtomic(this.file, `${JSON.stringify({ ...state, version: REGISTRY_VERSION }, null, 2)}\n`)
   }
 
   /** Serialise mutations the same way the ledger serialises appends. */
@@ -355,6 +353,5 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
 }
 
 /** Default starting cash for a brand-new account when the caller names no amount. */
-export const DEFAULT_NEW_ACCOUNT_CASH_CENTS = DEFAULT_SETTINGS.initialCashCents
 
 export type { AccountsFile }
