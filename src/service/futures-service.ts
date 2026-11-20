@@ -61,6 +61,7 @@ import {
 } from '../core/futures/views.js'
 import { LedgerAdmin } from './ledger-admin.js'
 import { FuturesError, type FuturesServiceErrorCode } from './errors.js'
+import { moveCash as runCashMove, openAccountOnce } from './account-moves.js'
 import { QuoteRefreshGate } from './quote-gate.js'
 
 export { FuturesError, type FuturesServiceErrorCode }
@@ -272,14 +273,13 @@ export class FuturesService {
   }
 
   private async ensureAccount(): Promise<FuturesAccountState> {
-    const outcome = await this.options.repo.transact(async state => {
-      if (state.tradeDate !== '') return { events: [], value: undefined }
-      const now = this.now()
-      const tradeDate = await this.tradeDateForNow(now)
-      const result = openAccount(state, this.settings, tradeDate, now.toISOString(), this.accountId)
-      return { events: result.events, value: undefined }
+    return openAccountOnce<FuturesAccountState, FuturesLedgerEvent>({
+      transact: build => this.options.repo.transact(build),
+      hasAccount: state => state.tradeDate !== '',
+      tradeDateForNow: () => this.tradeDateForNow(this.now()),
+      open: (state, tradeDate, ts) => openAccount(state, this.settings, tradeDate, ts, this.accountId),
+      now: () => this.now(),
     })
-    return outcome.state
   }
 
   private async sync(): Promise<FuturesAccountState> {
@@ -934,24 +934,17 @@ export class FuturesService {
   }
 
   private async moveCash(kind: 'deposit' | 'withdraw', amount: number): Promise<ReturnType<typeof toAccountView>> {
-    const amountCents = this.cashAmountCents(amount)
-    const state = await this.sync()
-    if (state.blocked) throw this.blocked(state)
-    const outcome = await this.options.repo.transact<{ blocked: boolean; insufficient: boolean }>(current => {
-      if (current.blocked) return { events: [], value: { blocked: true, insufficient: false } }
-      // Re-checked inside the transaction: a concurrent open may have reserved
-      // free cash as margin between `sync()` and this write.
-      if (kind === 'withdraw' && amountCents > current.cashCents) {
-        return { events: [], value: { blocked: false, insufficient: true } }
-      }
-      const result = kind === 'deposit'
-        ? depositCash(current, amountCents, this.ts())
-        : withdrawCash(current, amountCents, this.ts())
-      return { events: result.events, value: { blocked: false, insufficient: false } }
-    })
-    if (outcome.value.blocked === true) throw this.blocked(outcome.state)
-    if (outcome.value.insufficient === true) throw new FuturesError('INSUFFICIENT_CASH', '可提现金不足')
-    return this.viewOf(outcome.state)
+    return runCashMove<FuturesAccountState, ReturnType<typeof toAccountView>, FuturesLedgerEvent>({
+      sync: () => this.sync(),
+      transact: build => this.options.repo.transact(build),
+      isBlocked: state => state.blocked,
+      blocked: state => this.blocked(state),
+      cashCents: state => state.cashCents,
+      deposit: depositCash,
+      withdraw: withdrawCash,
+      viewOf: state => this.viewOf(state),
+      ts: () => this.ts(),
+    }, kind, this.cashAmountCents(amount))
   }
 
   /** `amount` is yuan from the UI; the ledger stores integer cents. */
