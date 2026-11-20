@@ -12,6 +12,7 @@ const PARTS = [
   '10-core.js',
   '20-styles.js',
   '30-atoms.js',
+  '35-hooks.js',
   '40-stock-tabs.js',
   '50-futures.js',
   '60-shell.js',

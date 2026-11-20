@@ -49,12 +49,7 @@
       const [form, setForm] = useState({
         side: 'long', offset: 'open', type: 'market', qty: '1', limitPrice: '', price: '', note: '',
       })
-      const [layout, setLayout] = useState(() => readLayout().futures)
-      /** Update a rail preference; a drag previews without writing local storage. */
-      const applyLayout = useCallback((patch, persist = true) => {
-        setLayout(prev => ({ ...prev, ...patch }))
-        if (persist) writeLayout('futures', patch)
-      }, [])
+      const [layout, applyLayout] = useRailLayout('futures')
 
       const alive = useRef(true)
       useEffect(() => {
@@ -171,12 +166,7 @@
         }
       }, [loadAll, contract, fetchQuote, tab, loadReview])
 
-      useEffect(() => {
-        const timer = setInterval(() => {
-          if (document.visibilityState === 'visible') poll()
-        }, 5000)
-        return () => clearInterval(timer)
-      }, [poll])
+      useVisiblePolling(poll)
 
       const searchContracts = useCallback(async (refresh = false) => {
         const seq = ++contractSeq.current

@@ -34,12 +34,7 @@
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
-      const [layout, setLayout] = useState(() => readLayout().stock)
-      /** Update a rail preference; a drag previews without writing local storage. */
-      const applyLayout = useCallback((patch, persist = true) => {
-        setLayout(prev => ({ ...prev, ...patch }))
-        if (persist) writeLayout('stock', patch)
-      }, [])
+      const [layout, applyLayout] = useRailLayout('stock')
       const [resetNonce, setResetNonce] = useState(0)
       // Inline cash panel (注资/提款), hidden until the header button is pressed.
       const [cashOpen, setCashOpen] = useState(false)
@@ -209,85 +204,7 @@
         [stockAccounts, currentAccountId],
       )
 
-      // ---- account notes (human only; the model has no tool for this) ----
-      const [noteText, setNoteText] = useState('')
-      const [noteMeta, setNoteMeta] = useState(null)
-      const [noteStatus, setNoteStatus] = useState('idle')
-      const [noteError, setNoteError] = useState('')
-      const noteTextRef = useRef('')
-      const noteTimer = useRef(null)
-      const noteRef = useRef({ accountId: null, saved: '' })
-
-      const saveNote = useCallback(async (text, accountId) => {
-        if (accountId === null || accountId === undefined) return
-        setNoteStatus('saving')
-        try {
-          const view = await rpc('note/set', { text }, accountId)
-          // A save that finishes after the panel switched accounts belongs to
-          // the old one; applying it here would retarget later flushes.
-          if (!alive.current || noteRef.current.accountId !== accountId) return
-          noteRef.current = { accountId, saved: text }
-          setNoteMeta(view)
-          setNoteStatus('saved')
-          setNoteError('')
-        } catch (cause) {
-          if (!alive.current || noteRef.current.accountId !== accountId) return
-          setNoteStatus('error')
-          setNoteError(errorOf(cause).text)
-        }
-      }, [])
-
-      /** Persist a pending edit now; a no-op when nothing changed. */
-      const flushNote = useCallback(async () => {
-        if (noteTimer.current !== null) {
-          clearTimeout(noteTimer.current)
-          noteTimer.current = null
-        }
-        const { accountId, saved } = noteRef.current
-        if (accountId === null || noteTextRef.current === saved) return
-        await saveNote(noteTextRef.current, accountId)
-      }, [saveNote])
-
-      const loadNote = useCallback(async (accountId, options = {}) => {
-        if (accountId === null) return
-        // Switching accounts must not drop the previous account's edit, but an
-        // explicit "重新加载" must: discard is what the button promises.
-        if (options.discard !== true) await flushNote()
-        else if (noteTimer.current !== null) {
-          clearTimeout(noteTimer.current)
-          noteTimer.current = null
-        }
-        noteRef.current = { accountId, saved: '' }
-        // Blank the editor while loading: keeping the previous account's text
-        // would let a keystroke save it into the new account.
-        noteTextRef.current = ''
-        setNoteText('')
-        setNoteStatus('idle')
-        setNoteError('')
-        try {
-          const view = await rpc('note/get', {}, accountId)
-          if (!alive.current || noteRef.current.accountId !== accountId) return
-          noteRef.current = { accountId, saved: view.text }
-          noteTextRef.current = view.text
-          setNoteText(view.text)
-          setNoteMeta(view)
-        } catch (cause) {
-          if (!alive.current) return
-          setNoteError(errorOf(cause).text)
-        }
-      }, [flushNote])
-
-      const changeNote = useCallback(text => {
-        setNoteText(text)
-        noteTextRef.current = text
-        setNoteStatus('idle')
-        if (noteTimer.current !== null) clearTimeout(noteTimer.current)
-        const accountId = noteRef.current.accountId
-        noteTimer.current = setTimeout(() => {
-          noteTimer.current = null
-          void saveNote(text, accountId)
-        }, 700)
-      }, [saveNote])
+      const notes = useAccountNotes(currentAccountId, tab)
 
       // One place applies the selection: the rpc helper reads the module
       // variable, so set it before the reload and persist it for next time.
@@ -306,7 +223,6 @@
         void loadAll()
         if (tab === 'review') void loadReviewDetail()
         if (tab === 'compare') void loadCompare()
-        if (tab === 'notes') void loadNote(currentAccountId)
         // `tab` is read but not a dependency: switching tabs must not re-query.
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [currentAccountId, loadAll, loadReviewDetail, loadCompare])
@@ -342,12 +258,7 @@
 
       // The host scheduler is the primary matcher; this stays as a live extra
       // trigger while the panel is visible.
-      useEffect(() => {
-        const timer = setInterval(() => {
-          if (document.visibilityState === 'visible') tick()
-        }, 5000)
-        return () => clearInterval(timer)
-      }, [tick])
+      useVisiblePolling(tick)
 
       const loadBars = useCallback(async (symbol = form.symbol) => {
         const seq = ++barsSeq.current
@@ -414,16 +325,8 @@
       useEffect(() => {
         if (tab === 'review') void loadReviewDetail()
         if (tab === 'compare') void loadCompare()
-        if (tab === 'notes') void loadNote(currentAccountId)
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [tab, loadReviewDetail, loadCompare])
-
-      // Leaving the tab (or the panel) within the debounce window must still
-      // write: the request is fired before the component goes away.
-      useEffect(() => () => {
-        if (noteTimer.current !== null) clearTimeout(noteTimer.current)
-        void flushNote()
-      }, [flushNote])
 
       useEffect(() => {
         if (tab === 'market') {
@@ -963,14 +866,14 @@
                 }) : null,
                 tab === 'compare' ? h(CompareTab, { data: compareData, error: compareError }) : null,
                 tab === 'notes' ? h(NotesTab, {
-                  text: noteText,
-                  status: noteStatus,
-                  updatedAt: noteMeta === null ? undefined : noteMeta.updatedAt,
-                  error: noteError,
-                  onChange: changeNote,
-                  onSave: () => { void flushNote() },
-                  onReload: () => { void loadNote(currentAccountId, { discard: true }) },
-                  maxBytes: noteMeta === null || noteMeta.maxBytes === undefined ? 100000 : noteMeta.maxBytes,
+                  text: notes.text,
+                  status: notes.status,
+                  updatedAt: notes.meta === null ? undefined : notes.meta.updatedAt,
+                  error: notes.error,
+                  onChange: notes.change,
+                  onSave: () => { void notes.flush() },
+                  onReload: () => { void notes.reload() },
+                  maxBytes: notes.meta === null || notes.meta.maxBytes === undefined ? 100000 : notes.meta.maxBytes,
                 }) : null,
               ),
             ),
