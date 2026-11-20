@@ -141,3 +141,129 @@
         reload: () => load(accountId, { discard: true }),
       }
     }
+
+    /**
+     * The stock account registry and the selected account.
+     *
+     * One place applies the selection: the module-level `activeAccount` stamps
+     * account-scoped requests, so it is set before the reload; per-account view
+     * state is cleared so nothing from the previous ledger (a preview, a
+     * receipt) survives the switch. The futures ledger is filtered out: this
+     * panel only manages stock accounts, and picking futures would fail every
+     * request.
+     */
+    function useAccountRegistry({ tab, loadAll, loadReviewDetail, loadCompare, clearView, setBusy, setError, setNotice, onNotes }) {
+      const [accounts, setAccounts] = useState(null)
+      const [currentAccountId, setCurrentAccountId] = useState(null)
+      const [accountEditor, setAccountEditor] = useState(null)
+      const alive = useRef(true)
+      useEffect(() => {
+        alive.current = true
+        return () => { alive.current = false }
+      }, [])
+
+      /** The registry is metadata only: a failure leaves the panel on default. */
+      const loadAccounts = useCallback(async () => {
+        try {
+          const view = await rpc('accounts/list')
+          if (!alive.current) return
+          setAccounts(view.accounts)
+          setCurrentAccountId(previous => {
+            if (previous !== null && view.accounts.some(item => item.id === previous)) return previous
+            const remembered = view.accounts.find(item => item.id === readCurrentAccount())
+            return remembered === undefined ? view.defaultIds.stock : remembered.id
+          })
+        } catch {
+          // Keep whatever is selected; the default account still answers.
+        }
+      }, [])
+
+      const stockAccounts = useMemo(
+        () => (accounts ?? []).filter(item => item.kind === 'stock'),
+        [accounts],
+      )
+      const currentAccount = useMemo(
+        () => stockAccounts.find(item => item.id === currentAccountId) ?? null,
+        [stockAccounts, currentAccountId],
+      )
+
+      useEffect(() => {
+        if (currentAccountId === null) return
+        activeAccount = currentAccountId
+        writeCurrentAccount(currentAccountId)
+        clearView()
+        void loadAll()
+        if (tab === 'review') void loadReviewDetail()
+        if (tab === 'compare') void loadCompare()
+        // `tab` and `clearView` are read but not dependencies: switching tabs
+        // must not re-query, and the clear callback only touches setters.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [currentAccountId, loadAll, loadReviewDetail, loadCompare])
+
+      useEffect(() => {
+        void loadAccounts()
+        return () => { activeAccount = null }
+      }, [loadAccounts])
+
+      /** Create/rename go through the registry, then re-read it. */
+      const submitAccountEditor = useCallback(async values => {
+        if (accountEditor === null) return
+        const mode = accountEditor
+        setBusy(true)
+        try {
+          if (mode === 'create') {
+            const created = await rpc('accounts/create', {
+              name: values.name.trim(),
+              ...(values.cash.trim() === '' ? {} : { initialCash: Number(values.cash) }),
+            })
+            await loadAccounts()
+            setNotice(`已创建账户「${created.name}」`)
+            activeAccount = created.id
+            setCurrentAccountId(created.id)
+          } else {
+            await rpc('accounts/rename', { id: currentAccountId, name: values.name.trim() })
+            await loadAccounts()
+            setNotice('账户已改名')
+          }
+          setAccountEditor(null)
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [accountEditor, currentAccountId, loadAccounts, setBusy, setError, setNotice])
+
+      /** Picker actions: editor modes open a form, hide/lock apply immediately. */
+      const runAccountAction = useCallback(async action => {
+        if (currentAccount === null) return
+        if (action === 'notes') {
+          onNotes()
+          return
+        }
+        if (action === 'create' || action === 'rename') {
+          setAccountEditor(action)
+          return
+        }
+        setBusy(true)
+        try {
+          if (action === 'hide') {
+            await rpc('accounts/hide', { id: currentAccount.id })
+            setNotice(`已隐藏「${currentAccount.name}」`)
+          } else {
+            await rpc(currentAccount.locked ? 'accounts/unlock' : 'accounts/lock', { id: currentAccount.id })
+            setNotice(currentAccount.locked ? '已解锁账户' : '已锁定账户')
+          }
+          await loadAccounts()
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [currentAccount, loadAccounts, onNotes, setBusy, setError, setNotice])
+
+      return {
+        accounts, stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
+        accountEditor, setAccountEditor, loadAccounts,
+        submitAccountEditor, runAccountAction,
+      }
+    }

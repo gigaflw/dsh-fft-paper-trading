@@ -24,11 +24,6 @@
       const periodRef = useRef(period)
       useEffect(() => { periodRef.current = period }, [period])
       const [tab, setTab] = useState('trade')
-      // Multi-account state: the registry, the selected account, the inline
-      // editor mode and the comparison page payload.
-      const [accounts, setAccounts] = useState(null)
-      const [currentAccountId, setCurrentAccountId] = useState(null)
-      const [accountEditor, setAccountEditor] = useState(null)
       const [compareData, setCompareData] = useState(null)
       const [compareError, setCompareError] = useState('')
       const [error, setError] = useState(null)
@@ -177,60 +172,33 @@
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [period, loadAll, loadReviewDetail])
 
-      /** The registry is metadata only: a failure leaves the panel on default. */
-      const loadAccounts = useCallback(async () => {
-        try {
-          const view = await rpc('accounts/list')
-          if (!alive.current) return
-          setAccounts(view.accounts)
-          setCurrentAccountId(previous => {
-            if (previous !== null && view.accounts.some(item => item.id === previous)) return previous
-            const remembered = view.accounts.find(item => item.id === readCurrentAccount())
-            return remembered === undefined ? view.defaultIds.stock : remembered.id
-          })
-        } catch {
-          // Keep whatever is selected; the default account still answers.
-        }
-      }, [])
-
-      // The registry also lists the futures ledger; this panel only manages
-      // stock accounts, and picking futures here would fail every request.
-      const stockAccounts = useMemo(
-        () => (accounts ?? []).filter(item => item.kind === 'stock'),
-        [accounts],
-      )
-      const currentAccount = useMemo(
-        () => stockAccounts.find(item => item.id === currentAccountId) ?? null,
-        [stockAccounts, currentAccountId],
-      )
-
-      const notes = useAccountNotes(currentAccountId, tab)
-
-      // One place applies the selection: the rpc helper reads the module
-      // variable, so set it before the reload and persist it for next time.
-      // Per-account view state is cleared so nothing from the previous ledger
-      // (a preview, a receipt) survives the switch.
-      useEffect(() => {
-        if (currentAccountId === null) return
-        activeAccount = currentAccountId
-        writeCurrentAccount(currentAccountId)
+      /** Per-account view state cleared on every account switch. */
+      const clearAccountView = useCallback(() => {
         setNotice('')
         setPreview(null)
         setReceipt(null)
         setSymbolQuote(null)
         setQuoteError('')
         setQuoteNotice('')
-        void loadAll()
-        if (tab === 'review') void loadReviewDetail()
-        if (tab === 'compare') void loadCompare()
-        // `tab` is read but not a dependency: switching tabs must not re-query.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [currentAccountId, loadAll, loadReviewDetail, loadCompare])
+      }, [])
 
-      useEffect(() => {
-        void loadAccounts()
-        return () => { activeAccount = null }
-      }, [loadAccounts])
+      const registry = useAccountRegistry({
+        tab,
+        loadAll,
+        loadReviewDetail,
+        loadCompare,
+        clearView: clearAccountView,
+        setBusy,
+        setError,
+        setNotice,
+        onNotes: () => setTab('notes'),
+      })
+      const {
+        stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
+        accountEditor, setAccountEditor, submitAccountEditor, runAccountAction,
+      } = registry
+
+      const notes = useAccountNotes(currentAccountId, tab)
 
       const tick = useCallback(async () => {
         try {
@@ -656,62 +624,6 @@
         setForm(prev => ({ ...prev, symbol: position.symbol, side: 'sell', type: 'market', qty: String(Math.min(position.available, position.qty)) }))
         setTab('trade')
       }, [])
-
-      /** create / rename / note go through the registry, then re-read it. */
-      const submitAccountEditor = useCallback(async values => {
-        if (accountEditor === null) return
-        const mode = accountEditor
-        setBusy(true)
-        try {
-          if (mode === 'create') {
-            const created = await rpc('accounts/create', {
-              name: values.name.trim(),
-              ...(values.cash.trim() === '' ? {} : { initialCash: Number(values.cash) }),
-            })
-            await loadAccounts()
-            setNotice(`已创建账户「${created.name}」`)
-            activeAccount = created.id
-            setCurrentAccountId(created.id)
-          } else {
-            await rpc('accounts/rename', { id: currentAccountId, name: values.name.trim() })
-            await loadAccounts()
-            setNotice('账户已改名')
-          }
-          setAccountEditor(null)
-        } catch (cause) {
-          setError(errorOf(cause))
-        } finally {
-          setBusy(false)
-        }
-      }, [accountEditor, currentAccountId, loadAccounts])
-
-      /** Picker actions: editor modes open a form, hide/lock apply immediately. */
-      const runAccountAction = useCallback(async action => {
-        if (currentAccount === null) return
-        if (action === 'notes') {
-          setTab('notes')
-          return
-        }
-        if (action === 'create' || action === 'rename') {
-          setAccountEditor(action)
-          return
-        }
-        setBusy(true)
-        try {
-          if (action === 'hide') {
-            await rpc('accounts/hide', { id: currentAccount.id })
-            setNotice(`已隐藏「${currentAccount.name}」`)
-          } else {
-            await rpc(currentAccount.locked ? 'accounts/unlock' : 'accounts/lock', { id: currentAccount.id })
-            setNotice(currentAccount.locked ? '已解锁账户' : '已锁定账户')
-          }
-          await loadAccounts()
-        } catch (cause) {
-          setError(errorOf(cause))
-        } finally {
-          setBusy(false)
-        }
-      }, [currentAccount, loadAccounts])
 
       if (account === null) {
         return h('div', { className: 'pt-inner' },
