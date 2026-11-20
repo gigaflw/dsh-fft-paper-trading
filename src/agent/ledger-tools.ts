@@ -3,6 +3,7 @@ import type { FuturesService } from '../service/futures-service.js'
 import type { PaperService } from '../service/paper-service.js'
 import type { ToolsLike } from './tools.js'
 import { defineJsonTool as defineTool } from './json-tools.js'
+import { toolFailure as fail } from './tool-result.js'
 
 /**
  * One recovery tool for both books.
@@ -34,13 +35,6 @@ const parameters = {
 
 type ToolResult = { summary: string; data: any }
 
-function fail(error: unknown): ToolResult {
-  const coded = error as { code?: unknown; message?: unknown }
-  if (typeof coded?.code === 'string') {
-    return { summary: `失败：${coded.code} ${String(coded.message ?? '')}`, data: { error: { code: coded.code, message: String(coded.message ?? '') } } }
-  }
-  return { summary: `失败：${error instanceof Error ? error.message : String(error)}`, data: { error: String(error) } }
-}
 
 function number(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0

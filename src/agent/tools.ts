@@ -18,6 +18,7 @@ import type { PaperService } from '../service/paper-service.js'
 import { PaperError } from '../service/errors.js'
 import { formatSymbol } from '../core/symbol.js'
 import { renderAccount, renderOrder, renderPreview, renderReview } from './format.js'
+import { toolFailure as fail } from './tool-result.js'
 
 export interface ToolsLike {
   register(tool: unknown): unknown
@@ -101,10 +102,6 @@ function draftOf(args: Record<string, unknown>): OrderDraft {
 
 type ToolResult = { summary: string; data: any }
 
-function fail(error: unknown): ToolResult {
-  if (error instanceof PaperError) return { summary: `失败：${error.code} ${error.message}`, data: { error: { code: error.code, message: error.message } } }
-  return { summary: `失败：${error instanceof Error ? error.message : String(error)}`, data: { error: String(error) } }
-}
 
 /** Picks the service for one call; the host resolves the \`account\` argument. */
 export type ServiceResolver = (account?: string) => Promise<PaperService>

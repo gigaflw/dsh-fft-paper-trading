@@ -13,6 +13,7 @@ import { defineJsonTool as defineTool } from './json-tools.js'
 import type { AccountMeta } from '../contract.js'
 import { PaperError } from '../service/errors.js'
 import type { AccountRegistry } from '../store/accounts.js'
+import { toolFailure as fail } from './tool-result.js'
 
 export interface ToolsLike {
   register(tool: unknown): unknown
@@ -48,12 +49,6 @@ const parameters = {
 
 type ToolResult = { summary: string; data: any }
 
-function fail(error: unknown): ToolResult {
-  if (error instanceof PaperError) {
-    return { summary: `失败：${error.code} ${error.message}`, data: { error: { code: error.code, message: error.message } } }
-  }
-  return { summary: `失败：${error instanceof Error ? error.message : String(error)}`, data: { error: String(error) } }
-}
 
 function stateOf(meta: AccountMeta): string {
   if (meta.missing === true) return '账本目录缺失'

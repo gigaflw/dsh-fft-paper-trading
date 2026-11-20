@@ -25,6 +25,7 @@ import type {
 import type { FuturesService } from '../service/futures-service.js'
 import { FuturesError } from '../service/futures-service.js'
 import type { ToolsLike } from './tools.js'
+import { toolFailure as fail } from './tool-result.js'
 
 const outputSchema = {
   type: 'object',
@@ -204,12 +205,6 @@ function draftOf(args: Record<string, unknown>): FuturesDraft {
   }
 }
 
-function fail(error: unknown): ToolResult {
-  if (error instanceof FuturesError) {
-    return { summary: `失败：${error.code} ${error.message}`, data: { error: { code: error.code, message: error.message } } }
-  }
-  return { summary: `失败：${error instanceof Error ? error.message : String(error)}`, data: { error: String(error) } }
-}
 
 /** Register the seven `paper_futures_*` tools. */
 export function registerFuturesTools(tools: ToolsLike, service: FuturesService): void {
