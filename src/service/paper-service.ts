@@ -55,6 +55,11 @@ export interface PaperServiceOptions {
   accountId?: string
   now?: () => Date
   logger?: { warn(message: string): void }
+  /**
+   * Registry lock, read live so `accounts/lock` takes effect immediately.
+   * Checked inside the service because tools reach it without the RPC guard.
+   */
+  isLocked?: () => boolean
 }
 
 /** Why the account is locked, flattened to one readable line. */
@@ -110,6 +115,17 @@ export class PaperService {
     return path === undefined ? view : { ...view, ledgerPath: path }
   }
 
+  /**
+   * Refuse a state change on a registry-locked account. RPC checks this too;
+   * the service must as well, because the agent tools resolve services
+   * directly and never pass through the RPC guard.
+   */
+  private assertUnlocked(): void {
+    if (this.options.isLocked?.() === true) {
+      throw new PaperError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`, 409)
+    }
+  }
+
   /** The single place that turns a blocked state into an error carrying its reason. */
   private blocked(state: AccountState): PaperError {
     const reason = reasonText(state.blockedReason)
@@ -158,12 +174,22 @@ export class PaperService {
   }
 
   /** Symbols whose price the account cares about: open orders and held positions. */
-  private symbolsInPlay(state: AccountState): string[] {
+  /**
+   * Symbols a tick has to touch.
+   *
+   * Resting orders are the only reason a background tick needs quotes. Positions
+   * are display state (`markPrices` never writes the ledger), so the host
+   * scheduler ticks with `includePositions: false` and an account that merely
+   * holds shares costs zero upstream calls until the panel polls.
+   */
+  private symbolsInPlay(state: AccountState, includePositions = true): string[] {
     const symbols = new Set<string>()
     for (const order of Object.values(state.orders)) {
       if (order.status === 'pending' || order.status === 'queued' || order.status === 'partially_filled') symbols.add(order.symbol)
     }
-    for (const position of Object.values(state.positions)) symbols.add(position.symbol)
+    if (includePositions) {
+      for (const position of Object.values(state.positions)) symbols.add(position.symbol)
+    }
     return [...symbols]
   }
 
@@ -409,6 +435,7 @@ export class PaperService {
   }
 
   async place(input: OrderDraft, requestId: string = randomUUID()): Promise<OrderView> {
+    this.assertUnlocked()
     const draft = { ...input, symbol: this.identifyStock(input.symbol).id }
     const state = await this.sync()
     // A locked account must answer with the lock (and its reason) even when the
@@ -502,6 +529,7 @@ export class PaperService {
    * the batch continues.
    */
   async basketPlace(rows: readonly BasketOrderInput[], batchId?: string): Promise<BasketOrderResult> {
+    this.assertUnlocked()
     const inputs = this.basketRows(rows)
     const batch = batchId === undefined || batchId.trim() === '' ? randomUUID() : batchId.trim()
     const state = await this.sync()
@@ -668,7 +696,7 @@ export class PaperService {
     return toOrderView(order)
   }
 
-  async tick(): Promise<TickView> {
+  async tick(options: { includePositions?: boolean } = {}): Promise<TickView> {
     const state = await this.sync()
     const now = this.ts()
     const phase = this.phaseFor(state, now)
@@ -679,7 +707,11 @@ export class PaperService {
     if (!canMatch(phase)) {
       return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: [], notices: [] }
     }
-    const symbols = this.symbolsInPlay(state)
+    const symbols = this.symbolsInPlay(state, options.includePositions !== false)
+    // Nothing to match and no display to refresh: skip the quote call entirely.
+    if (symbols.length === 0) {
+      return { tradeDate: state.tradeDate, filled: [], expired: [], quotes: [], notices: [] }
+    }
     const key = symbols.join(',')
     const nowMs = this.now().getTime()
     // The panel and the host scheduler beat on the same service instance; the
@@ -983,6 +1015,7 @@ export class PaperService {
    * fields. The write is an atomic temp-file rename.
    */
   async reset(confirm: boolean, initialCashCents?: number): Promise<AccountView> {
+    this.assertUnlocked()
     if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '重置需要 confirm=true', 400)
     if (initialCashCents !== undefined && (!Number.isSafeInteger(initialCashCents) || initialCashCents <= 0)) {
       throw new PaperError('INVALID_ARGUMENT', '初始资金必须是正整数（分）', 400)
@@ -1011,11 +1044,13 @@ export class PaperService {
 
   /** Add cash to the account; the amount is yuan from the UI, stored as cents. */
   async deposit(amount: number): Promise<AccountView> {
+    this.assertUnlocked()
     return this.moveCash('deposit', amount)
   }
 
   /** Take cash out, never more than the free cash at the moment of the write. */
   async withdraw(amount: number): Promise<AccountView> {
+    this.assertUnlocked()
     return this.moveCash('withdraw', amount)
   }
 
@@ -1103,6 +1138,7 @@ export class PaperService {
    * before touching the file.
    */
   async restoreLedger(name: string, confirm: boolean): Promise<AccountView> {
+    this.assertUnlocked()
     if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '恢复账本需要 confirm=true', 400)
     try {
       return this.viewOf(await this.options.repo.restore(name))

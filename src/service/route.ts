@@ -48,15 +48,18 @@ export function createPaperRoute(handler: PaperRpcHandler): PaperRoute {
       if (typeof body !== 'object' || body === null) {
         return json(400, failure('INVALID_ARGUMENT', '请求体必须是对象'))
       }
-      const { endpoint, payload } = body as { endpoint?: unknown; payload?: unknown }
+      const { endpoint, payload, account } = body as { endpoint?: unknown; payload?: unknown; account?: unknown }
       if (typeof endpoint !== 'string' || endpoint === '') {
         return json(400, failure('INVALID_ARGUMENT', '缺少 endpoint'))
+      }
+      if (account !== undefined && typeof account !== 'string') {
+        return json(400, failure('INVALID_ARGUMENT', 'account 必须是字符串'))
       }
       const controller = new AbortController()
       const abort = () => controller.abort()
       request.signal.addEventListener('abort', abort, { once: true })
       try {
-        const result = await handler(endpoint, payload, controller.signal)
+        const result = await handler(endpoint, payload, controller.signal, account)
         return json(200, result)
       } finally {
         request.signal.removeEventListener('abort', abort)

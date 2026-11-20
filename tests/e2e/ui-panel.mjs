@@ -28,7 +28,13 @@ const assert = (name, ok, detail = '') => {
 }
 const findUmd = () => {
   const explicit = process.env.REACT_UMD_DIR
-  if (explicit) return explicit
+  if (explicit) {
+    // Accept either a node_modules-style root or a flat directory holding both
+    // development bundles.
+    const nested = { react: join(explicit, 'react', 'umd'), reactDom: join(explicit, 'react-dom', 'umd') }
+    if (existsSync(join(nested.react, 'react.development.js'))) return nested
+    return { react: explicit, reactDom: explicit }
+  }
   const candidates = [
     join(root, 'build/ui-deps/node_modules'),
     join(root, 'node_modules'),
@@ -329,6 +335,27 @@ try {
   const basketError = await scenario('basket-error')
   assert('basket structural errors show the host reason', typeof basketError.error === 'string' && basketError.error.includes('最多 20 只'), JSON.stringify(basketError))
   assert('basket error keeps the panel mounted', basketError.panelAlive === true)
+
+  // 2c. 多账户：切换与对比
+  const multi = await scenario('multi')
+  assert('the account picker names the current account', /默认账户/.test(multi.label ?? ''), JSON.stringify(multi.label))
+  assert('the picker lists visible accounts only', Array.isArray(multi.menu) && multi.menu.some(text => text.includes('价值组')) && multi.showsHidden === false, JSON.stringify(multi.menu))
+  assert('switching accounts reloads that ledger', /价值组/.test(multi.switched ?? '') && (multi.switchedEquity ?? []).some(text => text.includes('1,124,000')), JSON.stringify(multi.switchedEquity))
+  assert('the comparison tab renders a chart and a ranked table', multi.hasChart === true && (multi.rows ?? []).length >= 3 && /价值组/.test(multi.rows?.[0] ?? ''), JSON.stringify(multi.rows))
+  assert('clicking a column header re-sorts the comparison', /默认账户/.test(multi.sortAsc ?? ''), JSON.stringify(multi.sortAsc))
+  await shot('multi-compare.png')
+  const multiNotes = await scenario('multi-notes')
+  assert('the notes tab carries the account text', /价值组策略/.test(multiNotes.noteBefore ?? ''), JSON.stringify(multiNotes.noteBefore))
+  assert('an edited note autosaves', /已保存/.test(multiNotes.noteStatus ?? '') && String(multiNotes.noteAfter ?? '').includes('编辑后的策略笔记'), JSON.stringify(multiNotes.noteStatus))
+  await shot('multi-notes.png')
+  const multiCreate = await scenario('multi-create')
+  assert('creating an account from the picker works', /新账户/.test(multiCreate.created ?? ''), JSON.stringify(multiCreate))
+  assert('the new account joins the picker', Array.isArray(multiCreate.menu) && multiCreate.menu.some(text => text.includes('新账户')), JSON.stringify(multiCreate.menu))
+  assert('the default account offers no hide action', multiCreate.hasHide === false, JSON.stringify(multiCreate.hasHide))
+  await shot('multi-create.png')
+  const multiRestore = await scenario('multi-restore')
+  assert('switching accounts swaps the note', multiRestore.noteAfterSwitch === '', JSON.stringify(multiRestore.noteAfterSwitch))
+  assert('the panel returns to the default account for later scenarios', /默认账户/.test(multiRestore.restored ?? ''), JSON.stringify(multiRestore.restored))
 
   // 3. 期货
   const basketRace = await scenario('basket-race')

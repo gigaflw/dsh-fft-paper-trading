@@ -5,6 +5,11 @@
  * the `paper_*` tools lazily; the browser half is a separate static module
  * loaded by DSH's module scan.
  *
+ * Accounts: the registry (`accounts.json`) owns the account list, so this entry
+ * builds one {@link PaperService} per stock account on demand and hands every
+ * resolved target to the same RPC route. The default account is created eagerly
+ * because the tools predate multi-account and still bind to it.
+ *
  * The three attachments are independent on purpose. Market data is the only
  * optional dependency — the ledger, the panel and the tools must stay available
  * without it, so quotes degrade to the port's `failed` state instead of taking
@@ -14,37 +19,51 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-tools'
+import { registerAccountTools } from './agent/account-tools.js'
 import { registerFuturesTools } from './agent/futures-tools.js'
 import { registerLedgerTools } from './agent/ledger-tools.js'
-import { registerPaperTools, type ToolsLike } from './agent/tools.js'
+import { registerPaperTools, type ServiceResolver, type ToolsLike } from './agent/tools.js'
+import { CachedMarketData } from './data/cached-market-data.js'
 import { FtshareMarketData, type FtshareDataLike } from './data/ftshare-market-data.js'
 import { FtshareFuturesMarketData } from './data/futures-market-data.js'
 import { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
 import type { MarketDataPort } from './data/market-data-port.js'
+import { UnavailableMarketData } from './data/unavailable-market-data.js'
 import type { TradingCalendarPort } from './data/trading-calendar-port.js'
 import { WeekdayTradingCalendar } from './data/trading-calendar-port.js'
-import { UnavailableMarketData } from './data/unavailable-market-data.js'
+import { createAccountsRpcHandler } from './service/accounts-rpc.js'
+import { createCompareRpcHandler } from './service/compare-rpc.js'
+import { PaperError } from './service/errors.js'
 import { FuturesService } from './service/futures-service.js'
 import { createFuturesRpcHandler } from './service/futures-rpc.js'
 import { PaperService } from './service/paper-service.js'
 import { createPaperRoute, type HostConnectionLike } from './service/route.js'
-import { createPaperRpcHandler, type PaperRpcHandler } from './service/rpc.js'
+import { createPaperRpcHandler, type PaperRpcHandler, type PaperRpcResolver } from './service/rpc.js'
 import { PaperScheduler } from './service/scheduler.js'
 import { probeDataSource, type FtshareSettingsLike } from './service/data-source.js'
+import { AccountNotes } from './store/notes.js'
+import { AccountRegistry, DEFAULT_TICK_MS } from './store/accounts.js'
 import { AccountRepo } from './store/repo.js'
 import { FuturesRepo } from './store/futures-repo.js'
 import { resolveDshHome } from './store/paths.js'
 import { ShortlistStore } from './store/shortlist.js'
-import { DEFAULT_ACCOUNT_ID, type DataSourceStatus } from './contract.js'
+import { DEFAULT_ACCOUNT_ID, DEFAULT_SETTINGS, type AccountMeta, type DataSourceStatus } from './contract.js'
 import { UnavailableFuturesMarketData } from './data/unavailable-futures-market-data.js'
 import type { FuturesMarketDataPort } from './data/futures-market-data-port.js'
 
 export * from './contract.js'
 export { PaperService } from './service/paper-service.js'
 export { createPaperRpcHandler } from './service/rpc.js'
+export type { PaperRpcTarget, PaperRpcResolver } from './service/rpc.js'
+export { createAccountsRpcHandler } from './service/accounts-rpc.js'
+export { createCompareRpcHandler } from './service/compare-rpc.js'
+export { registerAccountTools } from './agent/account-tools.js'
 export { createPaperRoute } from './service/route.js'
 export { PaperScheduler } from './service/scheduler.js'
 export { AccountRepo } from './store/repo.js'
+export { AccountRegistry, DEFAULT_TICK_MS, MAX_ACCOUNTS_PER_KIND } from './store/accounts.js'
+export { AccountNotes } from './store/notes.js'
+export { CachedMarketData } from './data/cached-market-data.js'
 export { FtshareMarketData } from './data/ftshare-market-data.js'
 export { FtshareFuturesMarketData } from './data/futures-market-data.js'
 export { FtshareTradingCalendar } from './data/ftshare-trading-calendar.js'
@@ -66,8 +85,13 @@ export const name = '@dsh-ft/dsh-fft-paper-trading'
 export function apply(ctx: Context): void {
   const logger = ctx.logger('ft-paper-trading')
   const home = resolveDshHome()
-  const repo = new AccountRepo({ home, accountId: DEFAULT_ACCOUNT_ID, logger })
   const shortlist = new ShortlistStore(home)
+  const registry = new AccountRegistry({ home, logger })
+  // Notes live beside each ledger, not in the registry: a long note must not
+  // bloat accounts.json, and the model has no tool for them.
+  const notes = new AccountNotes({ home })
+  /** Quote cache lifetime; replaced by the persisted value once the registry loads. */
+  let tickMs = DEFAULT_TICK_MS
 
   // One mutable slot behind a stable port: the services hold the ports, the
   // FTShare adapter can appear (or disappear) later without rebuilding the
@@ -81,6 +105,9 @@ export function apply(ctx: Context): void {
     search: (query, limit) => market.search(query, limit),
     marketList: input => market.marketList(input),
   }
+  // Every account shares one cache: N accounts holding the same symbol must not
+  // cost N upstream calls, and inside one tick they must all see one price.
+  const cached = new CachedMarketData(data, { ttlMs: () => tickMs })
   // Same trick for the calendar: both services take this port once, and the
   // slot behind it is swapped when the FTShare adapter arrives. Handing the
   // slot itself to the stocks service left it on the weekday fallback for the
@@ -102,7 +129,30 @@ export function apply(ctx: Context): void {
   // arrives and flip to "free/configured" when the service appears.
   let dataService = false
   let settings: FtshareSettingsLike | undefined
-  const service = new PaperService({ repo, data, calendar: calendarPort, shortlist, logger })
+
+  /** One service per stock account, created on first use and kept forever. */
+  const stockServices = new Map<string, PaperService>()
+  const stockService = (meta: AccountMeta): PaperService => {
+    const existing = stockServices.get(meta.id)
+    if (existing !== undefined) return existing
+    const accountSettings = meta.initialCashCents === undefined
+      ? DEFAULT_SETTINGS
+      : { ...DEFAULT_SETTINGS, initialCashCents: meta.initialCashCents }
+    const service = new PaperService({
+      repo: new AccountRepo({ home, accountId: meta.id, logger }),
+      data: cached,
+      calendar: calendarPort,
+      shortlist,
+      settings: accountSettings,
+      accountId: meta.id,
+      logger,
+      // Read the registry, not this meta: `accounts/lock` mutates the live
+      // entry, and the service map is shared with the scheduler's copies.
+      isLocked: () => registry.lockedSync(meta.id),
+    })
+    stockServices.set(meta.id, service)
+    return service
+  }
 
   // Futures: separate ledger, separate service, same route. The market-data
   // port stays on the degraded stand-in until the FTShare futures adapter is
@@ -123,25 +173,62 @@ export function apply(ctx: Context): void {
   })
   const futuresHandler = createFuturesRpcHandler(futuresService)
   // The panel header reads one status: credential state plus the latest market
-  // failure across both accounts (the two share the data service).
+  // failure across every account (they share the data service).
   const dataSource = async (): Promise<DataSourceStatus> => {
     const probe = await probeDataSource({ dataService, settings })
-    const problems = [service.problem(), futuresService.problem()]
+    const problems = [...stockServices.values()]
+      .map(item => item.problem())
+      .concat(futuresService.problem())
       .filter((problem): problem is NonNullable<typeof problem> => problem !== undefined)
       .sort((left, right) => right.at.localeCompare(left.at))
     return problems.length === 0 ? probe : { ...probe, problem: problems[0] }
   }
-  const paperHandler = createPaperRpcHandler(service, { dataSource })
-  // `futures/*` goes to the futures handler; every other endpoint keeps the
-  // stock handler, so the browser half needs one route only.
-  const handler: PaperRpcHandler = (endpoint, payload, signal) =>
+  // Resolve an account id/name to its stock service. A futures account reaching
+  // this path is a caller bug, not a silent fallback.
+  const resolveStock: PaperRpcResolver = async account => {
+    const meta = await registry.resolve(account)
+    if (meta.kind !== 'stock') throw new PaperError('INVALID_ARGUMENT', `账户「${meta.name}」不是股票账户`)
+    return { service: stockService(meta), meta }
+  }
+  const paperHandler = createPaperRpcHandler(resolveStock, { dataSource, notes })
+  const accountsHandler = createAccountsRpcHandler(registry)
+  // The comparison page reads every visible account; hidden ones are only
+  // reachable by id, so they stay out of the board.
+  const compareHandler = createCompareRpcHandler({
+    accounts: async () => (await registry.view()).accounts.filter(meta => meta.kind === 'stock'),
+    serviceOf: meta => stockService(meta),
+  })
+  // `futures/*`, `accounts/*` and `compare/*` have their own handlers;
+  // everything else keeps the stock handler, so the browser half needs one
+  // route only.
+  const handler: PaperRpcHandler = (endpoint, payload, signal, account) =>
     endpoint.startsWith('futures/')
       ? futuresHandler(endpoint, payload, signal)
-      : paperHandler(endpoint, payload, signal)
+      : endpoint.startsWith('accounts/')
+        ? accountsHandler(endpoint, payload, signal, account)
+        : endpoint.startsWith('compare/')
+          ? compareHandler(endpoint, payload, signal, account)
+          : paperHandler(endpoint, payload, signal, account)
 
   // Matching and day settlement must not depend on the panel being open: the
-  // host fiber drives `tick` even while the browser half is unmounted.
-  const scheduler = new PaperScheduler({ logger, tick: () => service.tick() })
+  // host fiber drives `tick` even while the browser half is unmounted. One
+  // scheduler walks every registered account, so a resting order fills for an
+  // account the panel never opened; the shared cache keeps the cost flat.
+  const scheduler = new PaperScheduler({
+    logger,
+    tick: async () => {
+      // Hidden accounts still have orders: hiding is a panel concern, not a
+      // reason to stop matching a resting order.
+      const view = await registry.view({ includeHidden: true })
+      for (const meta of view.accounts) {
+        if (meta.kind !== 'stock') continue
+        // Orders only: marking positions is display work, and nobody is looking
+        // while the panel is closed. An account with no resting order therefore
+        // costs zero quote calls.
+        await stockService(meta).tick({ includePositions: false })
+      }
+    },
+  })
   ctx.effect(
     () => {
       scheduler.start()
@@ -159,6 +246,19 @@ export function apply(ctx: Context): void {
     },
     'ft-paper-trading: futures scheduler',
   )
+  // Read the persisted tick once; it only tunes the quote cache lifetime.
+  ctx.effect(
+    () => {
+      void registry
+        .tickMs()
+        .then(value => {
+          tickMs = value
+        })
+        .catch(() => undefined)
+      return () => undefined
+    },
+    'ft-paper-trading: account registry',
+  )
 
   ctx.inject(['ftshareData'], scope => {
     const service = scope.get('ftshareData') as unknown as FtshareDataLike
@@ -169,11 +269,14 @@ export function apply(ctx: Context): void {
     calendar = calendarAdapter
     futuresMarket = futuresAdapter
     dataService = true
+    // Cached quotes came from the previous adapter (or the stand-in).
+    cached.clear()
     scope.effect(
       () => () => {
         if (market === adapter) market = new UnavailableMarketData()
         if (calendar === calendarAdapter) calendar = new WeekdayTradingCalendar('未安装 FTShare 数据服务，按工作日估算')
         if (futuresMarket === futuresAdapter) futuresMarket = new UnavailableFuturesMarketData()
+        cached.clear()
         dataService = false
       },
       'ft-paper-trading: FTShare adapter',
@@ -203,8 +306,21 @@ export function apply(ctx: Context): void {
 
   ctx.inject(['tools'], scope => {
     const tools = scope.get('tools') as unknown as ToolsLike
-    registerPaperTools(tools, service)
+    // Same seven tool names for every account: the tool's `account` argument
+    // (name or id, default = the default account) decides which ledger answers.
+    const resolveToolService: ServiceResolver = async account => {
+      const meta = await registry.resolve(account)
+      if (meta.kind !== 'stock') throw new PaperError('INVALID_ARGUMENT', `账户「${meta.name}」不是股票账户`)
+      return stockService(meta)
+    }
+    registerPaperTools(tools, resolveToolService)
+    registerAccountTools(tools, { registry })
     registerFuturesTools(tools, futuresService)
-    registerLedgerTools(tools, { stock: service, futures: futuresService })
+    // Resolve the default account on demand: an eagerly-created service would
+    // capture the pre-registry lock flag and ignore later `accounts/lock`.
+    registerLedgerTools(tools, {
+      stock: async () => (await resolveStock(undefined)).service,
+      futures: futuresService,
+    })
   })
 }

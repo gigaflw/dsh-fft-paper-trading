@@ -10,6 +10,7 @@ const TOOL_NAMES = [
   'paper_futures_account', 'paper_futures_cancel', 'paper_futures_contracts', 'paper_futures_order',
   'paper_futures_preview', 'paper_futures_quote', 'paper_futures_review',
   'paper_ledger',
+  'paper_account',
 ]
 
 /** Scratch `$DSH_HOME` so both tests open their own ledger. */

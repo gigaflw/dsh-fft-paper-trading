@@ -1,4 +1,4 @@
-import type { BasketOrderInput, DataSourceStatus, OrderDraft, RpcResult, Side } from '../contract.js'
+import type { AccountMeta, BasketOrderInput, DataSourceStatus, NoteView, OrderDraft, RpcResult, Side } from '../contract.js'
 import type { PaperService } from './paper-service.js'
 import { PaperError } from './errors.js'
 
@@ -6,7 +6,38 @@ export type PaperRpcHandler = (
   endpoint: string,
   payload: unknown,
   signal: AbortSignal,
+  /** Target account id or name; omitted means the kind's default account. */
+  account?: string,
 ) => Promise<RpcResult<unknown>>
+
+/** One resolved account: the service plus the registry entry that guards it. */
+export interface PaperRpcTarget {
+  service: PaperService
+  meta?: AccountMeta
+}
+
+/** Resolve an account reference to its service. Omitted reference = default. */
+export type PaperRpcResolver = (account?: string) => Promise<PaperRpcTarget>
+
+/**
+ * Endpoints that change account state. A locked account may still be read,
+ * cancelled out of, and exported — that is how a frozen account stays
+ * inspectable while it cannot trade.
+ */
+const MUTATING_ENDPOINTS: ReadonlySet<string> = new Set([
+  'account/reset',
+  'account/deposit',
+  'account/withdraw',
+  'ledger/restore',
+  'order/place',
+  'basket/place',
+])
+
+/** Refuse a state change on a locked account before the service sees it. */
+function guardAccount(meta: AccountMeta | undefined, endpoint: string): void {
+  if (meta === undefined || !MUTATING_ENDPOINTS.has(endpoint)) return
+  if (meta.locked === true) throw new PaperError('ACCOUNT_LOCKED', `账户「${meta.name}」已锁定，不能交易`, 409)
+}
 
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) throw new PaperError('INVALID_ARGUMENT', '请求参数必须是对象')
@@ -99,12 +130,24 @@ function period(value: unknown): '7d' | '30d' | 'all' {
 export interface PaperRpcOptions {
   /** Read-only data-source state for the panel header; absent means no service. */
   dataSource?: () => Promise<DataSourceStatus>
+  /**
+   * Per-account free-form notes. The handler only proxies them: no tool reaches
+   * this, it is the human's own space.
+   */
+  notes?: {
+    read: (accountId: string) => Promise<NoteView>
+    write: (accountId: string, text: unknown) => Promise<NoteView>
+  }
 }
 
-export function createPaperRpcHandler(service: PaperService, options: PaperRpcOptions = {}): PaperRpcHandler {
-  return async (endpoint, payload, signal) => {
+export function createPaperRpcHandler(source: PaperService | PaperRpcResolver, options: PaperRpcOptions = {}): PaperRpcHandler {
+  // A bare service keeps every pre-multi-account caller (and test) working.
+  const resolve: PaperRpcResolver = typeof source === 'function' ? source : async () => ({ service: source })
+  return async (endpoint, payload, signal, account) => {
     try {
       if (signal.aborted) throw new PaperError('INVALID_ARGUMENT', '请求已取消', 499)
+      const { service, meta } = await resolve(account)
+      guardAccount(meta, endpoint)
       switch (endpoint) {
         case 'health':
           return ok({ ok: true, version: 1 })
@@ -131,6 +174,15 @@ export function createPaperRpcHandler(service: PaperService, options: PaperRpcOp
         }
         case 'ledger/backup':
           return ok({ backedUp: await service.backupLedger() })
+        case 'note/get': {
+          if (options.notes === undefined || meta === undefined) throw new PaperError('INTERNAL', '笔记存储不可用', 500)
+          return ok(await options.notes.read(meta.id))
+        }
+        case 'note/set': {
+          if (options.notes === undefined || meta === undefined) throw new PaperError('INTERNAL', '笔记存储不可用', 500)
+          const input = record(payload ?? {})
+          return ok(await options.notes.write(meta.id, input.text))
+        }
         case 'settings/get':
           return ok(await service.settingsView())
         case 'market/quote': {

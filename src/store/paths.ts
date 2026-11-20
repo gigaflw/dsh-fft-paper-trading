@@ -28,3 +28,8 @@ export function eventsPath(home: string, accountId: string): string {
 export function backupsDir(home: string, accountId: string): string {
   return join(accountDir(home, accountId), 'backups')
 }
+
+/** One account's free-form notes; lives beside the ledger, not in the registry. */
+export function notePath(home: string, accountId: string): string {
+  return join(accountDir(home, accountId), 'note.md')
+}

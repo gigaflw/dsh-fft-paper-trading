@@ -18,6 +18,116 @@
     totalFeesCents: 514, cashAfterCents: 98500000 - 14505000 - 514, availableQty: 100, maxBuyQty: 600,
     quote, warnings: [],
   }
+  // Multi-account fixtures: one visible account per strategy, one hidden, one
+  // locked. The panel must show the visible ones only and rank the comparison
+  // page by return.
+  const MULTI_ACCOUNTS = [
+    { id: 'default', name: '默认账户', note: '', hidden: false, locked: false, equity: 1000000, pnlPct: 0, todayPnl: 0, trades: 0 },
+    { id: 'acc-value', name: '价值组', note: 'DeepSeek 日频', hidden: false, locked: false, equity: 1124000, pnlPct: 0.124, todayPnl: 0.0082, trades: 42 },
+    { id: 'acc-momentum', name: '动量组', note: 'Claude 周频', hidden: false, locked: false, equity: 1081000, pnlPct: 0.081, todayPnl: -0.0031, trades: 31 },
+    { id: 'acc-reversal', name: '反转组', note: '', hidden: false, locked: true, equity: 988000, pnlPct: -0.012, todayPnl: 0, trades: 12 },
+    { id: 'acc-hidden', name: '隐藏账户', note: '', hidden: true, locked: false, equity: 950000, pnlPct: -0.05, todayPnl: 0, trades: 4 },
+  ]
+  // Human-only notes: one long text per account, replaced wholesale.
+  const MULTI_NOTES = {
+    default: '',
+    'acc-value': '价值组策略：长期持有 600519，单日回撤超过 10% 减半仓。',
+    'acc-momentum': '动量组：每周调仓，只做 20 日新高。',
+  }
+  const multiRow = ref => MULTI_ACCOUNTS.find(row => row.id === ref || row.name === ref)
+  const multiMeta = row => ({
+    id: row.id, kind: 'stock', name: row.name,
+    createdAt: ts(), hidden: row.hidden, locked: row.locked,
+  })
+  const multiPoints = row => {
+    let seed = row.id.length * 977 + Math.abs(Math.round(row.pnlPct * 1000)) + 7
+    const random = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
+    return Array.from({ length: 12 }, (_, i) => ({
+      date: `2026-11-${String(i + 2).padStart(2, '0')}`,
+      equity: Math.round(1000000 * (1 + (row.pnlPct * (i + 1)) / 12) + (random() - 0.5) * 6000),
+    }))
+  }
+  /** Per-account answers for the endpoints the panel asks for by account. */
+  function multiAccountView(endpoint, payload, accountRef) {
+    if (endpoint === 'accounts/list') {
+      const includeHidden = payload.includeHidden === true
+      return {
+        // The real registry lists the futures ledger too; the stock picker must
+        // drop it instead of offering a target that rejects every request.
+        accounts: [
+          ...MULTI_ACCOUNTS.filter(row => includeHidden || !row.hidden).map(multiMeta),
+          { id: 'futures', kind: 'futures', name: '期货账户', createdAt: ts(), hidden: false, locked: false },
+        ],
+        defaultIds: { stock: 'default', futures: 'futures' },
+        tickMs: 5000,
+      }
+    }
+    if (endpoint === 'compare/get') {
+      return {
+        accounts: MULTI_ACCOUNTS.filter(row => !row.hidden).map(row => ({
+          id: row.id, name: row.name, locked: row.locked,
+          initialCash: 1000000, equity: row.equity, pnl: row.equity - 1000000,
+          pnlPct: row.pnlPct, todayPnl: row.todayPnl * 1000000,
+          maxDrawdownPct: 0.082, tradeCount: row.trades, points: multiPoints(row),
+        })),
+      }
+    }
+    if (endpoint === 'accounts/create') {
+      const row = {
+        id: `acc-${MULTI_ACCOUNTS.length}`, name: payload.name, note: payload.note ?? '',
+        hidden: false, locked: false, equity: 1000000, pnlPct: 0, todayPnl: 0, trades: 0,
+      }
+      MULTI_ACCOUNTS.push(row)
+      return multiMeta(row)
+    }
+    if (endpoint === 'accounts/rename' || endpoint === 'accounts/note') {
+      const row = multiRow(payload.id)
+      if (row === undefined) return { __error: { code: 'ACCOUNT_NOT_FOUND', message: 'no such account' } }
+      if (endpoint === 'accounts/rename') row.name = payload.name
+      else row.note = payload.note ?? ''
+      return multiMeta(row)
+    }
+    if (endpoint === 'accounts/hide' || endpoint === 'accounts/unhide' || endpoint === 'accounts/lock' || endpoint === 'accounts/unlock') {
+      const row = multiRow(payload.id)
+      if (row === undefined) return { __error: { code: 'ACCOUNT_NOT_FOUND', message: 'no such account' } }
+      if (endpoint === 'accounts/hide') row.hidden = true
+      if (endpoint === 'accounts/unhide') row.hidden = false
+      if (endpoint === 'accounts/lock') row.locked = true
+      if (endpoint === 'accounts/unlock') row.locked = false
+      return multiMeta(row)
+    }
+    // The default account keeps the single-account fixtures: other scenarios
+    // override `account/get` through __fake.on and must still win there.
+    if (endpoint === 'note/get' || endpoint === 'note/set') {
+      const row = multiRow(accountRef)
+      if (row === undefined) return { __error: { code: 'ACCOUNT_NOT_FOUND', message: 'no such account' } }
+      if (endpoint === 'note/set') {
+        if (typeof payload.text !== 'string') return { __error: { code: 'INVALID_ARGUMENT', message: '笔记内容必须是文本' } }
+        MULTI_NOTES[row.id] = payload.text
+      }
+      const text = MULTI_NOTES[row.id] ?? ''
+      return { text, bytes: new TextEncoder().encode(text).length, maxBytes: 100000, updatedAt: ts() }
+    }
+    if (accountRef === undefined || accountRef === '' || accountRef === 'default') return undefined
+    const row = multiRow(accountRef)
+    if (row === undefined) return { __error: { code: 'ACCOUNT_NOT_FOUND', message: `没有名为「${accountRef}」的账户` } }
+    if (endpoint === 'account/get' || endpoint === 'account/init') {
+      return {
+        ...stockAccount, accountId: row.id, equity: row.equity,
+        pnl: row.equity - 1000000, pnlPct: row.pnlPct, todayPnl: row.todayPnl * 1000000,
+      }
+    }
+    if (endpoint === 'review/get') {
+      const points = multiPoints(row)
+      return {
+        equityCurve: points.map(point => ({ ...point, cash: point.equity })),
+        maxDrawdownPct: 0.082, tradeCount: row.trades, buyCount: row.trades, sellCount: 0,
+        totalFees: 0, realizedPnl: 0, days: points.length,
+      }
+    }
+    return undefined
+  }
+
   const stockOrders = []
   const stockTrades = []
 
@@ -232,6 +342,16 @@
     const body = JSON.parse(init && init.body ? init.body : '{}')
     const endpoint = body.endpoint
     window.__calls.push(endpoint)
+    // Account fixtures answer before the single-account handler map: these
+    // endpoints (registry, comparison, per-account snapshots) have no legacy
+    // counterpart to fall back to.
+    const override = multiAccountView(endpoint, body.payload ?? {}, body.account)
+    if (override !== undefined) {
+      if (override.__error) {
+        return new Response(JSON.stringify({ ok: false, error: override.__error }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({ ok: true, value: override }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
     const handler = handlers[endpoint]
     if (!handler) {
       return new Response(JSON.stringify({ ok: false, error: { code: 'INVALID_ARGUMENT', message: 'fake: ' + endpoint } }), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -283,6 +403,91 @@
   window.__scenario = async name => {
     const e2e = window.__e2e
     const result = { name }
+    if (name === 'multi') {
+      // 1) The picker shows the selected account and lists the visible ones.
+      await e2e.wait(() => document.querySelector('.pt-account-btn'))
+      result.label = e2e.text('.pt-account-btn').replace(/\n/g, ' ')
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      result.menu = [...document.querySelectorAll('.pt-account-item')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.showsHidden = result.menu.some(text => text.includes('隐藏账户'))
+      // 2) Switching reloads the other ledger.
+      const target = [...document.querySelectorAll('.pt-account-item')].find(el => el.innerText.includes('价值组'))
+      e2e.click(target)
+      await e2e.wait(() => e2e.text('.pt-account-btn').includes('价值组'))
+      await e2e.wait(() => [...document.querySelectorAll('.pt-stat-value')].some(el => el.textContent.includes('1,124,000')))
+      result.switched = e2e.text('.pt-account-btn').replace(/\n/g, ' ')
+      result.switchedEquity = [...document.querySelectorAll('.pt-stat-value')].map(el => el.textContent.trim())
+      // 3) The comparison tab ranks by return and draws the curves.
+      const compareTab = [...document.querySelectorAll('.pt-tab')].find(el => el.textContent.trim() === '对比')
+      e2e.click(compareTab)
+      await e2e.wait(() => document.querySelector('.pt-compare-table') || e2e.text('.pt-tab-body').includes('至少两个账户'))
+      result.rows = [...document.querySelectorAll('.pt-compare-table tbody tr')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.hasChart = Boolean(document.querySelector('.pt-compare svg.pt-chart'))
+      result.legend = e2e.text('.pt-compare-legend').replace(/\n/g, ' ')
+      // Clicking a header switches the ranking (default: return descending).
+      const dealHeader = [...document.querySelectorAll('.pt-compare-table th')].find(el => el.textContent.includes('成交'))
+      e2e.click(dealHeader)
+      e2e.click(dealHeader)
+      await e2e.wait(() => document.querySelectorAll('.pt-compare-table tbody tr')[0]?.innerText.includes('默认账户'))
+      result.sortAsc = document.querySelectorAll('.pt-compare-table tbody tr')[0].innerText.replace(/\n/g, ' ')
+      return result
+    }
+    if (name === 'multi-notes') {
+      // Continues from the previous scenario: 价值组 is selected.
+      const notesTab = [...document.querySelectorAll('.pt-tab')].find(el => el.textContent.trim() === '笔记')
+      e2e.click(notesTab)
+      await e2e.wait(() => document.querySelector('.pt-notes-input'))
+      result.noteBefore = document.querySelector('.pt-notes-input').value
+      e2e.setInput(document.querySelector('.pt-notes-input'), '编辑后的策略笔记：做多银行，半年不动。')
+      await e2e.wait(() => e2e.text('.pt-notes').includes('已保存'), 8000)
+      result.noteStatus = e2e.text('.pt-notes').replace(/\n/g, ' ')
+      result.noteAfter = document.querySelector('.pt-notes-input').value
+      return result
+    }
+    if (name === 'multi-create') {
+      // The picker's create form is the only entry to multi-account: it used to
+      // read a removed `note` field and throw before creating anything.
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      e2e.click([...document.querySelectorAll('.pt-account-action')].find(el => el.textContent.includes('新建')))
+      await e2e.wait(() => document.querySelector('.pt-cash input.pt-input'))
+      const nameInput = document.querySelector('.pt-cash input.pt-input')
+      e2e.setInput(nameInput, '新账户')
+      e2e.click([...document.querySelectorAll('.pt-cash .pt-btn')].find(el => el.textContent.trim() === '新建'))
+      await e2e.wait(() => e2e.text('.pt-account-btn').includes('新账户'), 8000)
+      await e2e.wait(() => e2e.text('.pt-stat-value').includes('1,000,000'))
+      result.created = e2e.text('.pt-account-btn').replace(/\n/g, ' ')
+      // Back to the default account: it must offer no hide action (the registry
+      // rejects hiding it, and the picker would otherwise strand the panel).
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      e2e.click([...document.querySelectorAll('.pt-account-item')].find(el => el.innerText.includes('默认账户')))
+      await e2e.wait(() => e2e.text('.pt-account-btn').includes('默认账户'))
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      result.menu = [...document.querySelectorAll('.pt-account-item')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.hasHide = [...document.querySelectorAll('.pt-account-action')].some(el => el.textContent.includes('隐藏账户'))
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => !document.querySelector('.pt-account-menu'))
+      return result
+    }
+    if (name === 'multi-restore') {
+      // The notes tab is open: switching accounts must swap the note text.
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      const back = [...document.querySelectorAll('.pt-account-item')].find(el => el.innerText.includes('默认账户'))
+      e2e.click(back)
+      await e2e.wait(() => e2e.text('.pt-stat-value').includes('1,000,000'))
+      await e2e.wait(() => document.querySelector('.pt-notes-input')?.value === '', 4000)
+      result.noteAfterSwitch = document.querySelector('.pt-notes-input')?.value ?? null
+      // Later scenarios assume the legacy single account and the trade tab.
+      const tradeTab = [...document.querySelectorAll('.pt-tab')].find(el => el.textContent.trim() === '交易')
+      e2e.click(tradeTab)
+      await e2e.wait(() => document.querySelector('.pt-ticket-form input.pt-input'))
+      result.restored = e2e.text('.pt-account-btn').replace(/\n/g, ' ')
+      return result
+    }
     if (name === 'stock') {
       // The panel is ready before the account RPC lands; wait for the ticket.
       await e2e.wait(() => document.querySelector('.pt-ticket-form input.pt-input'))

@@ -48,6 +48,7 @@ const param = {
   reset: { type: 'boolean', description: '是否重置账户' },
   confirm: { type: 'boolean', description: '重置时必须为 true' },
   initialCash: { type: 'number', description: '重置时的初始资金（元），不填沿用当前设置' },
+  account: { type: 'string', description: '账户名或 id；不传用默认账户。账户重名时必须用 id（先 paper_account list 查）' },
   action: { type: 'string', description: '动作：status 查交易时段 / search 搜标的' },
   query: { type: 'string', description: '搜索关键词（代码或名称）' },
   limit: { type: 'number', description: '返回条数上限，默认 10' },
@@ -58,10 +59,11 @@ function required<T extends ValueSchemaSpec>(property: T): T & { required: true 
   return { ...property, required: true }
 }
 
-const accountParameters = { reset: param.reset, confirm: param.confirm, initialCash: param.initialCash } satisfies ParameterSchemaSpec
+const accountParameters = { account: param.account, reset: param.reset, confirm: param.confirm, initialCash: param.initialCash } satisfies ParameterSchemaSpec
 const marketParameters = { action: param.action, query: param.query, limit: param.limit } satisfies ParameterSchemaSpec
 const quoteParameters = { symbol: param.symbol, symbols: param.symbols } satisfies ParameterSchemaSpec
 const previewParameters = {
+  account: param.account,
   symbol: required(param.symbol),
   side: required(param.side),
   type: required(param.type),
@@ -74,8 +76,8 @@ const orderParameters = {
   requestId: param.requestId,
   note: param.note,
 } satisfies ParameterSchemaSpec
-const cancelParameters = { orderId: required(param.orderId) } satisfies ParameterSchemaSpec
-const reviewParameters = { period: param.period } satisfies ParameterSchemaSpec
+const cancelParameters = { account: param.account, orderId: required(param.orderId) } satisfies ParameterSchemaSpec
+const reviewParameters = { account: param.account, period: param.period } satisfies ParameterSchemaSpec
 
 function draftOf(args: Record<string, unknown>): OrderDraft {
   // Never coerce an unknown side/type to a default: a model sending "hold"
@@ -104,8 +106,21 @@ function fail(error: unknown): ToolResult {
   return { summary: `失败：${error instanceof Error ? error.message : String(error)}`, data: { error: String(error) } }
 }
 
-/** Register the seven `paper_stock_*` tools. All of them go through PaperService. */
-export function registerPaperTools(tools: ToolsLike, service: PaperService): void {
+/** Picks the service for one call; the host resolves the \`account\` argument. */
+export type ServiceResolver = (account?: string) => Promise<PaperService>
+
+/**
+ * Register the seven `paper_stock_*` tools. All of them go through PaperService.
+ *
+ * `target` is either one service (single-account callers, tests) or a resolver
+ * keyed by the optional \`account\` argument. There is no "current account"
+ * state: the caller names the account or gets the default one.
+ */
+export function registerPaperTools(tools: ToolsLike, target: PaperService | ServiceResolver): void {
+  const resolve: ServiceResolver = typeof target === 'function' ? target : async () => target
+  /** The account argument as sent by the model; anything non-string means default. */
+  const accountOf = (input: Record<string, unknown>): string | undefined =>
+    typeof input.account === 'string' && input.account.trim() !== '' ? input.account.trim() : undefined
   const base = {
     output: { schema: outputSchema, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String((value as { summary?: string })?.summary ?? '') }] },
   }
@@ -118,6 +133,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
+        const service = await resolve(accountOf(input))
         const startingCash = typeof input.initialCash === 'number' ? Math.round(input.initialCash * 100) : undefined
         const account = input.reset === true
           ? await service.reset(input.confirm === true, startingCash)
@@ -144,6 +160,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
+        const service = await resolve(accountOf(input))
         if (input.action !== 'search') {
           const status = await service.marketStatus()
           const calendar = status.calendar?.source === 'fallback' ? ' · 交易日历降级（按工作日估算）' : ''
@@ -165,6 +182,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
+        const service = await resolve(accountOf(input))
         const symbols = Array.isArray(input.symbols) ? input.symbols.map(String) : [String(input.symbol ?? '')]
         const result = await service.quote(symbols.filter(Boolean))
         const lines = result.quotes.map(quote => {
@@ -188,8 +206,10 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     parameters: previewParameters,
     description: '下单前预览：金额、佣金、印花税、过户费、成交后现金、可卖与最大可买。',
     async execute(args: unknown): Promise<ToolResult> {
+      const input = (args ?? {}) as Record<string, unknown>
       try {
-        const preview = await service.preview(draftOf((args ?? {}) as Record<string, unknown>))
+        const service = await resolve(accountOf(input))
+        const preview = await service.preview(draftOf(input))
         return { summary: renderPreview(preview), data: preview }
       } catch (error) {
         return fail(error)
@@ -205,6 +225,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
+        const service = await resolve(accountOf(input))
         const requestId = typeof input.requestId === 'string' && input.requestId !== '' ? input.requestId : undefined
         const order = await service.place(draftOf(input), requestId)
         return { summary: renderOrder(order), data: order }
@@ -222,6 +243,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
+        const service = await resolve(accountOf(input))
         const order = await service.cancel(String(input.orderId ?? ''))
         return { summary: renderOrder(order), data: order }
       } catch (error) {
@@ -238,6 +260,7 @@ export function registerPaperTools(tools: ToolsLike, service: PaperService): voi
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       try {
+        const service = await resolve(accountOf(input))
         const period = input.period === '7d' || input.period === 'all' ? input.period : '30d'
         const review = await service.review(period)
         return { summary: renderReview(review), data: review }

@@ -66,7 +66,10 @@ function snapshotLine(snapshot: Record<string, unknown>): string {
 }
 
 /** Register `paper_ledger`, the recovery entry point shared by both accounts. */
-export function registerLedgerTools(tools: ToolsLike, services: { stock: PaperService; futures: FuturesService }): void {
+export function registerLedgerTools(
+  tools: ToolsLike,
+  services: { stock: () => Promise<PaperService>; futures: FuturesService },
+): void {
   const base = {
     parameters,
     output: {
@@ -78,11 +81,11 @@ export function registerLedgerTools(tools: ToolsLike, services: { stock: PaperSe
   tools.register(defineTool({
     ...base,
     name: 'paper_ledger',
-    description: '查看账本状态与可恢复快照；账户锁定时用它从备份恢复（股票/期货，进程内生效，无需重启）。',
+    description: '查看账本状态与可恢复快照并恢复（股票/期货，进程内生效，无需重启）；恢复前需账户未锁定。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       const futures = input.account === 'futures'
-      const account = futures ? services.futures : services.stock
+      const account = futures ? services.futures : await services.stock()
       try {
         const action = input.action === 'restore' || input.action === 'backup' ? input.action : 'list'
         if (action === 'restore') {

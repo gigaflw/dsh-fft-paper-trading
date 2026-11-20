@@ -24,11 +24,12 @@ Open an A-share / commodity futures account in DeepSeek Harness without opening 
 ## Features
 
 - **Everything is priced before you place the order**: type a symbol, side and quantity, and the estimated fill price, commission, stamp duty, transfer fee, post-trade cash and maximum affordable quantity all refresh together — there is no separate quote lookup or preview step.
-- **Stocks and futures, two independent accounts**: both accounts are created automatically the first time you open the panel — 1,000,000 CNY of simulated cash for A-shares, 1,000,000 CNY for commodity futures; futures trade in lots, reserve margin, allow same-day (T+0) closing and settle at end of day.
-- **One ledger shared with the AI**: say “buy 200 shares of 000001 at market” or “review my trades this week” in the conversation and the model calls the ordering and review tools directly; the panel and the model trade the same account.
+- **Many stock accounts plus an independent futures account**: the default account is created the first time you open the panel; add as many stock accounts as you need (each with its own ledger, starting cash and review), while futures trade in lots, reserve margin, allow same-day (T+0) closing and settle at end of day.
+- **One ledger shared with the AI**: say “buy 200 shares of 000001 at market” or “review my trades this week” in the conversation and the model calls the ordering and review tools directly; with several accounts the model names one through the `account` argument, and an omitted argument means the default account.
 - **Order straight from the K-line**: the panel keeps a full K-line chart on screen; pick a symbol on the chart and its code is carried over to the trade page. The quotes page lets you page through sectors and add the symbols you follow to the shortlist.
 - **Build positions in bulk by weight**: import a `code,weight` CSV, set a budget, and buy up to 20 symbols in one batch; check shares, fees and remaining cash before submitting the whole batch.
 - **Reviews that reconcile**: equity curve, maximum drawdown, fill statistics, end-of-day report and cash flows, with returns already excluding deposits and withdrawals.
+- **Run several strategies apart, compare them together**: create accounts from the header picker, rename or hide them at will, and keep a free-form notes page per account (auto-saved, out of reach of the model); the comparison tab overlays every account’s equity curve normalised to 100, ranked by return, with drawdown and fill counts.
 - **Practice without an API key**: the free tier quotes at the latest daily close; configure an FTShare key to switch to real-time quotes.
 - **The ledger stays local**: the event ledger is a file on this machine and is restored automatically after a DSH restart; the account is backed up before a reset.
 

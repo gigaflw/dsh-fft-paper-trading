@@ -342,6 +342,25 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** Remember the account the human looked at last; the panel re-selects it. */
+    const CURRENT_ACCOUNT_KEY = 'ft-paper-trading.current-account.v1'
+
+    function readCurrentAccount() {
+      try {
+        return window.localStorage.getItem(CURRENT_ACCOUNT_KEY) ?? ''
+      } catch {
+        return ''
+      }
+    }
+
+    function writeCurrentAccount(id) {
+      try {
+        window.localStorage.setItem(CURRENT_ACCOUNT_KEY, id)
+      } catch {
+        // A private window loses the preference, not the panel.
+      }
+    }
+
     /** Both sides are canonical ids (`000001.SZ`), so compare them verbatim. */
     const shortlisted = (shortlist, symbol) => shortlist.some(item => item === symbol)
 
@@ -484,11 +503,25 @@ window.__ModuleLoader__.load({
       detail: cause && cause.detail ? cause.detail : '',
     })
 
-    async function rpc(endpoint, payload) {
+    /**
+     * Account the stock panel is showing. The host has no "current account":
+     * every account-scoped call names its target, so the panel keeps the
+     * selection in one module variable and `rpc` stamps it on the envelope.
+     */
+    let activeAccount = null
+
+    async function rpc(endpoint, payload, account) {
+      const requestBody = { endpoint, payload: payload ?? {} }
+      // Futures ledgers and the account registry have no account dimension of
+      // their own; everything else is answered by the selected stock account.
+      const target = account === undefined ? activeAccount : account
+      if (target !== null && target !== undefined && !endpoint.startsWith('futures/') && !endpoint.startsWith('accounts/')) {
+        requestBody.account = target
+      }
       const response = await fetch(ROUTE, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ endpoint, payload: payload ?? {} }),
+        body: JSON.stringify(requestBody),
       })
       let body = null
       try {
@@ -771,6 +804,71 @@ window.__ModuleLoader__.load({
         .pt-tabs { overflow-x:auto; }
         .pt-tab { flex:0 0 auto; }
       }
+      /* ---- multi-account picker ---- */
+      .pt-account { position:relative; display:inline-flex; }
+      .pt-account-btn { display:inline-flex; align-items:baseline; gap:6px; max-width:280px;
+        border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.18));
+        background:var(--dsw-alias-bg-layer-1,#fff); color:inherit;
+        border-radius:var(--dsw-radius-xs,4px); padding:5px 9px; cursor:pointer;
+        font-size:12px; font-family:inherit; }
+      .pt-account-btn:hover:not([disabled]) { border-color:var(--pt-accent); }
+      .pt-account-btn[data-active="true"] { border-color:var(--pt-accent); background:var(--pt-accent-soft); }
+      .pt-account-name { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .pt-account-note { color:var(--dsw-alias-label-secondary,#49525f); font-size:11px;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px; }
+      .pt-account-caret { color:var(--dsw-alias-label-secondary,#49525f); font-size:10px; }
+      .pt-account-flag { font-size:10px; color:var(--dsw-alias-state-warn-primary,#8a6410); }
+      .pt-account-menu { position:absolute; z-index:40; top:calc(100% + 4px); left:0; min-width:232px;
+        padding:5px; border-radius:var(--dsw-radius-sm,8px);
+        border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.18));
+        background:var(--dsw-alias-bg-layer-1,#fff);
+        box-shadow:0 10px 28px rgba(0,0,0,.14); }
+      .pt-account-list { max-height:280px; overflow:auto; }
+      .pt-account-item { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%;
+        border:0; background:none; color:inherit; font-family:inherit; text-align:left;
+        padding:5px 7px; border-radius:var(--dsw-radius-xs,4px); cursor:pointer; font-size:12px; }
+      .pt-account-item:hover { background:var(--dsw-alias-interactive-bg-hover,#eef1f5); }
+      .pt-account-item[data-active="true"] { background:var(--pt-accent-soft); }
+      .pt-account-item-note { font-size:11px; color:var(--dsw-alias-label-secondary,#49525f);
+        max-width:210px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .pt-account-sep { height:0.5px; margin:5px 4px; background:var(--dsw-alias-border-l4, rgba(45,49,66,.12)); }
+      .pt-account-action { display:block; width:100%; text-align:left; border:0; background:none; color:inherit;
+        font-family:inherit; font-size:12px; padding:5px 7px; border-radius:var(--dsw-radius-xs,4px); cursor:pointer; }
+      .pt-account-action:hover { background:var(--dsw-alias-interactive-bg-hover,#eef1f5); }
+      /* ---- account notes ---- */
+      .pt-notes { display:flex; flex-direction:column; gap:8px; min-width:0; }
+      .pt-notes-head { display:flex; gap:10px; align-items:baseline; justify-content:space-between; flex-wrap:wrap; }
+      .pt-notes-title { font-size:12px; font-weight:500; }
+      .pt-notes-meta { font-size:11px; color:var(--dsw-alias-label-secondary,#49525f); }
+      .pt-notes-input { width:100%; min-height:440px; resize:vertical; box-sizing:border-box;
+        padding:10px 12px; font-family:inherit; font-size:13px; line-height:1.7; color:inherit;
+        background:var(--dsw-alias-bg-layer-2,#f7f8fa);
+        border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.18));
+        border-radius:var(--dsw-radius-sm,8px); }
+      .pt-notes-input:focus { outline:none; border-color:var(--pt-accent); }
+      /* ---- comparison page ---- */
+      .pt-compare { display:flex; flex-direction:column; gap:10px; min-width:0; }
+      .pt-compare-scroll { overflow-x:auto; min-width:0; }
+      .pt-compare-legend { display:flex; flex-wrap:wrap; gap:10px; font-size:11px;
+        color:var(--dsw-alias-label-secondary,#49525f); }
+      .pt-compare-legend i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; }
+      .pt-compare-table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+      .pt-compare-table th { font-size:11px; font-weight:400; color:var(--dsw-alias-label-secondary,#49525f);
+        text-align:right; padding:0 8px 6px; white-space:nowrap; }
+      .pt-compare-table th:first-child, .pt-compare-table td:first-child { text-align:left; }
+      .pt-compare-table td { padding:6px 8px; border-top:0.5px solid var(--dsw-alias-border-l4, rgba(45,49,66,.10));
+        text-align:right; white-space:nowrap; font-size:12px; }
+      .pt-compare-table tr[data-lead="true"] td { background:var(--pt-accent-soft); }
+      .pt-compare-table th.pt-sortable { cursor:pointer; user-select:none; }
+      .pt-compare-table th.pt-sortable:hover { color:var(--pt-accent); }
+      .pt-compare-table th[data-sorted="true"] { color:var(--pt-accent); }
+      .pt-compare .pt-chart { height:200px; }
+      @container paper-panel (max-width: 760px) { .pt-compare .pt-chart { height:150px; } }
+      .pt-compare-name { display:flex; flex-direction:column; gap:1px; text-align:left; }
+      .pt-compare-note { font-size:11px; color:var(--dsw-alias-label-secondary,#49525f); }
+      @container paper-panel (max-width: 760px) {
+        .pt-compare-table th:nth-child(8), .pt-compare-table td:nth-child(8) { display:none; }
+      }
       .pt-root button:focus-visible, .pt-root input:focus-visible,
       .pt-root .pt-seg button:focus-visible, .pt-root .pt-tab:focus-visible {
         outline:2px solid var(--pt-accent); outline-offset:2px; }
@@ -965,6 +1063,246 @@ window.__ModuleLoader__.load({
         [['stock', '股票'], ['futures', '期货']].map(([key, label]) =>
           h('button', { key, 'data-active': mode === key, onClick: () => onChange(key) }, label),
         ),
+      )
+    }
+
+    /* ------------------------------------------------------ multi-account --
+       Accounts are a flat registry: a display name, a free text note and two
+       flags. Nothing here knows about sessions or models — the panel picks one
+       account for the human, and every request names that account explicitly. */
+
+    /**
+     * Header picker: current account, the visible account list, then actions.
+     * Notes are deliberately absent: they are long-form content, not a label.
+     */
+    function AccountPicker({ accounts, current, busy, onSelect, onCreate, onAction }) {
+      const [open, setOpen] = useState(false)
+      const rootRef = useRef(null)
+      useEffect(() => {
+        if (!open) return undefined
+        const close = event => {
+          if (rootRef.current !== null && !rootRef.current.contains(event.target)) setOpen(false)
+        }
+        document.addEventListener('mousedown', close, true)
+        return () => document.removeEventListener('mousedown', close, true)
+      }, [open])
+      if (current === null) return null
+      return h('div', { className: 'pt-account', ref: rootRef },
+        h('button', {
+          className: 'pt-account-btn', 'data-active': open ? 'true' : undefined,
+          disabled: busy, title: current.name, 'aria-haspopup': 'menu', 'aria-expanded': open ? 'true' : 'false',
+          onClick: () => setOpen(value => !value),
+        },
+          h('span', { className: 'pt-account-name' }, current.name),
+          current.locked ? h('span', { className: 'pt-account-flag' }, '锁定') : null,
+          h('span', { className: 'pt-account-caret' }, '▾'),
+        ),
+        open ? h('div', { className: 'pt-account-menu', role: 'menu' },
+          accounts.length > 1 ? h('div', { className: 'pt-account-list' }, accounts.map(meta =>
+            h('button', {
+              key: meta.id, role: 'menuitem', className: 'pt-account-item',
+              'data-active': meta.id === current.id ? 'true' : undefined,
+              onClick: () => { setOpen(false); if (meta.id !== current.id) onSelect(meta.id) },
+            },
+              h('span', null, meta.name),
+              meta.locked ? h('span', { className: 'pt-account-flag' }, '锁定') : null,
+            ))) : null,
+          accounts.length > 1 ? h('div', { className: 'pt-account-sep' }) : null,
+          h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onCreate() } }, '＋ 新建账户'),
+          h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('rename') } }, '重命名'),
+          h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('notes') } }, '笔记'),
+          current.id === 'default' ? null : h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('hide') } }, '隐藏账户'),
+          h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('lock') } }, current.locked ? '解锁账户' : '锁定账户'),
+        ) : null,
+      )
+    }
+
+    /** Inline create / rename form; the same shape as the cash panel. */
+    function AccountEditor({ mode, current, busy, onCancel, onSubmit }) {
+      const creating = mode === 'create'
+      const [name, setName] = useState(creating || current === null ? '' : current.name)
+      const [cash, setCash] = useState('')
+      const valid = name.trim() !== ''
+      const submit = () => { if (valid) onSubmit({ name, cash }) }
+      return h('div', { className: 'pt-cash' },
+        h('div', { className: 'pt-row' },
+          h(Field, { label: creating ? '账户名' : '新账户名' },
+            h('input', {
+              className: 'pt-input', value: name, placeholder: '例如：价值组',
+              onChange: event => setName(event.target.value),
+              onKeyDown: event => { if (event.key === 'Enter') submit() },
+            })),
+          creating ? h(Field, { label: '初始资金（元，可选）' },
+            h('input', {
+              className: 'pt-input', type: 'number', min: '1', value: cash, placeholder: '默认 100 万',
+              onChange: event => setCash(event.target.value),
+            })) : null,
+        ),
+        h('div', { className: 'pt-row' },
+          h('button', { className: 'pt-btn pt-btn-primary', disabled: busy || !valid, onClick: submit }, creating ? '新建' : '保存'),
+          h('button', { className: 'pt-btn', disabled: busy, onClick: onCancel }, '取消'),
+          creating ? h('span', { className: 'pt-note' }, '新建后自动切换过去') : null,
+        ),
+      )
+    }
+
+    /** Palette for comparison lines; the first entry matches the panel accent. */
+    const COMPARE_COLORS = ['#cf5623', '#2e6fa8', '#2f6b47', '#8a6d3b', '#6b4fa8', '#8a3b3b', '#2f7f7f', '#a8552e']
+
+    /**
+     * Align every account's daily equity on the union of dates, index each
+     * series to 100 at its first day and keep the last known value for days an
+     * account has no snapshot. Different starting cash and start dates then
+     * still compare honestly.
+     */
+    function comparisonSeries(rows) {
+      const dates = [...new Set(rows.flatMap(row => row.points.map(point => point.date)))].sort()
+      if (dates.length < 2) return null
+      const series = rows.map(row => {
+        const byDate = new Map(row.points.map(point => [point.date, point.equity]))
+        let carried = row.points.length > 0 ? row.points[0].equity : 0
+        const values = dates.map(date => {
+          const value = byDate.get(date)
+          if (value !== undefined && value > 0) carried = value
+          return carried
+        })
+        const base = values[0] > 0 ? values[0] : 1
+        return values.map(value => (value / base) * 100)
+      })
+      const flat = series.flat()
+      return { dates, series, min: Math.min(...flat), max: Math.max(...flat) }
+    }
+
+    function CompareChart({ rows }) {
+      // A ledger that never closed a day has no curve; plotting its zeros would
+      // drag the shared y-axis down and flatten everybody else.
+      const plotted = useMemo(() => rows.filter(row => Array.isArray(row.points) && row.points.length > 0), [rows])
+      const aligned = useMemo(() => comparisonSeries(plotted), [plotted])
+      if (aligned === null) return h('div', { className: 'pt-empty' }, '至少两个交易日后才有对比曲线')
+      const W = 760
+      const H = 200
+      const PAD = 26
+      const { dates, series, min, max } = aligned
+      const span = max - min || 1
+      const x = index => PAD + (index / (dates.length - 1)) * (W - PAD * 2)
+      const y = value => H - PAD - ((value - min) / span) * (H - PAD * 2)
+      return h('div', null,
+        h('div', { className: 'pt-compare-legend' }, plotted.map((row, index) =>
+          h('span', { key: row.id },
+            h('i', { style: { background: COMPARE_COLORS[index % COMPARE_COLORS.length] } }),
+            row.name))),
+        h('svg', { className: 'pt-chart pt-compare-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '账户净值对比' },
+          [0, 0.5, 1].map(part => h('line', {
+            key: `grid-${part}`, x1: PAD, x2: W - PAD,
+            y1: PAD + part * (H - PAD * 2), y2: PAD + part * (H - PAD * 2),
+            stroke: 'currentColor', strokeOpacity: 0.12, strokeDasharray: '3 4',
+          })),
+          series.map((values, index) => h('path', {
+            key: `line-${plotted[index].id}`,
+            d: values.map((value, at) => `${at === 0 ? 'M' : 'L'}${x(at).toFixed(1)},${y(value).toFixed(1)}`).join(' '),
+            fill: 'none',
+            stroke: COMPARE_COLORS[index % COMPARE_COLORS.length],
+            strokeWidth: index === 0 ? 1.8 : 1.2,
+            strokeOpacity: index === 0 ? 1 : 0.8,
+          })),
+          h('text', { x: PAD, y: PAD - 8, fontSize: 9, fill: 'currentColor', fillOpacity: 0.55 }, max.toFixed(1)),
+          h('text', { x: PAD, y: H - 8, fontSize: 9, fill: 'currentColor', fillOpacity: 0.55 }, min.toFixed(1)),
+        ),
+        h('div', { className: 'pt-note' }, `以各账户首个交易日净值为 100 归一化 · ${dates.length} 个交易日`),
+      )
+    }
+
+    /**
+     * One account's notes: a single long text the human rewrites freely.
+     * No history, no timestamps, and no tool — the model cannot reach it.
+     */
+    function NotesTab({ text, status, updatedAt, error, onChange, onSave, onReload }) {
+      const bytes = typeof text === 'string' ? new TextEncoder().encode(text).length : 0
+      const statusText = status === 'saving' ? '保存中…' : status === 'saved' ? '已保存' : status === 'error' ? '保存失败' : '自动保存'
+      return h('div', { className: 'pt-notes' },
+        h('div', { className: 'pt-notes-head' },
+          h('span', { className: 'pt-notes-title' }, '账户笔记'),
+          h('span', { className: 'pt-notes-meta' }, `${(bytes / 1000).toFixed(1)} / 100 KB · ${statusText}`),
+        ),
+        h('textarea', {
+          className: 'pt-notes-input',
+          value: text,
+          spellCheck: false,
+          placeholder: '这个账户想写什么就写什么：策略思路、调仓理由、复盘…… 停止输入后自动保存。',
+          onChange: event => onChange(event.target.value),
+        }),
+        error === '' ? null : h('div', { className: 'pt-error' }, error),
+        h('div', { className: 'pt-row' },
+          h('button', { className: 'pt-btn', onClick: onSave }, '立即保存'),
+          h('button', { className: 'pt-btn', onClick: onReload }, '重新加载'),
+          h('span', { className: 'pt-notes-meta' }, updatedAt ? `上次保存 ${dateTime(updatedAt)}` : '还没有保存过'),
+        ),
+      )
+    }
+
+    /** Comparison page: the chart plus the ranking table the human asked for. */
+    const COMPARE_COLUMNS = [
+      { key: 'name', label: '账户', sortable: true },
+      { key: 'initialCash', label: '初始资金', sortable: true },
+      { key: 'equity', label: '当前权益', sortable: true },
+      { key: 'pnlPct', label: '累计收益', sortable: true },
+      { key: 'todayPnl', label: '今日盈亏', sortable: true },
+      { key: 'maxDrawdownPct', label: '最大回撤', sortable: true },
+      { key: 'tradeCount', label: '成交', sortable: true },
+      { key: 'status', label: '状态', sortable: false },
+    ]
+
+    function CompareTab({ data, error }) {
+      const rows = data === null || data === undefined ? [] : data.accounts
+      // Default: return descending. Clicking a header flips direction on the
+      // same column and switches columns otherwise, like the review table.
+      const [sort, setSort] = useState({ key: 'pnlPct', dir: -1 })
+      const sorted = useMemo(() => {
+        const value = row => (sort.key === 'name' ? row.name : row[sort.key])
+        return [...rows].sort((left, right) => {
+          const a = value(left)
+          const b = value(right)
+          if (typeof a === 'string' || typeof b === 'string') {
+            return String(a).localeCompare(String(b), 'zh-CN') * sort.dir
+          }
+          return (Number(a) - Number(b)) * sort.dir
+        })
+      }, [rows, sort])
+      if (error !== '') return h('div', { className: 'pt-error' }, error)
+      if (data === null) return h('div', { className: 'pt-empty' }, '加载账户对比…')
+      if (sorted.length < 2) {
+        return h('div', { className: 'pt-empty' }, '至少两个账户才有对比。用顶部账户下拉里的「新建账户」添加一个。')
+      }
+      return h('div', { className: 'pt-compare' },
+        h('div', { className: 'pt-compare-scroll' }, h(CompareChart, { rows: sorted })),
+        h('div', { className: 'pt-compare-scroll' },
+          h('table', { className: 'pt-compare-table' },
+            h('thead', null, h('tr', null,
+              h('th', { key: '#' }, '#'),
+              COMPARE_COLUMNS.map(column => h('th', {
+                key: column.key,
+                className: column.sortable ? 'pt-sortable' : undefined,
+                'data-sorted': sort.key === column.key ? 'true' : undefined,
+                onClick: column.sortable
+                  ? () => setSort(previous => previous.key === column.key
+                    ? { key: column.key, dir: previous.dir === 1 ? -1 : 1 }
+                    : { key: column.key, dir: column.key === 'name' ? 1 : -1 })
+                  : undefined,
+              }, sort.key === column.key ? `${column.label} ${sort.dir === 1 ? '↑' : '↓'}` : column.label)))),
+            h('tbody', null, sorted.map((row, index) => h('tr', {
+              key: row.id, 'data-lead': index === 0 ? 'true' : undefined,
+            },
+              h('td', null, String(index + 1)),
+              h('td', null, h('div', { className: 'pt-compare-name' }, h('span', null, row.name))),
+              h('td', null, money(row.initialCash)),
+              h('td', null, money(row.equity)),
+              h('td', { className: tone(row.pnlPct) }, pct(row.pnlPct)),
+              h('td', { className: tone(row.todayPnl) }, signed(row.todayPnl)),
+              h('td', { className: 'pt-down' }, row.maxDrawdownPct > 0 ? `-${(row.maxDrawdownPct * 100).toFixed(1)}%` : '—'),
+              h('td', null, count(row.tradeCount)),
+              h('td', null, row.missing ? '账本缺失' : row.locked ? '锁定' : '正常'),
+            ))),
+          )),
       )
     }
 
@@ -2856,6 +3194,13 @@ window.__ModuleLoader__.load({
       const periodRef = useRef(period)
       useEffect(() => { periodRef.current = period }, [period])
       const [tab, setTab] = useState('trade')
+      // Multi-account state: the registry, the selected account, the inline
+      // editor mode and the comparison page payload.
+      const [accounts, setAccounts] = useState(null)
+      const [currentAccountId, setCurrentAccountId] = useState(null)
+      const [accountEditor, setAccountEditor] = useState(null)
+      const [compareData, setCompareData] = useState(null)
+      const [compareError, setCompareError] = useState('')
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState('')
       const [busy, setBusy] = useState(false)
@@ -2982,7 +3327,145 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
-      useEffect(() => { loadAll() }, [loadAll])
+      const loadCompare = useCallback(async () => {
+        try {
+          const view = await rpc('compare/get')
+          if (!alive.current) return
+          setCompareData(view)
+          setCompareError('')
+        } catch (cause) {
+          if (alive.current) setCompareError(errorOf(cause).text)
+        }
+      }, [])
+
+      /** The registry is metadata only: a failure leaves the panel on default. */
+      const loadAccounts = useCallback(async () => {
+        try {
+          const view = await rpc('accounts/list')
+          if (!alive.current) return
+          setAccounts(view.accounts)
+          setCurrentAccountId(previous => {
+            if (previous !== null && view.accounts.some(item => item.id === previous)) return previous
+            const remembered = view.accounts.find(item => item.id === readCurrentAccount())
+            return remembered === undefined ? view.defaultIds.stock : remembered.id
+          })
+        } catch {
+          // Keep whatever is selected; the default account still answers.
+        }
+      }, [])
+
+      // The registry also lists the futures ledger; this panel only manages
+      // stock accounts, and picking futures here would fail every request.
+      const stockAccounts = useMemo(
+        () => (accounts ?? []).filter(item => item.kind === 'stock'),
+        [accounts],
+      )
+      const currentAccount = useMemo(
+        () => stockAccounts.find(item => item.id === currentAccountId) ?? null,
+        [stockAccounts, currentAccountId],
+      )
+
+      // ---- account notes (human only; the model has no tool for this) ----
+      const [noteText, setNoteText] = useState('')
+      const [noteMeta, setNoteMeta] = useState(null)
+      const [noteStatus, setNoteStatus] = useState('idle')
+      const [noteError, setNoteError] = useState('')
+      const noteTextRef = useRef('')
+      const noteTimer = useRef(null)
+      const noteRef = useRef({ accountId: null, saved: '' })
+
+      const saveNote = useCallback(async (text, accountId) => {
+        if (accountId === null || accountId === undefined) return
+        setNoteStatus('saving')
+        try {
+          const view = await rpc('note/set', { text }, accountId)
+          // A save that finishes after the panel switched accounts belongs to
+          // the old one; applying it here would retarget later flushes.
+          if (!alive.current || noteRef.current.accountId !== accountId) return
+          noteRef.current = { accountId, saved: text }
+          setNoteMeta(view)
+          setNoteStatus('saved')
+          setNoteError('')
+        } catch (cause) {
+          if (!alive.current || noteRef.current.accountId !== accountId) return
+          setNoteStatus('error')
+          setNoteError(errorOf(cause).text)
+        }
+      }, [])
+
+      /** Persist a pending edit now; a no-op when nothing changed. */
+      const flushNote = useCallback(async () => {
+        if (noteTimer.current !== null) {
+          clearTimeout(noteTimer.current)
+          noteTimer.current = null
+        }
+        const { accountId, saved } = noteRef.current
+        if (accountId === null || noteTextRef.current === saved) return
+        await saveNote(noteTextRef.current, accountId)
+      }, [saveNote])
+
+      const loadNote = useCallback(async accountId => {
+        if (accountId === null) return
+        // Switching accounts must not drop the previous account's edit.
+        await flushNote()
+        noteRef.current = { accountId, saved: '' }
+        // Blank the editor while loading: keeping the previous account's text
+        // would let a keystroke save it into the new account.
+        noteTextRef.current = ''
+        setNoteText('')
+        setNoteStatus('idle')
+        setNoteError('')
+        try {
+          const view = await rpc('note/get', {}, accountId)
+          if (!alive.current || noteRef.current.accountId !== accountId) return
+          noteRef.current = { accountId, saved: view.text }
+          noteTextRef.current = view.text
+          setNoteText(view.text)
+          setNoteMeta(view)
+        } catch (cause) {
+          if (!alive.current) return
+          setNoteError(errorOf(cause).text)
+        }
+      }, [flushNote])
+
+      const changeNote = useCallback(text => {
+        setNoteText(text)
+        noteTextRef.current = text
+        setNoteStatus('idle')
+        if (noteTimer.current !== null) clearTimeout(noteTimer.current)
+        const accountId = noteRef.current.accountId
+        noteTimer.current = setTimeout(() => {
+          noteTimer.current = null
+          void saveNote(text, accountId)
+        }, 700)
+      }, [saveNote])
+
+      // One place applies the selection: the rpc helper reads the module
+      // variable, so set it before the reload and persist it for next time.
+      // Per-account view state is cleared so nothing from the previous ledger
+      // (a preview, a receipt) survives the switch.
+      useEffect(() => {
+        if (currentAccountId === null) return
+        activeAccount = currentAccountId
+        writeCurrentAccount(currentAccountId)
+        setNotice('')
+        setPreview(null)
+        setReceipt(null)
+        setSymbolQuote(null)
+        setQuoteError('')
+        setQuoteNotice('')
+        void loadAll()
+        if (tab === 'review') void loadReviewDetail()
+        if (tab === 'compare') void loadCompare()
+        if (tab === 'notes') void loadNote(currentAccountId)
+        // `tab` is read but not a dependency: switching tabs must not re-query.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [currentAccountId, loadAll, loadReviewDetail, loadCompare])
+
+      useEffect(() => {
+        void loadAccounts()
+        return () => { activeAccount = null }
+      }, [loadAccounts])
 
       const tick = useCallback(async () => {
         try {
@@ -2992,6 +3475,7 @@ window.__ModuleLoader__.load({
           if (result.notices.length > 0) setNotice(result.notices.join('；'))
           await loadAll(true, periodRef.current)
           if (alive.current && tab === 'review') await loadReviewDetail()
+          if (alive.current && tab === 'compare') await loadCompare()
           // Re-price the open ticket: the quote strip and preview otherwise
           // froze at the moment the symbol was entered. An unfinished draft
           // only fetches the quote, so clear its dedupe key too. Degraded
@@ -3005,7 +3489,7 @@ window.__ModuleLoader__.load({
         } catch {
           // Polling failures stay silent; the manual refresh shows the error.
         }
-      }, [loadAll, loadReviewDetail, tab])
+      }, [loadAll, loadReviewDetail, loadCompare, tab])
 
       // The host scheduler is the primary matcher; this stays as a live extra
       // trigger while the panel is visible.
@@ -3080,7 +3564,17 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         if (tab === 'review') void loadReviewDetail()
-      }, [tab, loadReviewDetail])
+        if (tab === 'compare') void loadCompare()
+        if (tab === 'notes') void loadNote(currentAccountId)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [tab, loadReviewDetail, loadCompare])
+
+      // Leaving the tab (or the panel) within the debounce window must still
+      // write: the request is fired before the component goes away.
+      useEffect(() => () => {
+        if (noteTimer.current !== null) clearTimeout(noteTimer.current)
+        void flushNote()
+      }, [flushNote])
 
       useEffect(() => {
         if (tab === 'market') {
@@ -3358,6 +3852,7 @@ window.__ModuleLoader__.load({
         try {
           await loadAll()
           if (tab === 'review') await loadReviewDetail()
+          if (tab === 'compare') await loadCompare()
           // 刷新 must also retry the current tab's own fetch, not just the
           // account bundle: a failed market list otherwise stays broken.
           if (tab === 'market') await loadMarket(marketList?.page ?? 1)
@@ -3409,6 +3904,62 @@ window.__ModuleLoader__.load({
         setTab('trade')
       }, [])
 
+      /** create / rename / note go through the registry, then re-read it. */
+      const submitAccountEditor = useCallback(async values => {
+        if (accountEditor === null) return
+        const mode = accountEditor
+        setBusy(true)
+        try {
+          if (mode === 'create') {
+            const created = await rpc('accounts/create', {
+              name: values.name.trim(),
+              ...(values.cash.trim() === '' ? {} : { initialCash: Number(values.cash) }),
+            })
+            await loadAccounts()
+            setNotice(`已创建账户「${created.name}」`)
+            activeAccount = created.id
+            setCurrentAccountId(created.id)
+          } else {
+            await rpc('accounts/rename', { id: currentAccountId, name: values.name.trim() })
+            await loadAccounts()
+            setNotice('账户已改名')
+          }
+          setAccountEditor(null)
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [accountEditor, currentAccountId, loadAccounts])
+
+      /** Picker actions: editor modes open a form, hide/lock apply immediately. */
+      const runAccountAction = useCallback(async action => {
+        if (currentAccount === null) return
+        if (action === 'notes') {
+          setTab('notes')
+          return
+        }
+        if (action === 'create' || action === 'rename') {
+          setAccountEditor(action)
+          return
+        }
+        setBusy(true)
+        try {
+          if (action === 'hide') {
+            await rpc('accounts/hide', { id: currentAccount.id })
+            setNotice(`已隐藏「${currentAccount.name}」`)
+          } else {
+            await rpc(currentAccount.locked ? 'accounts/unlock' : 'accounts/lock', { id: currentAccount.id })
+            setNotice(currentAccount.locked ? '已解锁账户' : '已锁定账户')
+          }
+          await loadAccounts()
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [currentAccount, loadAccounts])
+
       if (account === null) {
         return h('div', { className: 'pt-inner' },
           h('div', { className: 'pt-head' },
@@ -3435,6 +3986,14 @@ window.__ModuleLoader__.load({
             ),
             h('div', { className: 'pt-row' },
               accountSwitch,
+              h(AccountPicker, {
+                accounts: stockAccounts,
+                current: currentAccount,
+                busy,
+                onSelect: id => setCurrentAccountId(id),
+                onCreate: () => setAccountEditor('create'),
+                onAction: runAccountAction,
+              }),
               h(DataSourceBadge, { status: dataSource }),
               h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
               h('button', {
@@ -3482,6 +4041,14 @@ window.__ModuleLoader__.load({
             },
             onSubmit: reset,
           }) : null,
+          accountEditor === null ? null : h(AccountEditor, {
+            key: `${accountEditor}:${currentAccountId ?? ''}`,
+            mode: accountEditor,
+            current: currentAccount,
+            busy,
+            onCancel: () => setAccountEditor(null),
+            onSubmit: submitAccountEditor,
+          }),
           account.blocked ? h('div', { className: 'pt-blocked' },
             h('div', { className: 'pt-blocked-text' },
               h('div', null, '账本校验失败，账户已锁定。'),
@@ -3511,7 +4078,7 @@ window.__ModuleLoader__.load({
           },
             h('div', { className: 'pt-main' },
               h('div', { className: 'pt-tabs' },
-                [['trade', '交易'], ['basket', '批量'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘']].map(([key, label]) =>
+                [['trade', '交易'], ['basket', '批量'], ['market', '行情'], ['positions', `持仓 ${positions.length}`], ['orders', `订单 ${pending.length}`], ['review', '复盘'], ['compare', '对比'], ['notes', '笔记']].map(([key, label]) =>
                   h('button', { key, className: 'pt-tab', 'data-active': tab === key, onClick: () => setTab(key) }, label),
                 ),
               ),
@@ -3543,6 +4110,16 @@ window.__ModuleLoader__.load({
                   review, period,
                   setPeriod: key => setPeriod(key),
                   trades, daily, cashFlow, trips,
+                }) : null,
+                tab === 'compare' ? h(CompareTab, { data: compareData, error: compareError }) : null,
+                tab === 'notes' ? h(NotesTab, {
+                  text: noteText,
+                  status: noteStatus,
+                  updatedAt: noteMeta === null ? undefined : noteMeta.updatedAt,
+                  error: noteError,
+                  onChange: changeNote,
+                  onSave: () => { void flushNote() },
+                  onReload: () => { void loadNote(currentAccountId) },
                 }) : null,
               ),
             ),

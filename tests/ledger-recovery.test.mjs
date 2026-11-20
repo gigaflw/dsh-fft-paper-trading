@@ -346,7 +346,7 @@ test('recovery: paper_ledger lists snapshots and restores one for the agent', as
       now: () => new Date('2026-10-20T10:00:00+08:00'),
     })
     const registered = new Map()
-    registerLedgerTools({ register: tool => registered.set(tool.name, tool) }, { stock, futures })
+    registerLedgerTools({ register: tool => registered.set(tool.name, tool) }, { stock: async () => stock, futures })
     const tool = registered.get('paper_ledger')
     assert.ok(tool, 'paper_ledger is registered once for both accounts')
 
