@@ -41,18 +41,7 @@
       const [resetCash, setResetCash] = useState('')
       const submitting = useRef(false)
       const placeKey = useRef({ key: '', id: '' })
-      const [preview, setPreview] = useState(null)
-      const [previewState, setPreviewState] = useState('idle')
-      const [previewError, setPreviewError] = useState('')
-      const [previewNonce, setPreviewNonce] = useState(0)
-      const [quoteError, setQuoteError] = useState('')
-      const [quoteNotice, setQuoteNotice] = useState('')
       const [dataSource, setDataSource] = useState(null)
-      const quoteRef = useRef(null)
-      const lastTicketRefresh = useRef(0)
-      // Quote for an unfinished draft (symbol known, qty/limit still missing).
-      // A complete draft gets its quote from the preview response instead.
-      const [symbolQuote, setSymbolQuote] = useState(null)
       const [receipt, setReceipt] = useState(null)
       const [session, setSession] = useState(null)
       const [searchQuery, setSearchQuery] = useState('')
@@ -86,6 +75,12 @@
         price: '',
         note: '',
       })
+
+      const ticket = useTicketPreview(form)
+      const {
+        preview, previewState, previewError, symbolQuote, quote, quoteError, quoteNotice,
+        previewDraft, draft, maybeRefreshQuote, forceQuoteRefresh, invalidate: invalidateTicket, bump: bumpTicket,
+      } = ticket
 
       const alive = useRef(true)
       const loadAllSeq = useRef(0)
@@ -175,12 +170,9 @@
       /** Per-account view state cleared on every account switch. */
       const clearAccountView = useCallback(() => {
         setNotice('')
-        setPreview(null)
         setReceipt(null)
-        setSymbolQuote(null)
-        setQuoteError('')
-        setQuoteNotice('')
-      }, [])
+        ticket.clear()
+      }, [ticket.clear])
 
       const registry = useAccountRegistry({
         tab,
@@ -210,19 +202,12 @@
           if (alive.current && tab === 'review') await loadReviewDetail()
           if (alive.current && tab === 'compare') await loadCompare()
           // Re-price the open ticket: the quote strip and preview otherwise
-          // froze at the moment the symbol was entered. An unfinished draft
-          // only fetches the quote, so clear its dedupe key too. Degraded
-          // quotes refresh slowly, otherwise this 5 s beat is the biggest
-          // free-tier cost of all.
-          if (alive.current && Date.now() - lastTicketRefresh.current >= ticketRefreshInterval(quoteRef.current)) {
-            lastTicketRefresh.current = Date.now()
-            quoteSymbol.current = ''
-            setPreviewNonce(value => value + 1)
-          }
+          // froze at the moment the symbol was entered.
+          if (alive.current) maybeRefreshQuote()
         } catch {
           // Polling failures stay silent; the manual refresh shows the error.
         }
-      }, [loadAll, loadReviewDetail, loadCompare, tab])
+      }, [loadAll, loadReviewDetail, loadCompare, tab, maybeRefreshQuote])
 
       // The host scheduler is the primary matcher; this stays as a live extra
       // trigger while the panel is visible.
@@ -342,103 +327,6 @@
         setTab('trade')
       }, [])
 
-      const draft = useCallback(() => ({
-        symbol: form.symbol.trim(),
-        side: form.side,
-        type: form.type,
-        qty: Number(form.qty),
-        limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
-        price: form.type === 'market' && form.price !== '' ? Number(form.price) : undefined,
-        note: form.note.trim() === '' ? undefined : form.note.trim(),
-      }), [form])
-
-      // The note is not part of the preview: only the trading fields are.
-      const previewDraft = useCallback(() => ({
-        symbol: form.symbol.trim(),
-        side: form.side,
-        type: form.type,
-        qty: Number(form.qty),
-        limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
-        price: form.type === 'market' && form.price !== '' ? Number(form.price) : undefined,
-      }), [form.symbol, form.side, form.type, form.qty, form.limitPrice, form.price])
-
-      const previewSymbol = useRef('')
-      const previewSeq = useRef(0)
-      // Symbols whose quote the blocked-preview path already asked for.
-      const quoteSymbol = useRef('')
-
-      // One preview per input change, debounced; the response carries the quote,
-      // so a complete draft still costs a single request. While the draft is
-      // unfinished the price line asks for the quote alone — a limit order
-      // whose limit is still being typed must show what the stock costs.
-      useEffect(() => {
-        const current = previewDraft()
-        previewSeq.current += 1
-        const seq = previewSeq.current
-        if (previewBlockReason(current) !== '') {
-          previewSymbol.current = ''
-          setPreview(null)
-          setPreviewState('idle')
-          setPreviewError('')
-          if (current.symbol.length < 6) {
-            quoteSymbol.current = ''
-            setSymbolQuote(null)
-            setQuoteError('')
-            setQuoteNotice('')
-            return
-          }
-          if (quoteSymbol.current === current.symbol) return
-          const timer = setTimeout(() => {
-            rpc('market/quote', { symbols: [current.symbol] })
-              .then(result => {
-                if (!alive.current || seq !== previewSeq.current) return
-                const found = result.quotes[0] ?? null
-                quoteSymbol.current = found === null ? '' : current.symbol
-                setSymbolQuote(found)
-                setQuoteError(found ? '' : (result.notice ?? '没有查到行情'))
-                setQuoteNotice(found ? (result.notice ?? '') : '')
-              })
-              .catch(cause => {
-                if (!alive.current || seq !== previewSeq.current) return
-                quoteSymbol.current = ''
-                setSymbolQuote(null)
-                setQuoteError(errorOf(cause).text)
-                setQuoteNotice('')
-              })
-          }, 300)
-          return () => clearTimeout(timer)
-        }
-        quoteSymbol.current = current.symbol
-        // A completed draft gets its quote from the preview; any error left
-        // over from the earlier quote-only probe belongs to the old symbol and
-        // must not stay on screen after the ticket has been corrected.
-        setQuoteError('')
-        setQuoteNotice('')
-        if (previewSymbol.current !== current.symbol) {
-          previewSymbol.current = current.symbol
-          setPreview(null)
-        }
-        setPreviewState('loading')
-        const timer = setTimeout(() => {
-          rpc('order/preview', current)
-            .then(result => {
-              if (!alive.current || seq !== previewSeq.current) return
-              setPreview(result)
-              // Keep the quote for an unfinished draft: switching to 限价 must
-              // not blank the price line while the limit is still being typed.
-              if (result.quote) setSymbolQuote(result.quote)
-              setPreviewError('')
-              setPreviewState('ready')
-            })
-            .catch(cause => {
-              if (!alive.current || seq !== previewSeq.current) return
-              setPreviewError(errorOf(cause).text)
-              setPreviewState('error')
-            })
-        }, 300)
-        return () => clearTimeout(timer)
-      }, [previewDraft, previewNonce])
-
       const doSubmit = useCallback(async () => {
         if (submitting.current) return
         submitting.current = true
@@ -459,7 +347,7 @@
           setReceipt({ order, fill, cash: snapshot === null ? undefined : snapshot.account.cash })
           placeKey.current = { key: '', id: '' }
           // Keep the card's numbers; recompute them against the new cash.
-          setPreviewNonce(value => value + 1)
+          bumpTicket()
         } catch (cause) {
           setReceipt({ failure: errorOf(cause) })
         } finally {
@@ -527,11 +415,11 @@
         setBusy(true)
         try {
           setAccount(await rpc('account/reset', { confirm: true, initialCash: cents / 100 }))
-          setPreview(null)
+          invalidateTicket()
           setReceipt(null)
           await loadAll(true)
           await loadReviewDetail()
-          setPreviewNonce(value => value + 1)
+          bumpTicket()
           setResetNonce(value => value + 1)
           setResetOpen(false)
           setResetCash('')
@@ -554,7 +442,7 @@
           setAccount(await rpc(depositing ? 'account/deposit' : 'account/withdraw', { amount }))
           await loadAll(true)
           await loadReviewDetail()
-          setPreviewNonce(value => value + 1)
+          bumpTicket()
           setCashAmount('')
           setCashOpen(false)
           setError(null)
@@ -578,18 +466,15 @@
           if (tab === 'market') await loadMarket(marketList?.page ?? 1)
           // Force the incomplete-draft quote branch to fetch again even when
           // the symbol did not change (a transient quote failure is retryable).
-          quoteSymbol.current = ''
-          setPreviewNonce(value => value + 1)
+          forceQuoteRefresh()
         } finally {
           setBusy(false)
         }
-      }, [loadAll, loadReviewDetail, tab, loadMarket, marketList?.page])
+      }, [loadAll, loadReviewDetail, tab, loadMarket, marketList?.page, forceQuoteRefresh])
 
       /** Only real blockers disable submit; a failed preview never does. */
       /** Read the flag outside the deps array: `account` is null on the first render. */
       const blocked = account?.blocked === true
-      const quote = preview ? preview.quote ?? null : symbolQuote
-      quoteRef.current = quote
       const submitReason = useMemo(() => {
         if (account === null) return '加载账户中'
         if (currentAccount !== null && currentAccount.locked) return '账户已锁定，先在账户菜单解锁'

@@ -267,3 +267,160 @@
         submitAccountEditor, runAccountAction,
       }
     }
+
+    /**
+     * The open ticket's quote and preview.
+     *
+     * One preview per input change, debounced; the response carries the quote,
+     * so a complete draft costs a single request. While the draft is unfinished
+     * the price line asks for the quote alone — a limit order whose limit is
+     * still being typed must show what the stock costs. A nonce forces a
+     * re-preview after a fill or a reset without touching the form.
+     */
+    function useTicketPreview(form) {
+      const [preview, setPreview] = useState(null)
+      const [previewState, setPreviewState] = useState('idle')
+      const [previewError, setPreviewError] = useState('')
+      const [previewNonce, setPreviewNonce] = useState(0)
+      // Quote for an unfinished draft (symbol known, qty/limit still missing).
+      // A complete draft gets its quote from the preview response instead.
+      const [symbolQuote, setSymbolQuote] = useState(null)
+      const [quoteError, setQuoteError] = useState('')
+      const [quoteNotice, setQuoteNotice] = useState('')
+      const previewSymbol = useRef('')
+      const previewSeq = useRef(0)
+      // Symbols whose quote the blocked-preview path already asked for.
+      const quoteSymbol = useRef('')
+      const quoteRef = useRef(null)
+      const lastTicketRefresh = useRef(0)
+      const alive = useRef(true)
+      useEffect(() => {
+        alive.current = true
+        return () => { alive.current = false }
+      }, [])
+
+      const draft = useCallback(() => ({
+        symbol: form.symbol.trim(),
+        side: form.side,
+        type: form.type,
+        qty: Number(form.qty),
+        limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
+        price: form.type === 'market' && form.price !== '' ? Number(form.price) : undefined,
+        note: form.note.trim() === '' ? undefined : form.note.trim(),
+      }), [form])
+
+      // The note is not part of the preview: only the trading fields are.
+      const previewDraft = useCallback(() => ({
+        symbol: form.symbol.trim(),
+        side: form.side,
+        type: form.type,
+        qty: Number(form.qty),
+        limitPrice: form.type === 'limit' ? Number(form.limitPrice) : undefined,
+        price: form.type === 'market' && form.price !== '' ? Number(form.price) : undefined,
+      }), [form.symbol, form.side, form.type, form.qty, form.limitPrice, form.price])
+
+      useEffect(() => {
+        const current = previewDraft()
+        previewSeq.current += 1
+        const seq = previewSeq.current
+        if (previewBlockReason(current) !== '') {
+          previewSymbol.current = ''
+          setPreview(null)
+          setPreviewState('idle')
+          setPreviewError('')
+          if (current.symbol.length < 6) {
+            quoteSymbol.current = ''
+            setSymbolQuote(null)
+            setQuoteError('')
+            setQuoteNotice('')
+            return
+          }
+          if (quoteSymbol.current === current.symbol) return
+          const timer = setTimeout(() => {
+            rpc('market/quote', { symbols: [current.symbol] })
+              .then(result => {
+                if (!alive.current || seq !== previewSeq.current) return
+                const found = result.quotes[0] ?? null
+                quoteSymbol.current = found === null ? '' : current.symbol
+                setSymbolQuote(found)
+                setQuoteError(found ? '' : (result.notice ?? '没有查到行情'))
+                setQuoteNotice(found ? (result.notice ?? '') : '')
+              })
+              .catch(cause => {
+                if (!alive.current || seq !== previewSeq.current) return
+                quoteSymbol.current = ''
+                setSymbolQuote(null)
+                setQuoteError(errorOf(cause).text)
+                setQuoteNotice('')
+              })
+          }, 300)
+          return () => clearTimeout(timer)
+        }
+        quoteSymbol.current = current.symbol
+        // A completed draft gets its quote from the preview; any error left
+        // over from the earlier quote-only probe belongs to the old symbol and
+        // must not stay on screen after the ticket has been corrected.
+        setQuoteError('')
+        setQuoteNotice('')
+        if (previewSymbol.current !== current.symbol) {
+          previewSymbol.current = current.symbol
+          setPreview(null)
+        }
+        setPreviewState('loading')
+        const timer = setTimeout(() => {
+          rpc('order/preview', current)
+            .then(result => {
+              if (!alive.current || seq !== previewSeq.current) return
+              setPreview(result)
+              // Keep the quote for an unfinished draft: switching to 限价 must
+              // not blank the price line while the limit is still being typed.
+              if (result.quote) setSymbolQuote(result.quote)
+              setPreviewError('')
+              setPreviewState('ready')
+            })
+            .catch(cause => {
+              if (!alive.current || seq !== previewSeq.current) return
+              setPreviewError(errorOf(cause).text)
+              setPreviewState('error')
+            })
+        }, 300)
+        return () => clearTimeout(timer)
+      }, [previewDraft, previewNonce])
+
+      const quote = preview ? preview.quote ?? null : symbolQuote
+      quoteRef.current = quote
+
+      /**
+       * Re-price the open ticket on the polling beat. An unfinished draft only
+       * fetches the quote, so clear its dedupe key too; a degraded quote
+       * refreshes slowly, otherwise the 5 s beat is the biggest free-tier cost.
+       */
+      const maybeRefreshQuote = useCallback(() => {
+        if (Date.now() - lastTicketRefresh.current < ticketRefreshInterval(quoteRef.current)) return
+        lastTicketRefresh.current = Date.now()
+        quoteSymbol.current = ''
+        setPreviewNonce(value => value + 1)
+      }, [])
+
+      /** Retry the quote even when the symbol did not change. */
+      const forceQuoteRefresh = useCallback(() => {
+        quoteSymbol.current = ''
+        setPreviewNonce(value => value + 1)
+      }, [])
+
+      /** Drop the preview after a reset or fill; the next edit rebuilds it. */
+      const invalidate = useCallback(() => setPreview(null), [])
+      const bump = useCallback(() => setPreviewNonce(value => value + 1), [])
+      /** Clear everything that belonged to the previous account. */
+      const clear = useCallback(() => {
+        setPreview(null)
+        setSymbolQuote(null)
+        setQuoteError('')
+        setQuoteNotice('')
+      }, [])
+
+      return {
+        preview, previewState, previewError, symbolQuote, quote, quoteError, quoteNotice,
+        previewDraft, draft, maybeRefreshQuote, forceQuoteRefresh, invalidate, bump, clear,
+      }
+    }
