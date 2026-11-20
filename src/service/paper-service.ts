@@ -488,6 +488,15 @@ export class PaperService {
     if (outcome.value.duplicateId !== undefined) {
       const duplicate = outcome.state.orders[outcome.value.duplicateId]
       if (duplicate === undefined) throw new PaperError('ORDER_NOT_FOUND', '订单不存在', 404)
+      // Same requestId must describe the same order, like the futures plane:
+      // silently returning the old order for a different draft made a retry
+      // look successful while the new order was never placed.
+      const limitPrice = draft.limitPrice
+      if (duplicate.symbol !== draft.symbol || duplicate.side !== draft.side
+        || duplicate.type !== draft.type || duplicate.qty !== draft.qty
+        || duplicate.limitPrice !== limitPrice || (duplicate.note ?? '') !== (draft.note ?? '')) {
+        throw new PaperError('INVALID_ARGUMENT', 'requestId 已被另一笔不同的委托占用', 409)
+      }
       return toOrderView(duplicate)
     }
     if (outcome.value.blocked === true || outcome.state.blocked) {

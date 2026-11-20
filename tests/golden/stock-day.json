@@ -122,6 +122,41 @@
       }
     },
     {
+      "step": "the same requestId returns the same order",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "ord-2026-11-16-3",
+          "requestId": "buy-1",
+          "symbol": "600519.SH",
+          "name": "贵州茅台",
+          "side": "buy",
+          "type": "market",
+          "qty": 100,
+          "status": "filled",
+          "createdAt": "<mtime>",
+          "updatedAt": "<mtime>",
+          "filledAt": "<ts>",
+          "fillPrice": 1450.5,
+          "filledQty": 100,
+          "remainingQty": 0,
+          "avgFillPrice": 1450.5,
+          "amountCents": 14505000,
+          "feesCents": 3771
+        }
+      }
+    },
+    {
+      "step": "the same requestId with a different draft is refused",
+      "result": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "requestId 已被另一笔不同的委托占用"
+        }
+      }
+    },
+    {
       "step": "preview a resting limit buy",
       "result": {
         "ok": true,

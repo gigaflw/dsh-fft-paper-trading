@@ -767,3 +767,26 @@ test('service: a failed quote records the banner reason and a success clears it'
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('service: a reused requestId must describe the same order', async () => {
+  const home = makeHome('idempotency')
+  const data = makeData()
+  const repo = new AccountRepo({ home, accountId: 'default' })
+  const service = new PaperService({ repo, data, calendar: new WeekdayTradingCalendar(), now: () => DAY1 })
+  try {
+    await service.account()
+    setQuote(data, 100, DAY1_ISO)
+    const draft = { symbol: '600519.SH', side: 'buy', type: 'limit', qty: 100, limitPrice: 90 }
+    const first = await service.place(draft, 'req-1')
+    // A retry of the same call returns the original order instead of a second one.
+    const retried = await service.place(draft, 'req-1')
+    assert.equal(retried.id, first.id)
+    // A different draft must not be masked by the retry.
+    await assert.rejects(
+      service.place({ ...draft, qty: 200 }, 'req-1'),
+      error => error.code === 'INVALID_ARGUMENT' && /另一笔不同的委托/.test(error.message),
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

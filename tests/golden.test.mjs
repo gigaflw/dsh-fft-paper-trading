@@ -50,6 +50,14 @@ test('golden: stock account over two trading days', async () => {
       draft: { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 },
       requestId: 'buy-1',
     })
+    await call('the same requestId returns the same order', 'order/place', {
+      draft: { symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 },
+      requestId: 'buy-1',
+    })
+    await call('the same requestId with a different draft is refused', 'order/place', {
+      draft: { symbol: '600519.SH', side: 'buy', type: 'market', qty: 200 },
+      requestId: 'buy-1',
+    })
     await call('preview a resting limit buy', 'order/preview', {
       symbol: '000001.SZ', side: 'buy', type: 'limit', qty: 5000, limitPrice: 11,
     })

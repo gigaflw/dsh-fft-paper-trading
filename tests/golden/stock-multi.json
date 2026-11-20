@@ -479,12 +479,12 @@
   ],
   "store": {
     "tree": {
+      "<id2>": [
+        "events.jsonl"
+      ],
       "<id1>": [
         "events.jsonl",
         "note.md"
-      ],
-      "<id2>": [
-        "events.jsonl"
       ],
       "accounts.json": [
         "accounts.json"
@@ -494,6 +494,39 @@
       ]
     },
     "ledgers": {
+      "<id2>": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "<id2>",
+            "settings": {
+              "initialCashCents": 100000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 4
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "prevClose": {},
+            "gaps": {},
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        }
+      ],
       "<id1>": [
         {
           "seq": 1,
@@ -581,39 +614,6 @@
               "ts": "<ts>",
               "tradeDate": "2026-11-16"
             }
-          }
-        }
-      ],
-      "<id2>": [
-        {
-          "seq": 1,
-          "type": "account.opened",
-          "payload": {
-            "accountId": "<id2>",
-            "settings": {
-              "initialCashCents": 100000000,
-              "commissionRate": 0.00025,
-              "minCommissionCents": 500,
-              "stampDutyRate": 0.0005,
-              "transferFeeRate": 0.00001,
-              "enableT1": true,
-              "maxOrderNotionalCents": 0
-            },
-            "initialCashCents": 100000000,
-            "tradeDate": "2026-11-16",
-            "ledgerVersion": 4
-          }
-        },
-        {
-          "seq": 2,
-          "type": "day.opened",
-          "payload": {
-            "date": "2026-11-16",
-            "openPrices": {},
-            "prevClose": {},
-            "gaps": {},
-            "t1Unlocked": true,
-            "recordedAt": "<ts>"
           }
         }
       ],
