@@ -12,7 +12,6 @@ import type {
   FillView,
   LedgerExport,
   LedgerSnapshotsView,
-  LedgerSnapshotView,
   MarketStatus,
   OrderDraft,
   OrderView,
@@ -40,9 +39,10 @@ import { toAccountView, toFillView, toOrderView, toReview, previewOrder } from '
 import type { AccountState, LedgerEvent, Order } from '../core/types.js'
 import type { BarsResult, MarketDataPort, QuoteResult } from '../data/market-data-port.js'
 import type { TradingCalendarPort } from '../data/trading-calendar-port.js'
-import type { AccountStore, LedgerSnapshot } from '../store/port.js'
+import type { AccountStore } from '../store/port.js'
 import type { ShortlistStore } from '../store/shortlist.js'
 import { PaperError } from './errors.js'
+import { LedgerAdmin, type LedgerStatusView } from './ledger-admin.js'
 import { QuoteRefreshGate } from './quote-gate.js'
 import { classifyDataProblem, friendlyDataNotice } from './data-source.js'
 
@@ -69,13 +69,6 @@ function reasonText(reason: string | undefined, limit = 120): string {
   return flat.length <= limit ? flat : `${flat.slice(0, limit)}…`
 }
 
-export interface LedgerStatus {
-  path: string
-  exists: boolean
-  blocked: boolean
-  blockedReason?: string
-}
-
 interface PlaceOutcome {
   orderId?: string
   duplicateId?: string
@@ -98,10 +91,31 @@ export class PaperService {
   private tickQuotes: { key: string; quotes: Quote[] } | undefined
   private dataProblem: DataProblem | undefined
 
+  private admin: LedgerAdmin<AccountState, AccountView> | undefined
+
   constructor(private readonly options: PaperServiceOptions) {
     this.settings = normalizeSettings(options.settings ?? DEFAULT_SETTINGS)
     this.accountId = options.accountId ?? DEFAULT_ACCOUNT_ID
     this.now = options.now ?? (() => new Date())
+  }
+
+  /** Export/snapshot/recovery plumbing shared with the futures plane. */
+  private ledgerAdmin(): LedgerAdmin<AccountState, AccountView> {
+    if (this.admin === undefined) {
+      this.admin = new LedgerAdmin<AccountState, AccountView>({
+        repo: this.options.repo,
+        isBlocked: state => state.blocked,
+        blockedReason: state => state.blockedReason,
+        ledgerVersion: state => state.ledgerVersion,
+        viewOf: state => this.viewOf(state),
+        assertUnlocked: () => this.assertUnlocked(),
+        ts: () => this.ts(),
+        makeError: (code, message, status) => new PaperError(code as ConstructorParameters<typeof PaperError>[0], message, status),
+        label: 'paper-trading',
+        ...(this.options.logger === undefined ? {} : { logger: this.options.logger }),
+      })
+    }
+    return this.admin
   }
 
   private ts(): string {
@@ -1106,21 +1120,12 @@ export class PaperService {
 
   /** `amount` is yuan from the UI; the ledger stores integer cents. */
   private cashAmountCents(amount: number): number {
-    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
-      throw new PaperError('INVALID_ARGUMENT', '金额必须是正数', 400)
-    }
-    const cents = Math.round(amount * 100)
-    if (!Number.isSafeInteger(cents) || cents <= 0) {
-      throw new PaperError('INVALID_ARGUMENT', '金额至少 0.01 元', 400)
-    }
-    return cents
+    return this.ledgerAdmin().cashAmountCents(amount)
   }
 
   /** Read-only export of the raw ledger, for a locked account's banner. */
   async exportLedger(): Promise<LedgerExport> {
-    const ledger = await this.options.repo.readLedger()
-    if (ledger.content === null) return { path: ledger.path, exists: false, notice: '账本文件尚未创建' }
-    return { path: ledger.path, exists: true, content: ledger.content }
+    return this.ledgerAdmin().exportLedger()
   }
 
   /**
@@ -1129,18 +1134,8 @@ export class PaperService {
    * `exportLedger` exists for downloading; this is the answer a human or an
    * agent needs to locate the file and name the failing invariant.
    */
-  async ledgerStatus(): Promise<LedgerStatus> {
-    const ledger = await this.options.repo.readLedger()
-    const state = await this.options.repo.current().catch(error => {
-      this.options.logger?.warn(`paper-trading: ledger status could not replay: ${String(error)}`)
-      return undefined
-    })
-    return {
-      path: ledger.path,
-      exists: ledger.content !== null,
-      blocked: state?.blocked === true,
-      blockedReason: state?.blockedReason,
-    }
+  async ledgerStatus(): Promise<LedgerStatusView> {
+    return this.ledgerAdmin().ledgerStatus()
   }
 
   /**
@@ -1150,15 +1145,7 @@ export class PaperService {
    * which replay cleanly, and whether one needs migration first.
    */
   async ledgerSnapshots(): Promise<LedgerSnapshotsView> {
-    const state = await this.options.repo.current().catch(() => undefined)
-    const snapshots = await this.options.repo.snapshots()
-    return {
-      path: this.options.repo.ledgerPath ?? '',
-      blocked: state?.blocked === true,
-      blockedReason: state?.blockedReason,
-      ledgerVersion: state?.ledgerVersion,
-      snapshots: snapshots.map(toSnapshotView),
-    }
+    return this.ledgerAdmin().ledgerSnapshots()
   }
 
   /**
@@ -1169,19 +1156,12 @@ export class PaperService {
    * before touching the file.
    */
   async restoreLedger(name: string, confirm: boolean): Promise<AccountView> {
-    this.assertUnlocked()
-    if (confirm !== true) throw new PaperError('INVALID_ARGUMENT', '恢复账本需要 confirm=true', 400)
-    try {
-      return this.viewOf(await this.options.repo.restore(name))
-    } catch (error) {
-      throw new PaperError('LEDGER_RESTORE_FAILED', error instanceof Error ? error.message : String(error), 409)
-    }
+    return this.ledgerAdmin().restoreLedger(name, confirm)
   }
 
   /** Take one manual snapshot (the automatic one runs at most daily). */
   async backupLedger(): Promise<boolean> {
-    const stamp = this.ts().replace(/[:.]/g, '-')
-    return this.options.repo.backup(`manual-${stamp}`)
+    return this.ledgerAdmin().backupLedger()
   }
 
   /** Exposed for tests/scenarios: current equity in cents after advancing the clock. */
@@ -1191,18 +1171,3 @@ export class PaperService {
   }
 }
 
-/** Ledger cents → the yuan the rest of the views use. */
-function toSnapshotView(snapshot: LedgerSnapshot): LedgerSnapshotView {
-  return {
-    name: snapshot.name,
-    createdAt: snapshot.createdAt,
-    bytes: snapshot.bytes,
-    ledgerVersion: snapshot.ledgerVersion,
-    lastSeq: snapshot.lastSeq,
-    tradeDate: snapshot.tradeDate,
-    cash: snapshot.cashCents / 100,
-    valid: snapshot.valid,
-    migratable: snapshot.migratable,
-    problem: snapshot.problem,
-  }
-}

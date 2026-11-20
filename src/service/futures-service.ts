@@ -59,9 +59,10 @@ import {
   toOrderView,
   toReview,
 } from '../core/futures/views.js'
+import { LedgerAdmin } from './ledger-admin.js'
 import { QuoteRefreshGate } from './quote-gate.js'
 import { classifyDataProblem, friendlyDataNotice } from './data-source.js'
-import type { DataProblem, LedgerSnapshotView, LedgerSnapshotsView } from '../contract.js'
+import type { DataProblem, LedgerSnapshotsView } from '../contract.js'
 import type {
   ContractTerms,
   FuturesAccountState,
@@ -72,7 +73,6 @@ import type {
   SettleInput,
 } from '../core/futures/types.js'
 import type { FuturesStore } from '../store/futures-repo.js'
-import type { LedgerSnapshot } from '../store/port.js'
 
 /** Data calls are chunked to the adapter's documented 20-symbol batch cap. */
 const SYMBOL_BATCH = 20
@@ -244,6 +244,27 @@ export class FuturesService {
     this.settings = normalizeFuturesSettings(options.settings ?? DEFAULT_FUTURES_SETTINGS)
     this.accountId = options.accountId ?? FUTURES_ACCOUNT_ID
     this.now = options.now ?? (() => new Date())
+  }
+
+  private admin: LedgerAdmin<FuturesAccountState, ReturnType<typeof toAccountView>> | undefined
+
+  /** Export/snapshot/recovery plumbing shared with the stock plane. */
+  private ledgerAdmin(): LedgerAdmin<FuturesAccountState, ReturnType<typeof toAccountView>> {
+    if (this.admin === undefined) {
+      this.admin = new LedgerAdmin<FuturesAccountState, ReturnType<typeof toAccountView>>({
+        repo: this.options.repo,
+        isBlocked: state => state.blocked,
+        blockedReason: state => state.blockedReason,
+        ledgerVersion: state => state.ledgerVersion,
+        viewOf: state => this.viewOf(state),
+        assertUnlocked: () => this.assertUnlocked(),
+        ts: () => this.ts(),
+        makeError: (code, message, status) => new FuturesError(code as FuturesServiceErrorCode, message, status),
+        label: 'paper-trading: futures',
+        ...(this.options.logger === undefined ? {} : { logger: this.options.logger }),
+      })
+    }
+    return this.admin
   }
 
   private ts(): string {
@@ -724,39 +745,22 @@ export class FuturesService {
   }
 
   async exportLedger(): Promise<FuturesLedgerExport> {
-    const ledger = await this.options.repo.readLedger()
-    if (ledger.content === null) return { path: ledger.path, exists: false, notice: '账本文件尚未创建' }
-    return { path: ledger.path, exists: true, content: ledger.content }
+    return this.ledgerAdmin().exportLedger()
   }
 
   /** Snapshots that can be restored, newest first, plus the live ledger's state. */
   async ledgerSnapshots(): Promise<LedgerSnapshotsView> {
-    const state = await this.options.repo.current().catch(() => undefined)
-    const snapshots = await this.options.repo.snapshots()
-    return {
-      path: this.options.repo.ledgerPath ?? '',
-      blocked: state?.blocked === true,
-      blockedReason: state?.blockedReason,
-      ledgerVersion: state?.ledgerVersion,
-      snapshots: snapshots.map(toSnapshotView),
-    }
+    return this.ledgerAdmin().ledgerSnapshots()
   }
 
   /** Replace the live futures ledger with one snapshot; allowed while blocked. */
   async restoreLedger(name: string, confirm: boolean): Promise<ReturnType<typeof toAccountView>> {
-    this.assertUnlocked()
-    if (confirm !== true) throw new FuturesError('INVALID_ARGUMENT', '恢复账本需要 confirm=true', 400)
-    try {
-      return this.viewOf(await this.options.repo.restore(name))
-    } catch (error) {
-      throw new FuturesError('LEDGER_RESTORE_FAILED', error instanceof Error ? error.message : String(error), 409)
-    }
+    return this.ledgerAdmin().restoreLedger(name, confirm)
   }
 
   /** Take one manual snapshot (the automatic one runs at most daily). */
   async backupLedger(): Promise<boolean> {
-    const stamp = this.ts().replace(/[:.]/g, '-')
-    return this.options.repo.backup(`manual-${stamp}`)
+    return this.ledgerAdmin().backupLedger()
   }
 
   // ---------------------------------------------------------------- writing --
@@ -978,29 +982,7 @@ export class FuturesService {
 
   /** `amount` is yuan from the UI; the ledger stores integer cents. */
   private cashAmountCents(amount: number): number {
-    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
-      throw new FuturesError('INVALID_ARGUMENT', '金额必须是正数', 400)
-    }
-    const cents = Math.round(amount * 100)
-    if (!Number.isSafeInteger(cents) || cents <= 0) {
-      throw new FuturesError('INVALID_ARGUMENT', '金额至少 0.01 元', 400)
-    }
-    return cents
+    return this.ledgerAdmin().cashAmountCents(amount)
   }
 }
 
-/** Ledger cents → the yuan the rest of the views use. */
-function toSnapshotView(snapshot: LedgerSnapshot): LedgerSnapshotView {
-  return {
-    name: snapshot.name,
-    createdAt: snapshot.createdAt,
-    bytes: snapshot.bytes,
-    ledgerVersion: snapshot.ledgerVersion,
-    lastSeq: snapshot.lastSeq,
-    tradeDate: snapshot.tradeDate,
-    cash: snapshot.cashCents / 100,
-    valid: snapshot.valid,
-    migratable: snapshot.migratable,
-    problem: snapshot.problem,
-  }
-}
