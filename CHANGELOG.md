@@ -4,6 +4,14 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.8.1] - 2026-11-23
+
+共享底座下限提升：FTShare 出站开始携带 dsh 渠道归因参数，网关访问日志可按渠道统计插件的取数流量。
+
+### Changed
+
+- 依赖下限提升到 `@dsh-ft/dsh-fft-settings ^0.7.3` 与 `@dsh-ft/dsh-fft-ftshare ^0.4.4`，安装时至少会取到带渠道归因的版本。
+
 ## [0.8.0] - 2026-11-23
 
 一个插件实例内可以有多个股票账户：各自独立账本与复盘，面板顶栏切换，对比页按收益排名；「隐藏」升级为可恢复的「归档」。
@@ -330,6 +338,7 @@ README 的 API Key 申请入口改为 FTShare 落地页，并补齐 UTM 归因�
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.8.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.7.3...v0.8.0
 [0.6.3]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.1...v0.6.2
