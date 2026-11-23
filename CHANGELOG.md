@@ -4,6 +4,36 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.8.0] - 2026-11-23
+
+一个插件实例内可以有多个股票账户：各自独立账本与复盘，面板顶栏切换，对比页按收益排名；「隐藏」升级为可恢复的「归档」。
+
+### Added
+
+- 股票账户支持多账户：顶栏下拉新建与切换，各账户独立记账、复盘与导出，「对比」页把净值曲线归一化叠加并按收益排名
+- 每个账户有整页「笔记」：一整块自由改写的文本，自动保存，仅本人可读写，模型没有入口
+- 模型工具可显式指定账户（名字或 id）下单、复盘与查询；不传仍是默认账户
+- 账本恢复工具支持任意股票账户，不再只限于默认账户与期货账户
+- 交易列与行情/K 线栏可拖动调宽、可折叠，K 线高度支持自动/高/满三档
+
+### Changed
+
+- 面板「隐藏」改名为「归档」：一键归档即从面板与对比页收起并冻结交易与资金操作，数据保留、可随时恢复，恢复后保留归档前的锁定状态
+- 复盘周期切换只刷新复盘内容，不再重载账户或清空票据预览
+- 同一 `requestId` 携带不同委托参数时明确报错，不再静默返回旧单
+- 期货账户名称固定，不再允许改名
+
+### Fixed
+
+- 期货账户的「锁定」真正生效：锁定后拒绝下单、出入金与重置，已有挂单仍可成交或撤销
+- 修复自定义主题（声明浅色、实际深色）下交易页选中按钮文字看不清
+- 左侧栏入口跟随 DSH 界面语言，英文界面显示 Paper Trading
+
+### Components
+
+- `@dsh-ft/dsh-fft-paper-trading`：`0.7.3` → `0.8.0`
+- `DSH Kline`：未变
+
 ## [0.7.3] - 2026-11-16
 
 README 的 API Key 申请入口改为 FTShare 落地页，并补齐 UTM 归因；运行代码不变。
@@ -300,6 +330,7 @@ README 的 API Key 申请入口改为 FTShare 落地页，并补齐 UTM 归因�
 
 - `@ft/dsh-fft-paper-trading`：新增 `0.1.0`
 
+[0.8.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.7.3...v0.8.0
 [0.6.3]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.6.0...v0.6.1
