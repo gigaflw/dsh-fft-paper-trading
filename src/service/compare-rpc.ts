@@ -17,7 +17,7 @@ import type { PaperRpcHandler } from './rpc.js'
 import { fail, ok } from './rpc-support.js'
 
 export interface CompareSource {
-  /** Visible (not hidden) stock accounts, in registry order. */
+  /** Visible (not archived) stock accounts, in registry order. */
   accounts: () => Promise<AccountMeta[]>
   serviceOf: (meta: AccountMeta) => PaperService
 }

@@ -201,7 +201,7 @@
      * Header picker: current account, the visible account list, then actions.
      * Notes are deliberately absent: they are long-form content, not a label.
      */
-    function AccountPicker({ accounts, current, busy, onSelect, onCreate, onAction }) {
+    function AccountPicker({ accounts, archived = [], current, busy, onSelect, onCreate, onAction, onRestoreArchived }) {
       const [open, setOpen] = useState(false)
       const rootRef = useRef(null)
       useEffect(() => {
@@ -234,10 +234,21 @@
               meta.locked ? h('span', { className: 'pt-account-flag' }, '锁定') : null,
             ))) : null,
           accounts.length > 1 ? h('div', { className: 'pt-account-sep' }) : null,
+          archived.length > 0 ? h('div', { className: 'pt-account-sep' }) : null,
+          archived.length > 0 ? h('div', { className: 'pt-account-list' }, archived.map(meta =>
+            h('button', {
+              key: meta.id, role: 'menuitem', className: 'pt-account-item', 'data-archived': 'true', title: '点按恢复归档',
+              style: { opacity: 0.7 },
+              onClick: () => { setOpen(false); onRestoreArchived(meta.id) },
+            },
+              h('span', null, meta.name),
+              h('span', { className: 'pt-account-item-note' }, '已归档 · 点按恢复'),
+            ))) : null,
+          archived.length > 0 ? h('div', { className: 'pt-account-sep' }) : null,
           h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onCreate() } }, '＋ 新建账户'),
           h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('rename') } }, '重命名'),
           h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('notes') } }, '笔记'),
-          current.id === 'default' ? null : h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('hide') } }, '隐藏账户'),
+          current.id === 'default' ? null : h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('archive') } }, '归档账户'),
           h('button', { className: 'pt-account-action', role: 'menuitem', onClick: () => { setOpen(false); onAction('lock') } }, current.locked ? '解锁账户' : '锁定账户'),
         ) : null,
       )

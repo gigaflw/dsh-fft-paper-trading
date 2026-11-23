@@ -18,15 +18,15 @@
     totalFeesCents: 514, cashAfterCents: 98500000 - 14505000 - 514, availableQty: 100, maxBuyQty: 600,
     quote, warnings: [],
   }
-  // Multi-account fixtures: one visible account per strategy, one hidden, one
+  // Multi-account fixtures: one visible account per strategy, one archived, one
   // locked. The panel must show the visible ones only and rank the comparison
   // page by return.
   const MULTI_ACCOUNTS = [
-    { id: 'default', name: '默认账户', note: '', hidden: false, locked: false, equity: 1000000, pnlPct: 0, todayPnl: 0, trades: 0 },
-    { id: 'acc-value', name: '价值组', note: 'DeepSeek 日频', hidden: false, locked: false, equity: 1124000, pnlPct: 0.124, todayPnl: 0.0082, trades: 42 },
-    { id: 'acc-momentum', name: '动量组', note: 'Claude 周频', hidden: false, locked: false, equity: 1081000, pnlPct: 0.081, todayPnl: -0.0031, trades: 31 },
-    { id: 'acc-reversal', name: '反转组', note: '', hidden: false, locked: true, equity: 988000, pnlPct: -0.012, todayPnl: 0, trades: 12 },
-    { id: 'acc-hidden', name: '隐藏账户', note: '', hidden: true, locked: false, equity: 950000, pnlPct: -0.05, todayPnl: 0, trades: 4 },
+    { id: 'default', name: '默认账户', note: '', archived: false, locked: false, equity: 1000000, pnlPct: 0, todayPnl: 0, trades: 0 },
+    { id: 'acc-value', name: '价值组', note: 'DeepSeek 日频', archived: false, locked: false, equity: 1124000, pnlPct: 0.124, todayPnl: 0.0082, trades: 42 },
+    { id: 'acc-momentum', name: '动量组', note: 'Claude 周频', archived: false, locked: false, equity: 1081000, pnlPct: 0.081, todayPnl: -0.0031, trades: 31 },
+    { id: 'acc-reversal', name: '反转组', note: '', archived: false, locked: true, equity: 988000, pnlPct: -0.012, todayPnl: 0, trades: 12 },
+    { id: 'acc-archived', name: '归档账户', note: '', archived: true, locked: false, equity: 950000, pnlPct: -0.05, todayPnl: 0, trades: 4 },
   ]
   // Human-only notes: one long text per account, replaced wholesale.
   const MULTI_NOTES = {
@@ -37,7 +37,7 @@
   const multiRow = ref => MULTI_ACCOUNTS.find(row => row.id === ref || row.name === ref)
   const multiMeta = row => ({
     id: row.id, kind: 'stock', name: row.name,
-    createdAt: ts(), hidden: row.hidden, locked: row.locked,
+    createdAt: ts(), archived: row.archived, locked: row.locked,
   })
   const multiPoints = row => {
     let seed = row.id.length * 977 + Math.abs(Math.round(row.pnlPct * 1000)) + 7
@@ -50,13 +50,13 @@
   /** Per-account answers for the endpoints the panel asks for by account. */
   function multiAccountView(endpoint, payload, accountRef) {
     if (endpoint === 'accounts/list') {
-      const includeHidden = payload.includeHidden === true
+      const includeArchived = payload.includeArchived === true
       return {
         // The real registry lists the futures ledger too; the stock picker must
         // drop it instead of offering a target that rejects every request.
         accounts: [
-          ...MULTI_ACCOUNTS.filter(row => includeHidden || !row.hidden).map(multiMeta),
-          { id: 'futures', kind: 'futures', name: '期货账户', createdAt: ts(), hidden: false, locked: false },
+          ...MULTI_ACCOUNTS.filter(row => includeArchived || !row.archived).map(multiMeta),
+          { id: 'futures', kind: 'futures', name: '期货账户', createdAt: ts(), archived: false, locked: false },
         ],
         defaultIds: { stock: 'default', futures: 'futures' },
         tickMs: 5000,
@@ -64,7 +64,7 @@
     }
     if (endpoint === 'compare/get') {
       return {
-        accounts: MULTI_ACCOUNTS.filter(row => !row.hidden).map(row => ({
+        accounts: MULTI_ACCOUNTS.filter(row => !row.archived).map(row => ({
           id: row.id, name: row.name, locked: row.locked,
           initialCash: 1000000, equity: row.equity, pnl: row.equity - 1000000,
           pnlPct: row.pnlPct, todayPnl: row.todayPnl * 1000000,
@@ -75,7 +75,7 @@
     if (endpoint === 'accounts/create') {
       const row = {
         id: `acc-${MULTI_ACCOUNTS.length}`, name: payload.name, note: payload.note ?? '',
-        hidden: false, locked: false, equity: 1000000, pnlPct: 0, todayPnl: 0, trades: 0,
+        archived: false, locked: false, equity: 1000000, pnlPct: 0, todayPnl: 0, trades: 0,
       }
       MULTI_ACCOUNTS.push(row)
       return multiMeta(row)
@@ -87,11 +87,11 @@
       else row.note = payload.note ?? ''
       return multiMeta(row)
     }
-    if (endpoint === 'accounts/hide' || endpoint === 'accounts/unhide' || endpoint === 'accounts/lock' || endpoint === 'accounts/unlock') {
+    if (endpoint === 'accounts/archive' || endpoint === 'accounts/unarchive' || endpoint === 'accounts/lock' || endpoint === 'accounts/unlock') {
       const row = multiRow(payload.id)
       if (row === undefined) return { __error: { code: 'ACCOUNT_NOT_FOUND', message: 'no such account' } }
-      if (endpoint === 'accounts/hide') row.hidden = true
-      if (endpoint === 'accounts/unhide') row.hidden = false
+      if (endpoint === 'accounts/archive') row.archived = true
+      if (endpoint === 'accounts/unarchive') row.archived = false
       if (endpoint === 'accounts/lock') row.locked = true
       if (endpoint === 'accounts/unlock') row.locked = false
       return multiMeta(row)
@@ -410,7 +410,10 @@
       e2e.click(document.querySelector('.pt-account-btn'))
       await e2e.wait(() => document.querySelector('.pt-account-menu'))
       result.menu = [...document.querySelectorAll('.pt-account-item')].map(el => el.innerText.replace(/\n/g, ' '))
-      result.showsHidden = result.menu.some(text => text.includes('隐藏账户'))
+      result.selectable = [...document.querySelectorAll('.pt-account-item:not([data-archived])')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.archivedNames = [...document.querySelectorAll('.pt-account-item[data-archived="true"]')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.showsArchived = result.archivedNames.some(text => text.includes('归档账户'))
+      result.archivedSelectable = result.selectable.some(text => text.includes('归档账户'))
       // 2) Switching reloads the other ledger.
       const target = [...document.querySelectorAll('.pt-account-item')].find(el => el.innerText.includes('价值组'))
       e2e.click(target)
@@ -458,8 +461,8 @@
       await e2e.wait(() => e2e.text('.pt-account-btn').includes('新账户'), 8000)
       await e2e.wait(() => e2e.text('.pt-stat-value').includes('1,000,000'))
       result.created = e2e.text('.pt-account-btn').replace(/\n/g, ' ')
-      // Back to the default account: it must offer no hide action (the registry
-      // rejects hiding it, and the picker would otherwise strand the panel).
+      // Back to the default account: it must offer no archive action (the
+      // registry rejects archiving it, and the picker would otherwise strand the panel).
       e2e.click(document.querySelector('.pt-account-btn'))
       await e2e.wait(() => document.querySelector('.pt-account-menu'))
       e2e.click([...document.querySelectorAll('.pt-account-item')].find(el => el.innerText.includes('默认账户')))
@@ -467,9 +470,37 @@
       e2e.click(document.querySelector('.pt-account-btn'))
       await e2e.wait(() => document.querySelector('.pt-account-menu'))
       result.menu = [...document.querySelectorAll('.pt-account-item')].map(el => el.innerText.replace(/\n/g, ' '))
-      result.hasHide = [...document.querySelectorAll('.pt-account-action')].some(el => el.textContent.includes('隐藏账户'))
+      result.hasArchive = [...document.querySelectorAll('.pt-account-action')].some(el => el.textContent.includes('归档账户'))
       e2e.click(document.querySelector('.pt-account-btn'))
       await e2e.wait(() => !document.querySelector('.pt-account-menu'))
+      return result
+    }
+    if (name === 'multi-archive') {
+      // Select 新账户 (created by the previous scenario) and archive it: it must
+      // leave the selectable list, appear under 已归档, and restore on click.
+      await e2e.wait(() => document.querySelector('.pt-account-btn'))
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      e2e.click([...document.querySelectorAll('.pt-account-item:not([data-archived])')].find(el => el.innerText.includes('新账户')))
+      await e2e.wait(() => e2e.text('.pt-account-btn').includes('新账户'))
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      e2e.click([...document.querySelectorAll('.pt-account-action')].find(el => el.textContent.includes('归档账户')))
+      // Archiving the selected account moves the panel to another one.
+      await e2e.wait(() => !e2e.text('.pt-account-btn').includes('新账户'), 8000)
+      result.movedTo = e2e.text('.pt-account-btn').replace(/\n/g, ' ')
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      result.selectable = [...document.querySelectorAll('.pt-account-item:not([data-archived])')].map(el => el.innerText.replace(/\n/g, ' '))
+      result.archivedNames = [...document.querySelectorAll('.pt-account-item[data-archived="true"]')].map(el => el.innerText.replace(/\n/g, ' '))
+      const restore = [...document.querySelectorAll('.pt-account-item[data-archived="true"]')].find(el => el.innerText.includes('新账户'))
+      e2e.click(restore)
+      await e2e.wait(() => e2e.text('.pt-account-btn').includes('新账户'), 8000)
+      result.restored = e2e.text('.pt-account-btn').replace(/\n/g, ' ')
+      e2e.click(document.querySelector('.pt-account-btn'))
+      await e2e.wait(() => document.querySelector('.pt-account-menu'))
+      e2e.click([...document.querySelectorAll('.pt-account-item:not([data-archived])')].find(el => el.innerText.includes('默认账户')))
+      await e2e.wait(() => e2e.text('.pt-account-btn').includes('默认账户'))
       return result
     }
     if (name === 'multi-restore') {

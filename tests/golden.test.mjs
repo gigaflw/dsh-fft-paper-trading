@@ -120,9 +120,15 @@ test('golden: multi-account registry, locks and notes', async () => {
     await call('the default account is untouched', 'account/get')
     await call('rename the account', 'accounts/rename', { id: valueId, name: '价值小组' })
     await call('the old display name no longer resolves', 'account/get', {}, '价值组')
-    await call('hide the third account', 'accounts/hide', { id: momentum.value.id })
-    await call('hidden accounts leave the list', 'accounts/list')
-    await call('a hidden account still answers by id', 'account/get', {}, momentum.value.id)
+    await call('archive the third account', 'accounts/archive', { id: momentum.value.id })
+    await call('archived accounts leave the list', 'accounts/list')
+    await call('an archived account still answers by id', 'account/get', {}, momentum.value.id)
+    await call('an archived account refuses orders', 'order/place', {
+      draft: { symbol: '000001.SZ', side: 'buy', type: 'market', qty: 100 },
+      requestId: 'momentum-1',
+    }, momentum.value.id)
+    await call('restore the archived account', 'accounts/unarchive', { id: momentum.value.id })
+    await call('a restored account is selectable again', 'accounts/list')
     const locked = await call('lock the traded account', 'accounts/lock', { id: valueId })
     await call('a locked account refuses orders', 'order/place', {
       draft: { symbol: '000001.SZ', side: 'buy', type: 'market', qty: 100 },
@@ -136,7 +142,7 @@ test('golden: multi-account registry, locks and notes', async () => {
     await call('write the note', 'note/set', { text: '长期持有 600519，回撤 10% 减半。' }, '价值小组')
     await call('read it back', 'note/get', {}, '价值小组')
     await call('comparison rows', 'compare/get')
-    await call('registry including hidden', 'accounts/list', { includeHidden: true })
+    await call('registry including archived', 'accounts/list', { includeArchived: true })
 
     if (locked.value.locked !== true) throw new Error('expected the account to be locked')
 

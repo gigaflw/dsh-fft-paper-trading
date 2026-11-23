@@ -122,6 +122,8 @@ export interface FuturesServiceOptions {
    * book and can be cancelled); only new state changes are refused.
    */
   isLocked?: () => boolean
+  /** Archived accounts are frozen as well; asked before `isLocked`. */
+  isArchived?: () => boolean
 }
 
 interface ContractCache {
@@ -256,6 +258,9 @@ export class FuturesService {
    * directly and the futures route bypasses the paper guard.
    */
   private assertUnlocked(): void {
+    if (this.options.isArchived?.() === true) {
+      throw new FuturesError('ACCOUNT_ARCHIVED', `账户「${this.accountId}」已归档，恢复归档后才能交易`)
+    }
     if (this.options.isLocked?.() === true) {
       throw new FuturesError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`)
     }

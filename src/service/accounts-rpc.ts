@@ -3,7 +3,7 @@
  *
  * Account administration is deliberately kept out of {@link createPaperRpcHandler}:
  * that handler owns trading and never touches the registry file, while these
- * endpoints only edit metadata (create / rename / hide / lock). Both are mounted
+ * endpoints only edit metadata (create / rename / archive / lock). Both are mounted
  * on the same route, so the browser half still has one door.
  *
  * There is no session endpoint on purpose: this plugin knows nothing about
@@ -45,7 +45,7 @@ export function createAccountsRpcHandler(registry: AccountRegistry): PaperRpcHan
         case 'accounts/list': {
           const kind = kindOf(input.kind)
           return ok(await registry.view({
-            includeHidden: input.includeHidden === true,
+            includeArchived: input.includeArchived === true,
             ...(kind === undefined ? {} : { kind }),
           }))
         }
@@ -62,10 +62,10 @@ export function createAccountsRpcHandler(registry: AccountRegistry): PaperRpcHan
           }))
         case 'accounts/rename':
           return ok(await registry.rename(text(input.id, 'id'), text(input.name, 'name')))
-        case 'accounts/hide':
-          return ok(await registry.hide(text(input.id, 'id')))
-        case 'accounts/unhide':
-          return ok(await registry.unhide(text(input.id, 'id')))
+        case 'accounts/archive':
+          return ok(await registry.archive(text(input.id, 'id')))
+        case 'accounts/unarchive':
+          return ok(await registry.unarchive(text(input.id, 'id')))
         case 'accounts/lock':
           return ok(await registry.lock(text(input.id, 'id')))
         case 'accounts/unlock':

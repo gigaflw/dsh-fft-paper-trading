@@ -170,6 +170,7 @@ export function apply(ctx: Context, options: ApplyOptions = {}): void {
       // Read the registry, not this meta: `accounts/lock` mutates the live
       // entry, and the service map is shared with the scheduler's copies.
       isLocked: () => registry.lockedSync(meta.id),
+      isArchived: () => registry.archivedSync(meta.id),
     })
     stockServices.set(meta.id, service)
     return service
@@ -215,7 +216,7 @@ export function apply(ctx: Context, options: ApplyOptions = {}): void {
   }
   const paperHandler = createPaperRpcHandler(resolveStock, { dataSource, notes })
   const accountsHandler = createAccountsRpcHandler(registry)
-  // The comparison page reads every visible account; hidden ones are only
+  // The comparison page reads every visible account; archived ones are only
   // reachable by id, so they stay out of the board.
   const compareHandler = createCompareRpcHandler({
     accounts: async () => (await registry.view()).accounts.filter(meta => meta.kind === 'stock'),
@@ -240,9 +241,9 @@ export function apply(ctx: Context, options: ApplyOptions = {}): void {
   const scheduler = new PaperScheduler({
     logger,
     tick: async () => {
-      // Hidden accounts still have orders: hiding is a panel concern, not a
+      // Archived accounts still have orders: archiving is a panel concern, not a
       // reason to stop matching a resting order.
-      const view = await registry.view({ includeHidden: true })
+      const view = await registry.view({ includeArchived: true })
       for (const meta of view.accounts) {
         if (meta.kind !== 'stock') continue
         // Orders only: marking positions is display work, and nobody is looking

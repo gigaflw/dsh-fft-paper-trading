@@ -29,7 +29,7 @@ Open an A-share / commodity futures account in DeepSeek Harness without opening 
 - **Order straight from the K-line**: the panel keeps a full K-line chart on screen; pick a symbol on the chart and its code is carried over to the trade page. The quotes page lets you page through sectors and add the symbols you follow to the shortlist.
 - **Build positions in bulk by weight**: import a `code,weight` CSV, set a budget, and buy up to 20 symbols in one batch; check shares, fees and remaining cash before submitting the whole batch.
 - **Reviews that reconcile**: equity curve, maximum drawdown, fill statistics, end-of-day report and cash flows, with returns already excluding deposits and withdrawals.
-- **Run several strategies apart, compare them together**: create accounts from the header picker, rename or hide them at will, and keep a free-form notes page per account (auto-saved, out of reach of the model); the comparison tab overlays every account’s equity curve normalised to 100, ranked by return, with drawdown and fill counts.
+- **Run several strategies apart, compare them together**: create accounts from the header picker, rename or archive them at will (an archived account stops trading but keeps its ledger, and can be restored), and keep a free-form notes page per account (auto-saved, out of reach of the model); the comparison tab overlays every account’s equity curve normalised to 100, ranked by return, with drawdown and fill counts.
 - **Practice without an API key**: the free tier quotes at the latest daily close; configure an FTShare key to switch to real-time quotes.
 - **The ledger stays local**: the event ledger is a file on this machine and is restored automatically after a DSH restart; the account is backed up before a reset.
 

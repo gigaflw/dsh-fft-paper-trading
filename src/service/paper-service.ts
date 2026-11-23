@@ -61,6 +61,8 @@ export interface PaperServiceOptions {
    * Checked inside the service because tools reach it without the RPC guard.
    */
   isLocked?: () => boolean
+  /** Archived accounts are frozen as well; asked before `isLocked`. */
+  isArchived?: () => boolean
 }
 
 /** Why the account is locked, flattened to one readable line. */
@@ -136,6 +138,9 @@ export class PaperService {
    * directly and never pass through the RPC guard.
    */
   private assertUnlocked(): void {
+    if (this.options.isArchived?.() === true) {
+      throw new PaperError('ACCOUNT_ARCHIVED', `账户「${this.accountId}」已归档，恢复归档后才能交易`)
+    }
     if (this.options.isLocked?.() === true) {
       throw new PaperError('ACCOUNT_LOCKED', `账户「${this.accountId}」已锁定，不能交易`)
     }

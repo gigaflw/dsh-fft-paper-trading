@@ -192,8 +192,8 @@
         onNotes: () => setTab('notes'),
       })
       const {
-        tickMs, stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
-        accountEditor, setAccountEditor, submitAccountEditor, runAccountAction,
+        tickMs, stockAccounts, archived, currentAccountId, setCurrentAccountId, currentAccount,
+        restoreArchived, accountEditor, setAccountEditor, submitAccountEditor, runAccountAction,
       } = registry
 
       const notes = useAccountNotes(request, currentAccountId, tab)
@@ -544,7 +544,9 @@
               accountSwitch,
               h(AccountPicker, {
                 accounts: stockAccounts,
+                archived,
                 current: currentAccount,
+                onRestoreArchived: restoreArchived,
                 busy,
                 onSelect: id => setCurrentAccountId(id),
                 onCreate: () => setAccountEditor('create'),

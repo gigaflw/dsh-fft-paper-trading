@@ -86,14 +86,14 @@ function countingData(now) {
   return { counter, port }
 }
 
-test('registry: seeds the two legacy accounts and persists a v3 file', async () => {
+test('registry: seeds the two legacy accounts and persists a v4 file', async () => {
   await withHome('seed', async home => {
     const registry = new AccountRegistry({ home })
     const view = await registry.view()
     assert.deepEqual(view.accounts.map(item => item.id).sort(), ['default', 'futures'])
     assert.deepEqual(view.accounts.map(item => item.name).sort(), ['期货账户', '默认账户'].sort())
     const file = JSON.parse(await readFile(join(home, 'paper-trading', 'accounts.json'), 'utf8'))
-    assert.equal(file.version, 3)
+    assert.equal(file.version, 4)
     assert.equal(file.accounts.length, 2)
     // No session information is persisted: the plugin has no session concept.
     assert.equal(file.bindings, undefined)
@@ -132,12 +132,12 @@ test('registry: create, rename, and duplicate names are allowed', async () => {
     await assert.rejects(() => registry.resolve('不存在的账户'), error => error.code === 'ACCOUNT_NOT_FOUND')
     // Length limits.
     await assert.rejects(() => registry.create({ name: 'x'.repeat(ACCOUNT_NAME_MAX + 1) }), /账户名不能超过/)
-    // The default accounts stay visible: hiding one strands the panel.
-    await assert.rejects(() => registry.hide('default'), /默认账户不能隐藏/)
+    // The default accounts stay visible: archiving one strands the panel.
+    await assert.rejects(() => registry.archive('default'), /默认账户不能归档/)
     // An explicit empty reference is a mistake, not "the default account".
     await assert.rejects(() => registry.resolve('  '), /账户名不能为空/)
     // The futures pseudo-account is fixed: renaming it would not change any
-    // panel, and hiding it is already refused.
+    // panel, and archiving it is already refused.
     await assert.rejects(() => registry.rename('futures', '第二期货'), /期货账户名称固定/)
   })
 })
@@ -173,26 +173,31 @@ test('notes: one text block per account, rewritten wholesale and capped', async 
   })
 })
 
-test('registry: hide and lock flags survive a reload', async () => {
+test('registry: archive implies frozen, preserves the lock flag, and survives a reload', async () => {
   await withHome('flags', async home => {
     const registry = new AccountRegistry({ home })
     const created = await registry.create({ name: '实验组' })
     await registry.lock(created.id)
-    const hidden = await registry.hide(created.id)
-    assert.equal(hidden.hidden, true)
+    const archived = await registry.archive(created.id)
+    assert.equal(archived.archived, true)
+    // Archiving does not rewrite the lock flag: the service treats archived as
+    // frozen on its own, so unarchiving restores exactly the previous state.
+    assert.equal(archived.locked, true)
     const reloaded = await new AccountRegistry({ home }).resolve(created.id)
     assert.equal(reloaded.locked, true)
-    assert.equal(reloaded.hidden, true)
-    // Hidden accounts are out of the picker view but still addressable.
+    assert.equal(reloaded.archived, true)
+    // Archived accounts are out of the picker view but still addressable.
     const visible = await registry.view()
     assert.equal(visible.accounts.some(item => item.id === created.id), false)
-    assert.equal((await registry.view({ includeHidden: true })).accounts.some(item => item.id === created.id), true)
+    assert.equal((await registry.view({ includeArchived: true })).accounts.some(item => item.id === created.id), true)
+    assert.equal(registry.archivedSync(created.id), true)
     assert.equal((await registry.resolve(created.id)).id, created.id)
-    await registry.unhide(created.id)
-    await registry.unlock(created.id)
+    await registry.unarchive(created.id)
+    assert.equal(registry.archivedSync(created.id), false)
     const restored = await registry.resolve(created.id)
-    assert.equal(restored.hidden, false)
-    assert.equal(restored.locked, false)
+    assert.equal(restored.archived, false)
+    // The pre-archive lock is still there, as the user left it.
+    assert.equal(restored.locked, true)
   })
 })
 
@@ -211,11 +216,11 @@ test('registry: v1/v2 files (archived, bindings, note) still load', async () => 
       bindings: { 'session-1': 'acc-old' },
     }))
     const registry = new AccountRegistry({ home })
-    const view = await registry.view({ includeHidden: true })
+    const view = await registry.view({ includeArchived: true })
     assert.equal(view.accounts.length, 3) // default + futures + acc-old
-    assert.equal(view.accounts.find(item => item.id === 'acc-old').hidden, true)
+    assert.equal(view.accounts.find(item => item.id === 'acc-old').archived, true)
     const file = JSON.parse(await readFile(join(home, 'paper-trading', 'accounts.json'), 'utf8'))
-    assert.equal(file.version, 3)
+    assert.equal(file.version, 4)
     assert.equal(file.bindings, undefined)
   })
 })
@@ -226,7 +231,7 @@ test('registry: discovers an unknown ledger directory instead of hiding it', asy
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, 'events.jsonl'), '')
     const registry = new AccountRegistry({ home })
-    const found = (await registry.view({ includeHidden: true })).accounts.find(item => item.id === 'legacy-hand-made')
+    const found = (await registry.view({ includeArchived: true })).accounts.find(item => item.id === 'legacy-hand-made')
     assert.ok(found, 'discovered account is registered')
     assert.equal(found.kind, 'stock')
   })
@@ -396,7 +401,7 @@ test('host: one route serves every account by id or name', async () => {
       const tooLong = await call('note/set', { text: 'x'.repeat(100_001) }, id)
       assert.equal(tooLong.ok, false)
       assert.match(tooLong.error.message, /不能超过/)
-      // Comparison lists stock accounts only, hidden ones excluded.
+      // Comparison lists stock accounts only, archived ones excluded.
       const compared = await call('compare/get')
       assert.equal(compared.ok, true)
       assert.deepEqual(compared.value.accounts.map(row => row.id).sort(), ['default', id].sort())
@@ -404,12 +409,12 @@ test('host: one route serves every account by id or name', async () => {
       assert.equal(valueRow.initialCash, 500_000)
       assert.ok(Array.isArray(valueRow.points))
       assert.equal(valueRow.locked, false)
-      // Hiding drops it from the picker but not from the ledger.
-      await call('accounts/hide', { id })
+      // Archiving drops it from the picker and freezes it, but not from the ledger.
+      await call('accounts/archive', { id })
       const visible = (await call('accounts/list')).value.accounts.some(item => item.id === id)
       assert.equal(visible, false)
       assert.equal((await call('account/get', {}, id)).value.accountId, id)
-      assert.equal((await call('accounts/list', { includeHidden: true })).value.accounts.some(item => item.id === id), true)
+      assert.equal((await call('accounts/list', { includeArchived: true })).value.accounts.some(item => item.id === id), true)
       assert.equal((await call('compare/get')).value.accounts.some(row => row.id === id), false)
       // Locking blocks state changes but keeps reads alive.
       await call('accounts/lock', { id })
@@ -470,17 +475,24 @@ test('tools: the paper_stock_* tools take an account argument instead of a bindi
       assert.equal(listed.data.accounts.length, 3)
       // Account notes are human-only: the tool has no such action.
       assert.equal('note' in (accountTool.parameters?.properties ?? {}), false)
-      const hidden = await accountTool.execute({ action: 'hide', name: '策略一' })
-      assert.equal(hidden.data.hidden, true)
+      const archived = await accountTool.execute({ action: 'archive', name: '策略一' })
+      assert.equal(archived.data.archived, true)
       assert.equal((await accountTool.execute({ action: 'list' })).data.accounts.length, 2)
-      assert.equal((await accountTool.execute({ action: 'list', includeHidden: true })).data.accounts.length, 3)
-      // Hiding/locking without a name used to hit the default account silently.
+      assert.equal((await accountTool.execute({ action: 'list', includeArchived: true })).data.accounts.length, 3)
+      // An archived account is frozen: the tool must refuse trading with the
+      // archive code before any lock is involved.
+      const orderTool = tools.find(tool => tool.name === 'paper_stock_order')
+      const archivedOrder = await orderTool.execute({ account: id, symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
+      assert.match(archivedOrder.summary, /ACCOUNT_ARCHIVED/)
+      // Restoring keeps the ledger addressable and clears the freeze.
+      const unarchived = await accountTool.execute({ action: 'unarchive', name: '策略一' })
+      assert.equal(unarchived.data.archived, false)
+      // Archiving/locking without a name used to hit the default account silently.
       const noName = await accountTool.execute({ action: 'lock' })
       assert.match(noName.summary, /需要 name/)
       // Locking must bind the tools too, not just the RPC route: an agent call
       // resolves the service directly and used to bypass the lock.
       await call('accounts/lock', { id })
-      const orderTool = tools.find(tool => tool.name === 'paper_stock_order')
       const lockedOrder = await orderTool.execute({ account: id, symbol: '600519.SH', side: 'buy', type: 'market', qty: 100 })
       assert.match(lockedOrder.summary, /ACCOUNT_LOCKED/)
       const lockedReset = await accountTool.execute({ action: 'unlock', name: '策略一' })

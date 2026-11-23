@@ -39,8 +39,11 @@ export interface AccountMeta {
   kind: AccountKind
   name: string
   createdAt: string
-  /** Hidden from the panel picker and the comparison page; still addressable by id. */
-  hidden: boolean
+  /**
+   * Archived: hidden from the picker and the comparison page, and frozen like a
+   * locked account. The ledger and registry entry stay; archiving is reversible.
+   */
+  archived: boolean
   /** Locked accounts refuse state changes (orders, reset, cash, ledger restore). */
   locked: boolean
   initialCashCents?: number

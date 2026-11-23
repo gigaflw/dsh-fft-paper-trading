@@ -154,6 +154,7 @@
      */
     function useAccountRegistry({ scope, request, tab, loadAll, loadReviewDetail, loadCompare, clearView, setBusy, setError, setNotice, onNotes }) {
       const [accounts, setAccounts] = useState(null)
+      const [archived, setArchived] = useState([])
       const [tickMs, setTickMs] = useState(5000)
       const [currentAccountId, setCurrentAccountId] = useState(null)
       const [accountEditor, setAccountEditor] = useState(null)
@@ -166,13 +167,17 @@
       /** The registry is metadata only: a failure leaves the panel on default. */
       const loadAccounts = useCallback(async () => {
         try {
-          const view = await request('accounts/list', { kind: 'stock' })
+          // The panel asks for archived entries too: it renders them in the
+          // "已归档" section and needs them out of the selectable list only.
+          const view = await request('accounts/list', { kind: 'stock', includeArchived: true })
           if (!alive.current) return
-          setAccounts(view.accounts)
+          const visible = view.accounts.filter(item => item.archived !== true)
+          setAccounts(visible)
+          setArchived(view.accounts.filter(item => item.archived === true))
           if (typeof view.tickMs === 'number' && view.tickMs > 0) setTickMs(view.tickMs)
           setCurrentAccountId(previous => {
-            if (previous !== null && view.accounts.some(item => item.id === previous)) return previous
-            const remembered = view.accounts.find(item => item.id === readCurrentAccount())
+            if (previous !== null && visible.some(item => item.id === previous)) return previous
+            const remembered = visible.find(item => item.id === readCurrentAccount())
             return remembered === undefined ? view.defaultIds.stock : remembered.id
           })
         } catch {
@@ -180,10 +185,7 @@
         }
       }, [])
 
-      const stockAccounts = useMemo(
-        () => (accounts ?? []).filter(item => item.kind === 'stock'),
-        [accounts],
-      )
+      const stockAccounts = useMemo(() => accounts ?? [], [accounts])
       const currentAccount = useMemo(
         () => stockAccounts.find(item => item.id === currentAccountId) ?? null,
         [stockAccounts, currentAccountId],
@@ -235,7 +237,7 @@
         }
       }, [accountEditor, currentAccountId, loadAccounts, setBusy, setError, setNotice])
 
-      /** Picker actions: editor modes open a form, hide/lock apply immediately. */
+      /** Picker actions: editor modes open a form, archive/lock apply immediately. */
       const runAccountAction = useCallback(async action => {
         if (currentAccount === null) return
         if (action === 'notes') {
@@ -248,9 +250,11 @@
         }
         setBusy(true)
         try {
-          if (action === 'hide') {
-            await request('accounts/hide', { id: currentAccount.id })
-            setNotice(`已隐藏「${currentAccount.name}」`)
+          if (action === 'archive') {
+            await request('accounts/archive', { id: currentAccount.id })
+            setNotice(`已归档「${currentAccount.name}」：数据保留，可随时恢复归档`)
+            // The reload drops it from the selectable list, so the selection
+            // effect moves the panel to another account on its own.
           } else {
             await rpc(currentAccount.locked ? 'accounts/unlock' : 'accounts/lock', { id: currentAccount.id })
             setNotice(currentAccount.locked ? '已解锁账户' : '已锁定账户')
@@ -263,9 +267,24 @@
         }
       }, [currentAccount, loadAccounts, onNotes, setBusy, setError, setNotice])
 
+      /** Bring one archived account back: unlock-free, selection follows it. */
+      const restoreArchived = useCallback(async id => {
+        setBusy(true)
+        try {
+          const meta = await request('accounts/unarchive', { id })
+          await loadAccounts()
+          setNotice(`已恢复归档「${meta.name}」`)
+          setCurrentAccountId(meta.id)
+        } catch (cause) {
+          setError(errorOf(cause))
+        } finally {
+          setBusy(false)
+        }
+      }, [loadAccounts, setBusy, setError, setNotice])
+
       return {
-        accounts, tickMs, stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
-        accountEditor, setAccountEditor, loadAccounts,
+        accounts, archived, tickMs, stockAccounts, currentAccountId, setCurrentAccountId, currentAccount,
+        accountEditor, setAccountEditor, loadAccounts, restoreArchived,
         submitAccountEditor, runAccountAction,
       }
     }

@@ -339,7 +339,10 @@ try {
   // 2c. 多账户：切换与对比
   const multi = await scenario('multi')
   assert('the account picker names the current account', /默认账户/.test(multi.label ?? ''), JSON.stringify(multi.label))
-  assert('the picker lists visible accounts only', Array.isArray(multi.menu) && multi.menu.some(text => text.includes('价值组')) && multi.showsHidden === false, JSON.stringify(multi.menu))
+  assert('the picker lists selectable accounts and a separate 已归档 section',
+    Array.isArray(multi.selectable) && multi.selectable.some(text => text.includes('价值组'))
+      && multi.showsArchived === true && multi.archivedSelectable === false,
+    JSON.stringify({ selectable: multi.selectable, archived: multi.archivedNames }))
   assert('switching accounts reloads that ledger', /价值组/.test(multi.switched ?? '') && (multi.switchedEquity ?? []).some(text => text.includes('1,124,000')), JSON.stringify(multi.switchedEquity))
   assert('the comparison tab renders a chart and a ranked table', multi.hasChart === true && (multi.rows ?? []).length >= 3 && /价值组/.test(multi.rows?.[0] ?? ''), JSON.stringify(multi.rows))
   assert('clicking a column header re-sorts the comparison', /默认账户/.test(multi.sortAsc ?? ''), JSON.stringify(multi.sortAsc))
@@ -351,8 +354,15 @@ try {
   const multiCreate = await scenario('multi-create')
   assert('creating an account from the picker works', /新账户/.test(multiCreate.created ?? ''), JSON.stringify(multiCreate))
   assert('the new account joins the picker', Array.isArray(multiCreate.menu) && multiCreate.menu.some(text => text.includes('新账户')), JSON.stringify(multiCreate.menu))
-  assert('the default account offers no hide action', multiCreate.hasHide === false, JSON.stringify(multiCreate.hasHide))
+  assert('the default account offers no archive action', multiCreate.hasArchive === false, JSON.stringify(multiCreate.hasArchive))
   await shot('multi-create.png')
+  const multiArchive = await scenario('multi-archive')
+  assert('archiving the selected account moves the panel elsewhere', /默认账户/.test(multiArchive.movedTo ?? ''), JSON.stringify(multiArchive.movedTo))
+  assert('an archived account leaves the selectable list', Array.isArray(multiArchive.selectable)
+    && !multiArchive.selectable.some(text => text.includes('新账户'))
+    && (multiArchive.archivedNames ?? []).some(text => text.includes('新账户')), JSON.stringify(multiArchive))
+  assert('restoring an archived account selects it again', /新账户/.test(multiArchive.restored ?? ''), JSON.stringify(multiArchive.restored))
+  await shot('multi-archive.png')
   const multiRestore = await scenario('multi-restore')
   assert('switching accounts swaps the note', multiRestore.noteAfterSwitch === '', JSON.stringify(multiRestore.noteAfterSwitch))
   assert('the panel returns to the default account for later scenarios', /默认账户/.test(multiRestore.restored ?? ''), JSON.stringify(multiRestore.restored))

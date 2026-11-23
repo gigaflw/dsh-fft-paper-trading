@@ -11,7 +11,7 @@
               "kind": "stock",
               "name": "默认账户",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false
             },
             {
@@ -19,7 +19,7 @@
               "kind": "futures",
               "name": "期货账户",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false
             }
           ],
@@ -40,7 +40,7 @@
           "kind": "stock",
           "name": "价值组",
           "createdAt": "<mtime>",
-          "hidden": false,
+          "archived": false,
           "locked": false,
           "initialCashCents": 50000000
         }
@@ -55,7 +55,7 @@
           "kind": "stock",
           "name": "动量组",
           "createdAt": "<mtime>",
-          "hidden": false,
+          "archived": false,
           "locked": false
         }
       }
@@ -156,7 +156,7 @@
           "kind": "stock",
           "name": "价值小组",
           "createdAt": "<mtime>",
-          "hidden": false,
+          "archived": false,
           "locked": false,
           "initialCashCents": 50000000
         }
@@ -173,7 +173,7 @@
       }
     },
     {
-      "step": "hide the third account",
+      "step": "archive the third account",
       "result": {
         "ok": true,
         "value": {
@@ -181,13 +181,13 @@
           "kind": "stock",
           "name": "动量组",
           "createdAt": "<mtime>",
-          "hidden": true,
+          "archived": true,
           "locked": false
         }
       }
     },
     {
-      "step": "hidden accounts leave the list",
+      "step": "archived accounts leave the list",
       "result": {
         "ok": true,
         "value": {
@@ -197,7 +197,7 @@
               "kind": "stock",
               "name": "默认账户",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false
             },
             {
@@ -205,7 +205,7 @@
               "kind": "futures",
               "name": "期货账户",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false
             },
             {
@@ -213,7 +213,7 @@
               "kind": "stock",
               "name": "价值小组",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false,
               "initialCashCents": 50000000
             }
@@ -227,7 +227,7 @@
       }
     },
     {
-      "step": "a hidden account still answers by id",
+      "step": "an archived account still answers by id",
       "result": {
         "ok": true,
         "value": {
@@ -258,6 +258,78 @@
       }
     },
     {
+      "step": "an archived account refuses orders",
+      "result": {
+        "ok": false,
+        "error": {
+          "code": "ACCOUNT_ARCHIVED",
+          "message": "账户「<id2>」已归档，恢复归档后才能交易"
+        }
+      }
+    },
+    {
+      "step": "restore the archived account",
+      "result": {
+        "ok": true,
+        "value": {
+          "id": "<id2>",
+          "kind": "stock",
+          "name": "动量组",
+          "createdAt": "<mtime>",
+          "archived": false,
+          "locked": false
+        }
+      }
+    },
+    {
+      "step": "a restored account is selectable again",
+      "result": {
+        "ok": true,
+        "value": {
+          "accounts": [
+            {
+              "id": "default",
+              "kind": "stock",
+              "name": "默认账户",
+              "createdAt": "<mtime>",
+              "archived": false,
+              "locked": false
+            },
+            {
+              "id": "futures",
+              "kind": "futures",
+              "name": "期货账户",
+              "createdAt": "<mtime>",
+              "archived": false,
+              "locked": false
+            },
+            {
+              "id": "<id1>",
+              "kind": "stock",
+              "name": "价值小组",
+              "createdAt": "<mtime>",
+              "archived": false,
+              "locked": false,
+              "initialCashCents": 50000000
+            },
+            {
+              "id": "<id2>",
+              "kind": "stock",
+              "name": "动量组",
+              "createdAt": "<mtime>",
+              "archived": false,
+              "locked": false
+            }
+          ],
+          "defaultIds": {
+            "stock": "default",
+            "futures": "futures"
+          },
+          "tickMs": 5000
+        }
+      }
+    },
+    {
       "step": "lock the traded account",
       "result": {
         "ok": true,
@@ -266,7 +338,7 @@
           "kind": "stock",
           "name": "价值小组",
           "createdAt": "<mtime>",
-          "hidden": false,
+          "archived": false,
           "locked": true,
           "initialCashCents": 50000000
         }
@@ -339,7 +411,7 @@
           "kind": "stock",
           "name": "价值小组",
           "createdAt": "<mtime>",
-          "hidden": false,
+          "archived": false,
           "locked": false,
           "initialCashCents": 50000000
         }
@@ -423,13 +495,32 @@
                   "cash": 497734.98
                 }
               ]
+            },
+            {
+              "id": "<id2>",
+              "name": "动量组",
+              "locked": false,
+              "initialCash": 1000000,
+              "equity": 1000000,
+              "pnl": 0,
+              "pnlPct": 0,
+              "todayPnl": 0,
+              "maxDrawdownPct": 0,
+              "tradeCount": 0,
+              "points": [
+                {
+                  "date": "2026-11-16",
+                  "equity": 1000000,
+                  "cash": 1000000
+                }
+              ]
             }
           ]
         }
       }
     },
     {
-      "step": "registry including hidden",
+      "step": "registry including archived",
       "result": {
         "ok": true,
         "value": {
@@ -439,7 +530,7 @@
               "kind": "stock",
               "name": "默认账户",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false
             },
             {
@@ -447,7 +538,7 @@
               "kind": "futures",
               "name": "期货账户",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false
             },
             {
@@ -455,7 +546,7 @@
               "kind": "stock",
               "name": "价值小组",
               "createdAt": "<mtime>",
-              "hidden": false,
+              "archived": false,
               "locked": false,
               "initialCashCents": 50000000
             },
@@ -464,7 +555,7 @@
               "kind": "stock",
               "name": "动量组",
               "createdAt": "<mtime>",
-              "hidden": true,
+              "archived": false,
               "locked": false
             }
           ],
@@ -479,12 +570,12 @@
   ],
   "store": {
     "tree": {
-      "<id2>": [
-        "events.jsonl"
-      ],
       "<id1>": [
         "events.jsonl",
         "note.md"
+      ],
+      "<id2>": [
+        "events.jsonl"
       ],
       "accounts.json": [
         "accounts.json"
@@ -494,39 +585,6 @@
       ]
     },
     "ledgers": {
-      "<id2>": [
-        {
-          "seq": 1,
-          "type": "account.opened",
-          "payload": {
-            "accountId": "<id2>",
-            "settings": {
-              "initialCashCents": 100000000,
-              "commissionRate": 0.00025,
-              "minCommissionCents": 500,
-              "stampDutyRate": 0.0005,
-              "transferFeeRate": 0.00001,
-              "enableT1": true,
-              "maxOrderNotionalCents": 0
-            },
-            "initialCashCents": 100000000,
-            "tradeDate": "2026-11-16",
-            "ledgerVersion": 4
-          }
-        },
-        {
-          "seq": 2,
-          "type": "day.opened",
-          "payload": {
-            "date": "2026-11-16",
-            "openPrices": {},
-            "prevClose": {},
-            "gaps": {},
-            "t1Unlocked": true,
-            "recordedAt": "<ts>"
-          }
-        }
-      ],
       "<id1>": [
         {
           "seq": 1,
@@ -617,8 +675,41 @@
           }
         }
       ],
+      "<id2>": [
+        {
+          "seq": 1,
+          "type": "account.opened",
+          "payload": {
+            "accountId": "<id2>",
+            "settings": {
+              "initialCashCents": 100000000,
+              "commissionRate": 0.00025,
+              "minCommissionCents": 500,
+              "stampDutyRate": 0.0005,
+              "transferFeeRate": 0.00001,
+              "enableT1": true,
+              "maxOrderNotionalCents": 0
+            },
+            "initialCashCents": 100000000,
+            "tradeDate": "2026-11-16",
+            "ledgerVersion": 4
+          }
+        },
+        {
+          "seq": 2,
+          "type": "day.opened",
+          "payload": {
+            "date": "2026-11-16",
+            "openPrices": {},
+            "prevClose": {},
+            "gaps": {},
+            "t1Unlocked": true,
+            "recordedAt": "<ts>"
+          }
+        }
+      ],
       "accounts.json": {
-        "version": 3,
+        "version": 4,
         "updatedAt": "<mtime>",
         "tickMs": 5000,
         "accounts": [
@@ -627,7 +718,7 @@
             "kind": "stock",
             "name": "默认账户",
             "createdAt": "<mtime>",
-            "hidden": false,
+            "archived": false,
             "locked": false
           },
           {
@@ -635,7 +726,7 @@
             "kind": "futures",
             "name": "期货账户",
             "createdAt": "<mtime>",
-            "hidden": false,
+            "archived": false,
             "locked": false
           },
           {
@@ -643,7 +734,7 @@
             "kind": "stock",
             "name": "价值小组",
             "createdAt": "<mtime>",
-            "hidden": false,
+            "archived": false,
             "locked": false,
             "initialCashCents": 50000000
           },
@@ -652,7 +743,7 @@
             "kind": "stock",
             "name": "动量组",
             "createdAt": "<mtime>",
-            "hidden": true,
+            "archived": false,
             "locked": false
           }
         ]

@@ -25,7 +25,7 @@ import { paperRoot } from './paths.js'
 import { writeFileAtomic } from './atomic-file.js'
 
 const REGISTRY_FILE = 'accounts.json'
-const REGISTRY_VERSION = 3
+const REGISTRY_VERSION = 4
 /** Keeps one host's tick loop and the panel's account picker bounded. */
 export const MAX_ACCOUNTS_PER_KIND = 20
 export const ACCOUNT_NAME_MAX = 16
@@ -116,7 +116,7 @@ export class AccountRegistry {
       [FUTURES_ACCOUNT_ID, '期货账户', 'futures'],
     ] as const) {
       if (!accounts.some(item => item.id === id)) {
-        accounts.push({ id, kind, name, createdAt: this.now().toISOString(), hidden: false, locked: false })
+        accounts.push({ id, kind, name, createdAt: this.now().toISOString(), archived: false, locked: false })
       }
     }
     return {
@@ -155,7 +155,7 @@ export class AccountRegistry {
         continue
       }
       const kind: AccountKind = entry === FUTURES_ACCOUNT_ID ? 'futures' : 'stock'
-      state.accounts.push({ id: entry, kind, name: entry, createdAt: this.now().toISOString(), hidden: false, locked: false })
+      state.accounts.push({ id: entry, kind, name: entry, createdAt: this.now().toISOString(), archived: false, locked: false })
       changed = true
     }
     for (const meta of state.accounts) {
@@ -193,12 +193,13 @@ export class AccountRegistry {
   }
 
   /**
-   * `includeHidden` keeps the picker clean but lets tooling see everything;
-   * `kind` lets the stock panel ask for its plane without filtering client-side.
+   * `includeArchived` keeps the picker clean but lets tooling (and the panel's
+   * "已归档" section) see everything; `kind` lets the stock panel ask for its
+   * plane without filtering client-side.
    */
-  async view(options: { includeHidden?: boolean; kind?: AccountKind } = {}): Promise<AccountsView> {
+  async view(options: { includeArchived?: boolean; kind?: AccountKind } = {}): Promise<AccountsView> {
     const state = await this.ready()
-    let accounts = options.includeHidden === true ? state.accounts : state.accounts.filter(item => item.hidden !== true)
+    let accounts = options.includeArchived === true ? state.accounts : state.accounts.filter(item => item.archived !== true)
     if (options.kind !== undefined) accounts = accounts.filter(item => item.kind === options.kind)
     return {
       accounts: accounts.map(meta => ({ ...meta })),
@@ -210,6 +211,11 @@ export class AccountRegistry {
   /** Post-load lock flag; the service guard must not go stale on a copy. */
   lockedSync(id: string): boolean {
     return this.state?.accounts.some(item => item.id === id && item.locked === true) ?? false
+  }
+
+  /** Archived accounts are frozen like locked ones; the service asks this first. */
+  archivedSync(id: string): boolean {
+    return this.state?.accounts.some(item => item.id === id && item.archived === true) ?? false
   }
 
   async tickMs(): Promise<number> {
@@ -258,7 +264,7 @@ export class AccountRegistry {
         kind,
         name,
         createdAt: this.now().toISOString(),
-        hidden: false,
+        archived: false,
         locked: false,
         ...(input.initialCashCents !== undefined ? { initialCashCents: Math.round(input.initialCashCents) } : {}),
       }
@@ -294,13 +300,13 @@ export class AccountRegistry {
     return { ...((await this.resolve(target.id)) as AccountMeta) }
   }
 
-  /** Flip a boolean flag on one account; used by hide/lock and their inverses. */
-  private async setFlag(reference: string, patch: Partial<Pick<AccountMeta, 'hidden' | 'locked'>>): Promise<AccountMeta> {
+  /** Flip a boolean flag on one account; used by archive/lock and their inverses. */
+  private async setFlag(reference: string, patch: Partial<Pick<AccountMeta, 'archived' | 'locked'>>): Promise<AccountMeta> {
     const target = await this.resolve(reference)
-    if (patch.hidden === true && (target.id === DEFAULT_ACCOUNT_ID || target.id === FUTURES_ACCOUNT_ID)) {
-      // Hiding the default would leave the panel without a picker and no way
-      // back from the UI; the default account stays visible.
-      throw new PaperError('INVALID_ARGUMENT', `默认账户不能隐藏（${target.name}）`)
+    if (patch.archived === true && (target.id === DEFAULT_ACCOUNT_ID || target.id === FUTURES_ACCOUNT_ID)) {
+      // Archiving the default would leave the panel without a picker entry that
+      // can never be selected back; the default account stays available.
+      throw new PaperError('INVALID_ARGUMENT', `默认账户不能归档（${target.name}）`)
     }
     await this.mutate(state => {
       const meta = state.accounts.find(item => item.id === target.id) as AccountMeta
@@ -309,12 +315,12 @@ export class AccountRegistry {
     return { ...((await this.resolve(target.id)) as AccountMeta) }
   }
 
-  hide(reference: string): Promise<AccountMeta> {
-    return this.setFlag(reference, { hidden: true })
+  archive(reference: string): Promise<AccountMeta> {
+    return this.setFlag(reference, { archived: true })
   }
 
-  unhide(reference: string): Promise<AccountMeta> {
-    return this.setFlag(reference, { hidden: false })
+  unarchive(reference: string): Promise<AccountMeta> {
+    return this.setFlag(reference, { archived: false })
   }
 
   lock(reference: string): Promise<AccountMeta> {
@@ -335,10 +341,10 @@ function validateName(value: unknown): string {
   return name
 }
 
-/** v1 wrote `archived` + bindings, v2 added the note; v3 dropped the note. Old fields are ignored. */
+/** v1 wrote `archived` + bindings, v2 added the note, v3 dropped it, v4 renames `hidden` back to `archived`. */
 function normaliseMeta(raw: unknown): AccountMeta | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
-  const input = raw as Partial<AccountMeta> & { archived?: unknown }
+  const input = raw as Partial<AccountMeta> & { archived?: unknown; hidden?: unknown }
   if (typeof input.id !== 'string' || input.id === '') return undefined
   const kind: AccountKind = input.kind === 'futures' ? 'futures' : 'stock'
   const name = typeof input.name === 'string' && input.name.trim() !== '' ? input.name.trim().slice(0, ACCOUNT_NAME_MAX) : input.id
@@ -347,7 +353,8 @@ function normaliseMeta(raw: unknown): AccountMeta | undefined {
     kind,
     name,
     createdAt: typeof input.createdAt === 'string' ? input.createdAt : new Date(0).toISOString(),
-    hidden: input.hidden === true || input.archived === true,
+    // v3 wrote `hidden`, v1 wrote `archived`; both mean archived now.
+    archived: input.archived === true || input.hidden === true,
     locked: input.locked === true,
     ...(typeof input.initialCashCents === 'number' && Number.isFinite(input.initialCashCents) && input.initialCashCents > 0
       ? { initialCashCents: Math.round(input.initialCashCents) }

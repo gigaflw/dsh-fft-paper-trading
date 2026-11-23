@@ -2,7 +2,7 @@
  * The `paper_account` tool: account list and administration.
  *
  * Trading tools take an `account` argument; this tool is how a caller discovers
- * the names/ids and how the operator renames, hides or freezes an account from
+ * the names/ids and how the operator renames, archives or freezes an account from
  * the chat. Account notes are human-only and therefore have no tool. It knows nothing about sessions: there is no "bind",
  * no "current account" and no per-session state.
  * @module @dsh-ft/dsh-fft-paper-trading/agent/account-tools
@@ -31,12 +31,12 @@ const outputSchema = {
 const param = {
   action: {
     type: 'string',
-    description: '动作：list 列出账户 / create 新建 / rename 改名 / hide 隐藏 / unhide 取消隐藏 / lock 锁定 / unlock 解锁',
+    description: '动作：list 列出账户 / create 新建 / rename 改名 / archive 归档 / unarchive 恢复归档 / lock 锁定 / unlock 解锁',
   },
   name: { type: 'string', description: '账户名或 id；重名时用 id' },
   newName: { type: 'string', description: 'rename 时的新账户名（允许重名）' },
   initialCash: { type: 'number', description: 'create 时的初始资金（元），不填沿用默认 100 万' },
-  includeHidden: { type: 'boolean', description: 'list 时是否包含已隐藏账户，默认 false' },
+  includeArchived: { type: 'boolean', description: 'list 时是否包含已归档账户，默认 false' },
 } as const satisfies ParameterSchemaSpec
 
 const parameters = {
@@ -44,7 +44,7 @@ const parameters = {
   name: param.name,
   newName: param.newName,
   initialCash: param.initialCash,
-  includeHidden: param.includeHidden,
+  includeArchived: param.includeArchived,
 } as const satisfies ParameterSchemaSpec
 
 type ToolResult = { summary: string; data: any }
@@ -52,7 +52,7 @@ type ToolResult = { summary: string; data: any }
 
 function stateOf(meta: AccountMeta): string {
   if (meta.missing === true) return '账本目录缺失'
-  if (meta.hidden === true) return '已隐藏'
+  if (meta.archived === true) return '已归档'
   if (meta.locked === true) return '已锁定'
   return '正常'
 }
@@ -76,7 +76,7 @@ export function registerAccountTools(tools: ToolsLike, deps: { registry: Account
     },
     name: 'paper_account',
     parameters,
-    description: '模拟盘账户管理：列出、新建、改名、隐藏、锁定账户。交易工具用 account 参数指定账户；不传就是默认账户，插件没有「当前账户」概念。备注/笔记只能由人在面板里写。',
+    description: '模拟盘账户管理：列出、新建、改名、归档、锁定账户。交易工具用 account 参数指定账户；不传就是默认账户，插件没有「当前账户」概念。备注/笔记只能由人在面板里写。',
     async execute(args: unknown): Promise<ToolResult> {
       const input = (args ?? {}) as Record<string, unknown>
       const action = typeof input.action === 'string' ? input.action : ''
@@ -85,12 +85,12 @@ export function registerAccountTools(tools: ToolsLike, deps: { registry: Account
       try {
         if (action !== 'list' && action !== 'create' && name === '') {
           // An omitted name used to fall back to the default account, so a
-          // model could hide or lock it by accident.
+          // model could archive or lock it by accident.
           throw new PaperError('INVALID_ARGUMENT', `${action || '该动作'} 需要 name（账户名或 id）`)
         }
         switch (action) {
           case 'list': {
-            const view = await deps.registry.view({ includeHidden: input.includeHidden === true })
+            const view = await deps.registry.view({ includeArchived: input.includeArchived === true })
             return { summary: renderList(view.accounts, view.defaultIds), data: view }
           }
           case 'create': {
@@ -109,13 +109,13 @@ export function registerAccountTools(tools: ToolsLike, deps: { registry: Account
             const meta = await deps.registry.rename(name, next)
             return { summary: `账户已改名为「${meta.name}」（${meta.id}）；用旧名字的交易调用会找不到它。`, data: meta }
           }
-          case 'hide': {
-            const meta = await deps.registry.hide(name)
-            return { summary: `已隐藏账户「${meta.name}」；面板下拉与对比页不再显示，按 id 仍可交易。`, data: meta }
+          case 'archive': {
+            const meta = await deps.registry.archive(name)
+            return { summary: `已归档账户「${meta.name}」：面板下拉与对比页不再显示，交易/出入金/重置被拒；按 id 仍可查询与导出，unarchive 可恢复。`, data: meta }
           }
-          case 'unhide': {
-            const meta = await deps.registry.unhide(name)
-            return { summary: `已取消隐藏「${meta.name}」。`, data: meta }
+          case 'unarchive': {
+            const meta = await deps.registry.unarchive(name)
+            return { summary: `已恢复归档「${meta.name}」。`, data: meta }
           }
           case 'lock': {
             const meta = await deps.registry.lock(name)
@@ -126,7 +126,7 @@ export function registerAccountTools(tools: ToolsLike, deps: { registry: Account
             return { summary: `已解锁账户「${meta.name}」。`, data: meta }
           }
           default:
-            throw new PaperError('INVALID_ARGUMENT', `未知动作 ${action || '(空)'}；可用 list/create/rename/hide/unhide/lock/unlock`)
+            throw new PaperError('INVALID_ARGUMENT', `未知动作 ${action || '(空)'}；可用 list/create/rename/archive/unarchive/lock/unlock`)
         }
       } catch (error) {
         return fail(error)

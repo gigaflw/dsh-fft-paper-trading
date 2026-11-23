@@ -766,7 +766,7 @@
     },
     "ledgers": {
       "accounts.json": {
-        "version": 3,
+        "version": 4,
         "updatedAt": "<mtime>",
         "tickMs": 5000,
         "accounts": [
@@ -775,7 +775,7 @@
             "kind": "stock",
             "name": "默认账户",
             "createdAt": "<mtime>",
-            "hidden": false,
+            "archived": false,
             "locked": false
           },
           {
@@ -783,7 +783,7 @@
             "kind": "futures",
             "name": "期货账户",
             "createdAt": "<mtime>",
-            "hidden": false,
+            "archived": false,
             "locked": false
           }
         ]
