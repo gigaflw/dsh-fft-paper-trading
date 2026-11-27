@@ -4,6 +4,21 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.9.0] - 2026-11-27
+
+模拟交易面板换上 FtShare 品牌入口：数据源状态移到页头与入口同排，未配置 Key 时入口直接引导申请。
+
+### Added
+
+- 模拟交易页（股票与期货）右上角新增 FtShare 品牌入口：静止为中性描边胶囊，悬停或键盘聚焦时亮起渐变并切换口号，`prefers-reduced-motion` 下退化为淡入；两种文案共用同一网格单元，入口不会改变尺寸。
+- 数据源状态与入口联动：未配置 Key 或 Key 失效时入口显示「申请 FtShare Key」，可用时显示「即刻体验 FtShare」。
+
+### Changed
+
+- 数据源状态徽章移到页头、与品牌入口同排，下方操作行只留动作；免费档命名统一为「免费档」，免费档提示改为指路「申请后 → 设置 → 金融终端」。
+- 界面文案、README、市场条目与 npm 描述的品牌写法统一为 FtShare；运行时标识符（环境变量、`ctx` 字段、包名、URL）保持不变。
+- 期货日历回落文案同步改为 FtShare，golden 快照随之更新。
+
 ## [0.8.1] - 2026-11-23
 
 共享底座下限提升：FTShare 出站开始携带 dsh 渠道归因参数，网关访问日志可按渠道统计插件的取数流量。
@@ -353,3 +368,4 @@ README 的 API Key 申请入口改为 FTShare 落地页，并补齐 UTM 归因�
 [0.3.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/gigaflw/dsh-fft-paper-trading/releases/tag/v0.1.0
+[0.9.0]: https://github.com/gigaflw/dsh-fft-paper-trading/compare/v0.8.1...v0.9.0
