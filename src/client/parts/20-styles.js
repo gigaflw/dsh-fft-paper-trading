@@ -27,6 +27,51 @@
         padding-bottom:8px; border-bottom:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.12)); }
       .pt-title { font-size:16px; font-weight:500; letter-spacing:-.01em; margin:0; }
       .pt-sub { color:var(--dsw-alias-label-secondary, #49525f); font-size:12px; margin-top:2px; }
+      /* The header's right column stacks the brand entry above the account
+         controls. The entry is the only outbound marketing link in the panel,
+         so it stays a quiet outline until hovered: its blue-violet gradient and
+         the slogan appear only under the pointer (or keyboard focus). */
+      .pt-head-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+      .pt-brand-pill { position:relative; display:inline-flex; align-items:center; gap:7px; flex:0 0 auto;
+        max-width:100%; padding:4px 12px 4px 9px; border-radius:999px; overflow:hidden;
+        border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.18));
+        background:transparent; color:var(--dsw-alias-label-secondary, #49525f);
+        font-size:12px; font-weight:500; line-height:normal; text-decoration:none;
+        transition:color .24s ease, border-color .24s ease, box-shadow .24s ease; }
+      .pt-brand-pill::before { content:""; position:absolute; inset:0; z-index:0; opacity:0;
+        background:linear-gradient(120deg, #3b6bff 0%, #6a5cff 50%, #9a5cff 100%);
+        transition:opacity .24s ease; }
+      .pt-brand-pill:hover, .pt-brand-pill:focus-visible { color:#ffffff; border-color:transparent;
+        box-shadow:0 2px 14px -4px rgba(88,92,255,.55); outline:none; }
+      .pt-brand-pill:hover::before, .pt-brand-pill:focus-visible::before { opacity:1; }
+      .pt-brand-mark { width:16px; height:16px; flex:0 0 auto; position:relative; z-index:1;
+        opacity:.78; transition:filter .24s ease, opacity .24s ease; }
+      .pt-brand-pill:hover .pt-brand-mark, .pt-brand-pill:focus-visible .pt-brand-mark {
+        filter:brightness(0) invert(1); opacity:.95; }
+      /* One grid cell for both labels keeps the pill from resizing as the copy
+         flips; the taller line is 18px, which also clips the sliding label. */
+      .pt-brand-swap { display:inline-grid; position:relative; z-index:1; overflow:hidden;
+        height:18px; align-items:center; }
+      .pt-brand-swap > span { grid-area:1/1; white-space:nowrap;
+        transition:transform .34s cubic-bezier(.22,.61,.36,1), opacity .18s ease; }
+      .pt-brand-idle { transform:translateY(0); }
+      .pt-brand-hover { transform:translateY(100%); }
+      .pt-brand-pill:hover .pt-brand-idle, .pt-brand-pill:focus-visible .pt-brand-idle {
+        transform:translateY(-100%); opacity:0; }
+      .pt-brand-pill:hover .pt-brand-hover, .pt-brand-pill:focus-visible .pt-brand-hover {
+        transform:translateY(0); }
+      .pt-brand-arrow { width:11px; height:11px; flex:0 0 auto; position:relative; z-index:1;
+        transition:transform .24s ease; }
+      .pt-brand-pill:hover .pt-brand-arrow, .pt-brand-pill:focus-visible .pt-brand-arrow {
+        transform:translate(1px, -1px); }
+      @media (prefers-reduced-motion: reduce) {
+        .pt-brand-swap > span { transform:none !important; transition:opacity .01ms linear; }
+        .pt-brand-idle { opacity:1; }
+        .pt-brand-hover { opacity:0; }
+        .pt-brand-pill:hover .pt-brand-idle, .pt-brand-pill:focus-visible .pt-brand-idle { opacity:0; }
+        .pt-brand-pill:hover .pt-brand-hover, .pt-brand-pill:focus-visible .pt-brand-hover { opacity:1; }
+        .pt-brand-arrow, .pt-brand-mark, .pt-brand-pill, .pt-brand-pill::before { transition-duration:.01ms; }
+      }
       /* The badge has no padding of its own and inherits the 1.5 line-height,
          while a button keeps the UA's smaller normal line-height; bottom
          alignment would lift the badge text away from the button labels. Sit on

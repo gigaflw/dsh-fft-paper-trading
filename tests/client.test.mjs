@@ -347,6 +347,25 @@ test('browser bundle: header badge carries the four data-source states', () => {
 })
 
 
+test('browser bundle: the header carries the FTShare brand entry', () => {
+  assert.ok(source.includes("const BRAND_LANDING_URL = 'https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh'"))
+  assert.ok(source.includes("const BRAND_IDLE_COPY = '即刻体验 FtShare'"))
+  assert.ok(source.includes("const BRAND_HOVER_COPY = '有智能的金融数据'"))
+  assert.match(source, /function BrandMark\(\)/)
+  assert.match(source, /function BrandPill\(\)/)
+  // The accessible name stays the CTA copy even while the hover label flips.
+  assert.match(source, /'aria-label': BRAND_IDLE_COPY/)
+  // Idle is a quiet outline: the gradient only shows under hover / focus.
+  assert.match(source, /\.pt-brand-pill::before \{[^}]*opacity:0/)
+  assert.match(source, /\.pt-brand-pill:hover::before, \.pt-brand-pill:focus-visible::before \{ opacity:1; \}/)
+  // Both labels share one grid cell, so the pill never resizes between them.
+  assert.match(source, /\.pt-brand-swap \{ display:inline-grid/)
+  assert.match(source, /\.pt-brand-hover \{ transform:translateY\(100%\)/)
+  // Both dashboards mount the entry above the account controls.
+  assert.equal(source.match(/h\(BrandPill\)/g).length, 2)
+  assert.equal(source.match(/className: 'pt-head-right'/g).length, 2)
+})
+
 test('browser bundle: a degraded trading calendar is visible in the header', () => {
   assert.match(source, /const calendarNote = calendar =>/)
   assert.match(source, /交易日历降级（按工作日估算）/)
@@ -360,9 +379,10 @@ test('browser bundle: a data problem becomes an actionable, dismissible banner',
   assert.match(source, /DATA_BANNER_DISMISS_KEY/)
   assert.match(source, /paper-trading:data-banner-dismissed/)
   // The banner names the settings section instead of linking out: the settings
-  // card already carries the signup link, and a second URL drifts from it.
+  // card already carries the signup link, and a second URL drifts from it. The
+  // only outbound landing URL in the browser bundle is the header brand entry.
   assert.match(source, /const KEY_SETTINGS = '设置 → 金融终端'/)
-  assert.ok(!source.includes('ftai.chat'), 'the banner must not carry its own signup URL')
+  assert.equal(source.split('ftai.chat').length - 1, 1, 'the banner must not carry its own signup URL')
   assert.ok(!source.includes('获取 API Key'), 'no external-link action in the banner')
   for (const copy of ['免费额度已用尽', '当前套餐未开通实时行情', '行情服务暂时不可用', '行情数据服务未安装']) {
     assert.ok(source.includes(copy), `missing banner copy: ${copy}`)

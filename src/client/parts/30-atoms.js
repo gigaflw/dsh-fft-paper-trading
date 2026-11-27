@@ -7,6 +7,64 @@
     }
 
     /**
+     * FTShare brand entry in the header's top-right corner.
+     *
+     * One link carries three surfaces: the mark, a label that flips from the
+     * CTA copy to the brand slogan on hover, and the arrow. The idle state is a
+     * plain outline on purpose — this is a marketing entry, not a trading
+     * control, so it must not read as a filled accent until the pointer is on
+     * it. `aria-label` pins the accessible name to the CTA copy: the visible
+     * label changes, and a screen reader must not announce the slogan instead.
+     */
+    const BRAND_LANDING_URL = 'https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh'
+    const BRAND_IDLE_COPY = '即刻体验 FtShare'
+    const BRAND_HOVER_COPY = '有智能的金融数据'
+
+    /** FTShare mark; the mask keeps the glyphs inside the rounded tile. */
+    function BrandMark() {
+      return h('svg', {
+        className: 'pt-brand-mark', viewBox: '0 0 24.0702 24', 'aria-hidden': 'true', focusable: 'false',
+      },
+        h('defs', null,
+          h('mask', { id: 'pt-brand-mark-tile', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: 25, height: 24 },
+            h('path', {
+              d: 'M19.1579 0H4.91228C2.1993 0 0 2.19289 0 4.89796V19.102C0 21.8071 2.1993 24 4.91228 24H19.1579C21.8709 24 24.0702 21.8071 24.0702 19.102V4.89796C24.0702 2.19289 21.8709 0 19.1579 0Z',
+              fill: '#fff',
+            }))),
+        h('g', { mask: 'url(#pt-brand-mark-tile)' },
+          h('path', {
+            d: 'M23.5789 0H0.491228C0.21993 0 0 0.219289 0 0.489796V4.40816C0 4.67868 0.21993 4.89796 0.491228 4.89796H23.5789C23.8503 4.89796 24.0702 4.67868 24.0702 4.40816V0.489796C24.0702 0.219289 23.8503 0 23.5789 0Z',
+            fill: '#0000FF',
+          }),
+          h('path', {
+            d: 'M24.0702 9.3338C24.0702 8.88801 23.5215 8.67399 23.2182 9.00147L15.5094 17.3232C15.417 17.423 15.2871 17.48 15.1509 17.4806L10.3653 17.5029C10.2291 17.5035 10.0992 17.5606 10.0068 17.6604L4.89504 23.1779C4.6044 23.4916 4.82754 24 5.25587 24H23.579C23.8503 24 24.0702 23.7807 24.0702 23.5102V9.3338Z',
+            fill: '#95B6F5',
+          }),
+          h('path', {
+            d: 'M18.8157 8.08163C19.2438 8.08163 19.4671 8.58965 19.1769 8.90346L14.4398 14.0256C14.3468 14.1261 14.2158 14.1833 14.0786 14.1833H9.29548C9.15831 14.1833 9.02737 14.2405 8.93438 14.3411L0.852325 23.0785C0.54909 23.4064 0 23.1925 0 22.7465V8.57143C0 8.30092 0.21993 8.08163 0.491228 8.08163H18.8157Z',
+            fill: '#0000FF',
+          })),
+      )
+    }
+
+    /** Header brand entry: mark + label that flips to the slogan on hover. */
+    function BrandPill() {
+      return h('a', {
+        className: 'pt-brand-pill', href: BRAND_LANDING_URL, target: '_blank',
+        rel: 'noopener noreferrer', 'aria-label': BRAND_IDLE_COPY,
+      },
+        h(BrandMark),
+        h('span', { className: 'pt-brand-swap', 'aria-hidden': 'true' },
+          h('span', { className: 'pt-brand-idle' }, BRAND_IDLE_COPY),
+          h('span', { className: 'pt-brand-hover' }, BRAND_HOVER_COPY)),
+        h('svg', {
+          className: 'pt-brand-arrow', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+          strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
+        }, h('path', { d: 'M7 17 17 7M7 7h10v10' })),
+      )
+    }
+
+    /**
      * Header badge for the data source. `null` until the host has answered, so
      * the header never flashes a guess; a status `message` (failed validation,
      * unreadable settings) is appended to the tooltip only.

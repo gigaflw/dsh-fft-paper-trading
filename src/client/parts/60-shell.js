@@ -540,38 +540,41 @@
                 session !== null && session !== undefined ? calendarNote(session.calendar) : null,
               ),
             ),
-            h('div', { className: 'pt-row' },
-              accountSwitch,
-              h(AccountPicker, {
-                accounts: stockAccounts,
-                archived,
-                current: currentAccount,
-                onRestoreArchived: restoreArchived,
-                busy,
-                onSelect: id => setCurrentAccountId(id),
-                onCreate: () => setAccountEditor('create'),
-                onAction: runAccountAction,
-              }),
-              h(DataSourceBadge, { status: dataSource }),
-              h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
-              h('button', {
-                className: 'pt-btn', 'data-active': cashOpen, disabled: busy,
-                onClick: () => {
-                  setError(null)
-                  setCashOpen(value => !value)
-                  setResetOpen(false)
-                },
-              }, '资金'),
-              h('button', {
-                className: 'pt-btn pt-btn-danger', 'data-active': resetOpen, disabled: busy,
-                onClick: () => {
-                  setError(null)
-                  setResetOpen(value => !value)
-                  setResetCash(String(account.initialCash))
-                  setCashOpen(false)
-                },
-              }, '重置'),
-              h(FeedbackLink),
+            h('div', { className: 'pt-head-right' },
+              h(BrandPill),
+              h('div', { className: 'pt-row' },
+                accountSwitch,
+                h(AccountPicker, {
+                  accounts: stockAccounts,
+                  archived,
+                  current: currentAccount,
+                  onRestoreArchived: restoreArchived,
+                  busy,
+                  onSelect: id => setCurrentAccountId(id),
+                  onCreate: () => setAccountEditor('create'),
+                  onAction: runAccountAction,
+                }),
+                h(DataSourceBadge, { status: dataSource }),
+                h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
+                h('button', {
+                  className: 'pt-btn', 'data-active': cashOpen, disabled: busy,
+                  onClick: () => {
+                    setError(null)
+                    setCashOpen(value => !value)
+                    setResetOpen(false)
+                  },
+                }, '资金'),
+                h('button', {
+                  className: 'pt-btn pt-btn-danger', 'data-active': resetOpen, disabled: busy,
+                  onClick: () => {
+                    setError(null)
+                    setResetOpen(value => !value)
+                    setResetCash(String(account.initialCash))
+                    setCashOpen(false)
+                  },
+                }, '重置'),
+                h(FeedbackLink),
+              ),
             ),
           ),
           h(DataBanner, { status: dataSource, onRetry: refreshAll }),

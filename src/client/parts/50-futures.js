@@ -486,19 +486,22 @@
               status !== null && status !== undefined ? calendarNote(status.calendar) : null,
             ),
           ),
-          h('div', { className: 'pt-row' },
-            accountSwitch,
-            h(DataSourceBadge, { status: dataSource }),
-            h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
-            h('button', {
-              className: 'pt-btn', 'data-active': cashOpen, disabled: busy,
-              onClick: () => {
-                setError(null)
-                setCashOpen(value => !value)
-              },
-            }, '资金'),
-            h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
-            h(FeedbackLink),
+          h('div', { className: 'pt-head-right' },
+            h(BrandPill),
+            h('div', { className: 'pt-row' },
+              accountSwitch,
+              h(DataSourceBadge, { status: dataSource }),
+              h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
+              h('button', {
+                className: 'pt-btn', 'data-active': cashOpen, disabled: busy,
+                onClick: () => {
+                  setError(null)
+                  setCashOpen(value => !value)
+                },
+              }, '资金'),
+              h('button', { className: 'pt-btn pt-btn-danger', onClick: reset, disabled: busy }, '重置'),
+              h(FeedbackLink),
+            ),
           ),
         ),
         h(DataBanner, { status: dataSource, onRetry: refreshAll }),
