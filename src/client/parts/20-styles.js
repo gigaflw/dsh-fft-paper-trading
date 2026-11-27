@@ -32,6 +32,9 @@
          so it stays a quiet outline until hovered: its blue-violet gradient and
          the slogan appear only under the pointer (or keyboard focus). */
       .pt-head-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+      /* The data-source state is page context, not an action: it shares the
+         top line with the brand entry, so the row below stays pure controls. */
+      .pt-topline { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
       .pt-brand-pill { position:relative; display:inline-flex; align-items:center; gap:7px; flex:0 0 auto;
         max-width:100%; padding:4px 12px 4px 9px; border-radius:999px; overflow:hidden;
         border:0.5px solid var(--dsw-alias-border-l2, rgba(45,49,66,.18));

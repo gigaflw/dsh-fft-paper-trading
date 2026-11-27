@@ -43,7 +43,7 @@
           "nextBoundary": "<ts>",
           "calendar": {
             "source": "fallback",
-            "reason": "未安装 FTShare 数据服务，按工作日估算"
+            "reason": "未安装 FtShare 数据服务，按工作日估算"
           }
         }
       }
@@ -89,7 +89,7 @@
             "nextBoundary": "<ts>",
             "calendar": {
               "source": "fallback",
-              "reason": "未安装 FTShare 数据服务，按工作日估算"
+              "reason": "未安装 FtShare 数据服务，按工作日估算"
             }
           },
           "warnings": []
@@ -197,7 +197,7 @@
             "nextBoundary": "<ts>",
             "calendar": {
               "source": "fallback",
-              "reason": "未安装 FTShare 数据服务，按工作日估算"
+              "reason": "未安装 FtShare 数据服务，按工作日估算"
             }
           },
           "warnings": [

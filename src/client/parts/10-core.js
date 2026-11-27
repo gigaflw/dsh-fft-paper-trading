@@ -116,11 +116,11 @@
      * tick, so the label has to say which one it is.
      */
     const quoteSourceText = quote => {
-      if (!quote || !quote.source) return 'FTShare'
+      if (!quote || !quote.source) return 'FtShare'
       if (quote.source === 'manual') return '参考价'
       // Provenance, not tier: a keyed account can also end up on the daily close.
       if (quote.source === 'daily-bar') return '日K收盘'
-      return 'FTShare 实时'
+      return 'FtShare 实时'
     }
     /**
      * Quote line time. Same-day data shows the clock only; a daily-close quote
@@ -148,13 +148,13 @@
      * title carries the consequence (realtime vs daily-close pricing).
      */
     const DATA_SOURCE_STATE = {
-      configured: { text: '数据源正常', title: 'FTShare API Key 已配置，可看实时行情' },
+      configured: { text: '数据源正常', title: 'FtShare API Key 已配置，可看实时行情' },
       free: {
-        text: '免费数据源',
-        title: '未配置 FTShare Key：免费档报价取日K收盘，可手填参考价交易',
+        text: '免费档',
+        title: '未配置 FtShare Key：免费档报价取日K收盘，可手填参考价交易',
       },
-      none: { text: '无数据源', title: '未安装 FTShare 数据服务，行情不可用；可手填参考价交易' },
-      invalid: { text: '数据源无效', title: 'FTShare Key 无法使用；请在「设置」中检查，可手填参考价交易' },
+      none: { text: '无数据源', title: '未安装 FtShare 数据服务，行情不可用；可手填参考价交易' },
+      invalid: { text: '数据源无效', title: 'FtShare Key 无法使用；请在「设置」中检查，可手填参考价交易' },
     }
     /** Badge suffix per recorded failure, so the header cannot read 正常 while quotes fail. */
     const DATA_PROBLEM_STATE = {
@@ -190,7 +190,7 @@
         return {
           id: 'no-service', tone: 'info',
           title: '行情数据服务未安装',
-          detail: '现在只能用参考价交易；安装 FTShare 数据服务后自动恢复。',
+          detail: '现在只能用参考价交易；安装 FtShare 数据服务后自动恢复。',
           actions: [],
         }
       }
@@ -199,7 +199,7 @@
         // Quotes still work on the free tier (last daily close), so the banner
         // cannot say 行情未启用; what a key adds is the realtime feed.
         title: '免费档：报价取日K收盘',
-        detail: `在 ${KEY_SETTINGS} 填入 API Key 可看实时行情。`,
+        detail: `实时行情需 FtShare Key，申请后 → ${KEY_SETTINGS} 填入。`,
         actions: [],
       }
       const problem = status.problem
@@ -210,7 +210,7 @@
               id: 'quota', tone: 'warn',
               // 匿名档是「最近 24 小时 500 次」的滚动额度，不是一个自然日。
               title: '免费额度已用尽',
-              detail: `请在 ${KEY_SETTINGS} 获取并填入 API Key；或等约 24 小时额度恢复。`,
+              detail: `点右上「申请 FtShare Key」，申请后到 ${KEY_SETTINGS} 填入；或等约 24 小时额度恢复。`,
               actions: ['retry'],
             }
           case 'plan-denied':
@@ -231,7 +231,7 @@
               ? noKeyBanner
               : {
                 id: 'invalid-key', tone: 'error',
-                title: 'FTShare 数据源无法使用',
+                title: 'FtShare 数据源无法使用',
                 detail: `在 ${KEY_SETTINGS} 检查 API Key。`,
                 actions: ['retry'],
               }
@@ -255,7 +255,7 @@
       if (status.state === 'invalid') {
         return {
           id: 'invalid-key', tone: 'error',
-          title: 'FTShare 数据源无法使用',
+          title: 'FtShare 数据源无法使用',
           detail: `${status.message === undefined || status.message === '' ? 'Key 未通过验证' : status.message}。在 ${KEY_SETTINGS} 检查 API Key。`,
           actions: [],
         }

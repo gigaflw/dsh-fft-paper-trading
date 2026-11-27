@@ -18,7 +18,10 @@
      */
     const BRAND_LANDING_URL = 'https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh'
     const BRAND_IDLE_COPY = '即刻体验 FtShare'
+    const BRAND_APPLY_COPY = '申请 FtShare Key'
     const BRAND_HOVER_COPY = '有智能的金融数据'
+    /** States where the entry is the place to get a key, so the label says so. */
+    const BRAND_APPLY_STATES = new Set(['free', 'invalid'])
 
     /** FTShare mark; the mask keeps the glyphs inside the rounded tile. */
     function BrandMark() {
@@ -47,15 +50,23 @@
       )
     }
 
-    /** Header brand entry: mark + label that flips to the slogan on hover. */
-    function BrandPill() {
+    /**
+     * Header brand entry: mark + label that flips to the slogan on hover.
+     *
+     * The idle label follows the data-source state: while no key is configured
+     * (or the stored one is unusable) the entry is the way to get one, so it
+     * reads 申请 FtShare Key; otherwise it stays the brand CTA. Both labels
+     * share one grid cell, so the wider slogan fixes the width either way.
+     */
+    function BrandPill({ state }) {
+      const idle = BRAND_APPLY_STATES.has(state) ? BRAND_APPLY_COPY : BRAND_IDLE_COPY
       return h('a', {
         className: 'pt-brand-pill', href: BRAND_LANDING_URL, target: '_blank',
-        rel: 'noopener noreferrer', 'aria-label': BRAND_IDLE_COPY,
+        rel: 'noopener noreferrer', 'aria-label': idle,
       },
         h(BrandMark),
         h('span', { className: 'pt-brand-swap', 'aria-hidden': 'true' },
-          h('span', { className: 'pt-brand-idle' }, BRAND_IDLE_COPY),
+          h('span', { className: 'pt-brand-idle' }, idle),
           h('span', { className: 'pt-brand-hover' }, BRAND_HOVER_COPY)),
         h('svg', {
           className: 'pt-brand-arrow', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',

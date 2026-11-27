@@ -541,7 +541,10 @@
               ),
             ),
             h('div', { className: 'pt-head-right' },
-              h(BrandPill),
+              h('div', { className: 'pt-topline' },
+                h(DataSourceBadge, { status: dataSource }),
+                h(BrandPill, { state: dataSource?.state }),
+              ),
               h('div', { className: 'pt-row' },
                 accountSwitch,
                 h(AccountPicker, {
@@ -554,7 +557,6 @@
                   onCreate: () => setAccountEditor('create'),
                   onAction: runAccountAction,
                 }),
-                h(DataSourceBadge, { status: dataSource }),
                 h('button', { className: 'pt-btn', onClick: refreshAll, disabled: busy }, '刷新'),
                 h('button', {
                   className: 'pt-btn', 'data-active': cashOpen, disabled: busy,

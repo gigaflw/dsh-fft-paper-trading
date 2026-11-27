@@ -332,7 +332,7 @@ test('browser bundle: inline 资金 panel moves cash on both accounts', () => {
 })
 
 test('browser bundle: header badge carries the four data-source states', () => {
-  for (const text of ['数据源正常', '免费数据源', '无数据源', '数据源无效']) {
+  for (const text of ['数据源正常', '免费档', '无数据源', '数据源无效']) {
     assert.ok(source.includes(`'${text}'`), `missing badge copy: ${text}`)
   }
   assert.match(source, /function DataSourceBadge/)
@@ -350,20 +350,27 @@ test('browser bundle: header badge carries the four data-source states', () => {
 test('browser bundle: the header carries the FTShare brand entry', () => {
   assert.ok(source.includes("const BRAND_LANDING_URL = 'https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh'"))
   assert.ok(source.includes("const BRAND_IDLE_COPY = '即刻体验 FtShare'"))
+  assert.ok(source.includes("const BRAND_APPLY_COPY = '申请 FtShare Key'"))
   assert.ok(source.includes("const BRAND_HOVER_COPY = '有智能的金融数据'"))
   assert.match(source, /function BrandMark\(\)/)
-  assert.match(source, /function BrandPill\(\)/)
-  // The accessible name stays the CTA copy even while the hover label flips.
-  assert.match(source, /'aria-label': BRAND_IDLE_COPY/)
+  assert.match(source, /function BrandPill\(\{ state \}\)/)
+  // No key (or a rejected one) turns the entry into the way to get one.
+  assert.match(source, /const BRAND_APPLY_STATES = new Set\(\['free', 'invalid'\]\)/)
+  assert.match(source, /const idle = BRAND_APPLY_STATES\.has\(state\) \? BRAND_APPLY_COPY : BRAND_IDLE_COPY/)
+  // The accessible name stays the visible copy even while the hover label flips.
+  assert.match(source, /'aria-label': idle/)
   // Idle is a quiet outline: the gradient only shows under hover / focus.
   assert.match(source, /\.pt-brand-pill::before \{[^}]*opacity:0/)
   assert.match(source, /\.pt-brand-pill:hover::before, \.pt-brand-pill:focus-visible::before \{ opacity:1; \}/)
   // Both labels share one grid cell, so the pill never resizes between them.
   assert.match(source, /\.pt-brand-swap \{ display:inline-grid/)
   assert.match(source, /\.pt-brand-hover \{ transform:translateY\(100%\)/)
-  // Both dashboards mount the entry above the account controls.
-  assert.equal(source.match(/h\(BrandPill\)/g).length, 2)
+  // Both dashboards mount the entry above the account controls, on the same
+  // line as the data-source badge.
+  assert.equal(source.match(/h\(BrandPill, \{ state: dataSource\?\.state \}\)/g).length, 2)
   assert.equal(source.match(/className: 'pt-head-right'/g).length, 2)
+  assert.equal(source.match(/className: 'pt-topline'/g).length, 2)
+  assert.match(source, /h\('div', \{ className: 'pt-topline' \},\n\s*h\(DataSourceBadge, \{ status: dataSource \}\),/)
 })
 
 test('browser bundle: a degraded trading calendar is visible in the header', () => {
@@ -388,13 +395,13 @@ test('browser bundle: a data problem becomes an actionable, dismissible banner',
     assert.ok(source.includes(copy), `missing banner copy: ${copy}`)
   }
   // Copied from the settings nav tree (金融终端) and its 访问凭据 card.
-  assert.match(source, /请在 \$\{KEY_SETTINGS\} 获取并填入 API Key/)
-  assert.match(source, /在 \$\{KEY_SETTINGS\} 填入 API Key 可看实时行情/)
+  assert.match(source, /实时行情需 FtShare Key，申请后 → \$\{KEY_SETTINGS\} 填入。/)
+  assert.match(source, /点右上「申请 FtShare Key」，申请后到 \$\{KEY_SETTINGS\} 填入/)
   assert.match(source, /在 \$\{KEY_SETTINGS\} 检查 API Key/)
   // The anonymous allowance rolls over 24 hours, so the banner must not say 今日.
   assert.ok(!source.includes('今日免费行情额度'), 'quota copy must not claim a calendar day')
   // No-key guidance must not be mistaken for a plan problem: they use different reasons.
-  assert.ok(source.includes("'FTShare 实时'"), 'realtime quotes say 实时 next to 免费版')
+  assert.ok(source.includes("'FtShare 实时'"), 'realtime quotes say 实时 next to 免费版')
   assert.match(source, /const quoteUpdateText = quote =>/)
   assert.match(source, /date\.slice\(5\)/)
   assert.match(source, /case 'plan-denied'/)
