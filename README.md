@@ -30,7 +30,7 @@ Open an A-share / commodity futures account in DeepSeek Harness without opening 
 - **Build positions in bulk by weight**: import a `code,weight` CSV, set a budget, and buy up to 20 symbols in one batch; check shares, fees and remaining cash before submitting the whole batch.
 - **Reviews that reconcile**: equity curve, maximum drawdown, fill statistics, end-of-day report and cash flows, with returns already excluding deposits and withdrawals.
 - **Run several strategies apart, compare them together**: create accounts from the header picker, rename or archive them at will (an archived account stops trading but keeps its ledger, and can be restored), and keep a free-form notes page per account (auto-saved, out of reach of the model); the comparison tab overlays every account’s equity curve normalised to 100, ranked by return, with drawdown and fill counts.
-- **Practice without an API key**: the free tier quotes at the latest daily close; configure an FTShare key to switch to real-time quotes.
+- **Practice without an API key**: the free tier quotes at the latest daily close; configure an FtShare key to switch to real-time quotes.
 - **The ledger stays local**: the event ledger is a file on this machine and is restored automatically after a DSH restart; the account is backed up before a reset.
 
 ## Install
@@ -39,10 +39,10 @@ Open an A-share / commodity futures account in DeepSeek Harness without opening 
 dsh plugin add @dsh-ft/dsh-fft-paper-trading
 ```
 
-Requires DSH `>= 0.2.0-rc.2`. The plugin ships FTShare quotes, the trading calendar and the K-line view, so no separate data plugin is needed.
+Requires DSH `>= 0.2.0-rc.2`. The plugin ships FtShare quotes, the trading calendar and the K-line view, so no separate data plugin is needed.
 
 - The full K-line view needs Python 3.10+ on this machine and prepares its runtime over the network on first launch; a failed preparation does not affect ordering, positions or review.
-- **Do not** install it alongside `@dsh-ft/dsh-fft-bundle` or any other entry package that ships the FTShare data service: the data service row would be duplicated, and the related entries in the plugin manager could no longer be toggled separately.
+- **Do not** install it alongside `@dsh-ft/dsh-fft-bundle` or any other entry package that ships the FtShare data service: the data service row would be duplicated, and the related entries in the plugin manager could no longer be toggled separately.
 
 ## Get started in three steps
 
@@ -58,12 +58,12 @@ In the conversation, you can simply say:
 
 ## Market data and API keys
 
-Market data comes from FTShare in two tiers:
+Market data comes from FtShare in two tiers:
 
 - **API key configured**: real-time quotes.
 - **No API key**: the free tier. Quotes use the latest close — during the session that is the previous trading day's close — and minute bars and the real-time endpoints are unavailable. The anonymous quota is limited: once it runs out, quotes pause. You can keep trading with a hand-entered reference price, and quotes resume automatically when the quota recovers (about 24 hours, rolling).
 
-Configure the API key in DSH under “Settings → Financial Terminal”; request one at [the FTShare website](https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh).
+Configure the API key in DSH under “Settings → Financial Terminal”; request one at [the FtShare website](https://ftai.chat/ftshare?utm_source=dsh-fft&utm_medium=AI&utm_campaign=dsh).
 
 The panel header shows the data-source state (live / free / unavailable / invalid); when quotes are unavailable it says why and offers “Get API key” or “Retry”. When the trading calendar degrades to “Monday to Friday”, the panel flags it (holidays then count as trading days, and T+1, pending-order expiry and settlement are estimated on business days).
 

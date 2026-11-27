@@ -13,7 +13,7 @@ import type {
  * every call reports `failed` with one readable reason instead of throwing.
  */
 export class UnavailableFuturesMarketData implements FuturesMarketDataPort {
-  private readonly notice = '期货行情不可用：未连接 FTShare 或当前套餐无权限'
+  private readonly notice = '期货行情不可用：未连接 FtShare 或当前套餐无权限'
 
   private fail<T>(): Promise<FuturesDataResult<T>> {
     return Promise.resolve({ state: 'failed', notice: this.notice })

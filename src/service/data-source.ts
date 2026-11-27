@@ -57,13 +57,13 @@ export async function probeDataSource(input: DataSourceProbeInput): Promise<Data
   if (!input.dataService) return { state: 'none' }
   const describe = input.settings?.apiKey?.describe
   if (typeof describe !== 'function') {
-    return { state: 'invalid', message: '无法读取 FTShare Key 状态' }
+    return { state: 'invalid', message: '无法读取 FtShare Key 状态' }
   }
   let status: DataSourceStatus
   try {
     const described = asRecord(await describe())
     if (described === undefined) {
-      status = { state: 'invalid', message: '无法读取 FTShare Key 状态' }
+      status = { state: 'invalid', message: '无法读取 FtShare Key 状态' }
     } else if (described.configured !== true) {
       status = { state: 'free' }
     } else {
@@ -79,7 +79,7 @@ export async function probeDataSource(input: DataSourceProbeInput): Promise<Data
       }
     }
   } catch {
-    status = { state: 'invalid', message: '无法读取 FTShare Key 状态' }
+    status = { state: 'invalid', message: '无法读取 FtShare Key 状态' }
   }
   return status
 }

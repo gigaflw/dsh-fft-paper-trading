@@ -10,8 +10,8 @@
         "en": "Paper orders, positions and review for A-shares and commodity futures."
       },
       "details": {
-        "zh": "股票与期货两个独立账本，本地记录成交与持仓；内置 FTShare 行情与 K 线，支持按权重批量建仓、复盘，以及对话里直接下单。安装后从左侧栏「模拟交易」打开。",
-        "en": "Two local ledgers for stocks and futures, with FTShare quotes and K-line built in: bulk weight-based buying, review, and the same account the agent trades. Open it from the sidebar's paper-trading entry."
+        "zh": "股票与期货两个独立账本，本地记录成交与持仓；内置 FtShare 行情与 K 线，支持按权重批量建仓、复盘，以及对话里直接下单。安装后从左侧栏「模拟交易」打开。",
+        "en": "Two local ledgers for stocks and futures, with FtShare quotes and K-line built in: bulk weight-based buying, review, and the same account the agent trades. Open it from the sidebar's paper-trading entry."
       },
       "cover": "./assets/screenshots/trade.jpg",
       "screenshots": [

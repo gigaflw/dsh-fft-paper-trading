@@ -20,7 +20,7 @@ export class WeekdayTradingCalendar implements TradingCalendarPort {
   /**
    * @param reason - why the weekday approximation is in use, shown in the UI.
    */
-  constructor(reason = '未接入 FTShare 交易日历') {
+  constructor(reason = '未接入 FtShare 交易日历') {
     this.status = { source: 'fallback', reason }
   }
 
